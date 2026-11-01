@@ -1,0 +1,12 @@
+docs/superpowers/
+.superpowers/
+node_modules/
+*.error
+herdr-shot.png
+mods/**/gpui-kit.d.ts
+mods/**/herdr.d.ts
+mods/**/jsconfig.json
+dist/
+!.github/
+!.github/workflows/
+!.github/workflows/test.yml

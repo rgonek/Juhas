@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,writeFileSync,existsSync,rmSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {packageRelease} from '../scripts/package.mjs';
+test('release allowlist excludes review data, generated types and local plans',t=>{
+ const root=mkdtempSync(join(tmpdir(),'juhas-package-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const source=join(root,'source'),dest=join(root,'output');
+ for(const path of ['mods/git-review','docs/superpowers','data','scripts','docs'])mkdirSync(join(source,path),{recursive:true});
+ for(const path of ['mods/git-review/main.js','mods/git-review/mod.json','mods/git-review/gpui-kit.d.ts','mods/git-review/secret.log','mods/git-review/private.js','docs/superpowers/private.md','docs/design-brief.md','data/session.json','git-review.json','README.md','RECIPE.md','THIRD_PARTY_NOTICES.md','LICENSE'])writeFileSync(join(source,path),'synthetic fixture');
+ const result=packageRelease({source,dest});assert.equal(existsSync(join(dest,'git-review.json')),false);assert.ok(existsSync(join(dest,'docs/design-brief.md')));assert.ok(result.files.includes('mods/git-review/main.js'));assert.ok(existsSync(join(dest,'LICENSE')));assert.equal(existsSync(join(dest,'data')),false);assert.equal(existsSync(join(dest,'docs/superpowers')),false);assert.equal(existsSync(join(dest,'mods/git-review/gpui-kit.d.ts')),false);assert.equal(existsSync(join(dest,'mods/git-review/secret.log')),false);assert.equal(existsSync(join(dest,'mods/git-review/private.js')),false);
+});
+test('release packaging refuses absent license and nonempty output',t=>{
+ const root=mkdtempSync(join(tmpdir(),'juhas-release-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const source=join(root,'source'),dest=join(root,'output');mkdirSync(source);assert.throws(()=>packageRelease({source,dest}),/license/i);writeFileSync(join(source,'LICENSE'),'Author chosen license');mkdirSync(dest);writeFileSync(join(dest,'keep'),'existing');assert.throws(()=>packageRelease({source,dest}),/empty|exists/i);assert.ok(existsSync(join(dest,'keep')));
+});

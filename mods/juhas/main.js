@@ -18,7 +18,7 @@ const cache=createCache();
 const submit=createSubmitter();
 const store={get:shared,set:setShared};
 const scopeCache=new Map();
-export default class GitReview extends View {
+export default class Juhas extends View {
  init(p,cx){
   p=props()||p||{};
   this.id=`review-${uid()}`;this.role=p?.role||'full';this.compact=this.role==='sidebar';this.sessionId=p?.sessionId||focused()?.space||'default';
@@ -65,7 +65,7 @@ export default class GitReview extends View {
   });
  }
  async loadConfig(){
-  this.localConfigPromise??=readLocalConfig(readTextFile,appHome()+'/git-review.json').catch(error=>{this.localConfigPromise=null;throw error;});
+  this.localConfigPromise??=readLocalConfig(readTextFile,appHome()+'/juhas.json',appHome()+'/git-review.json').catch(error=>{this.localConfigPromise=null;throw error;});
   const local=await this.localConfigPromise;this.config=resolveConfig(local,shared('git-review.v1.config')||{},this.contextProps.config||{});
  }
  baseChoice(){const s=this.controller.state;return selectBase(s.refs,s.branch||'',this.config,this.controller.base());}
@@ -121,7 +121,7 @@ export default class GitReview extends View {
  fetch(cx){if(this.busy)return;this.work(cx,async()=>{await this.controller.fetch();this.publish();this.message='Fetch completed';});}
  full(){expandReview(run);}
  terminal(){collapseReview(run);}
- renderBar(){return h_flex().h(34).px(8).gap(6).items_center().bg(theme().chrome).child(button('review-terminal','Terminal',()=>this.terminal())).child(button('review-full','Git Review',()=>this.full())).child(button('review-sidebar','Sidebar',()=>run('layout.toggle',{id:'git-review-sidebar'})));}
+ renderBar(){return h_flex().h(34).px(8).gap(6).items_center().bg(theme().chrome).child(button('review-terminal','Terminal',()=>this.terminal())).child(button('review-full','Juhas',()=>this.full())).child(button('review-sidebar','Sidebar',()=>run('layout.toggle',{id:'git-review-sidebar'})));}
  reviewStorageKey(){return this.reviewKey||`git-review.v1.review.${this.sessionId}`;}
  persistReview(){if(!this.batch)return;setShared(this.reviewStorageKey(),{repoKey:this.controller.state.repo?.key,batch:this.batch,includeQuotes:Boolean(this.includeQuotes),includeGitContext:Boolean(this.includeGitContext),recipientSource:this.recipientSource});}
  showBatch(batch){this.batch=batch;this.restoringReview=true;try{this.inputs.review.set_value(batch.text);}finally{this.restoringReview=false;}this.persistReview();}
@@ -194,9 +194,9 @@ export default class GitReview extends View {
   if(this.role==='bar')return this.renderBar();this.deferSync(cx);const s=this.controller.state,t=theme();let session;
   try{session=this.controller.session();}catch(e){return text(e.message).p(20);}
   const switching=this.followContext&&this.currentContext().key!==this.activeContext?.key;
-  const header=h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child(this.compact?'Review':`Review${!switching&&s.branch?' · '+s.branch:''}`))
-   .child(button('open-full',svg(`mods/git-review/icons/${this.compact?'expand':'collapse'}.svg`).size(16),()=>this.compact?this.full():this.terminal(),{tooltip:this.compact?'Expand review':'Return to sidebar'}))
-   .child(button('fetch-review',svg('mods/git-review/icons/fetch.svg').size(16),(_e,cx)=>this.fetch(cx),{tooltip:'Fetch all remotes'})).child(button('refresh-review','↻',(_e,cx)=>this.refreshContext(cx),{tooltip:'Refresh review'}));
+  const header=h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child(this.compact?'Juhas':`Juhas${!switching&&s.branch?' · '+s.branch:''}`))
+   .child(button('open-full',svg(`mods/juhas/icons/${this.compact?'expand':'collapse'}.svg`).size(16),()=>this.compact?this.full():this.terminal(),{tooltip:this.compact?'Expand review':'Return to sidebar'}))
+   .child(button('fetch-review',svg('mods/juhas/icons/fetch.svg').size(16),(_e,cx)=>this.fetch(cx),{tooltip:'Fetch all remotes'})).child(button('refresh-review','↻',(_e,cx)=>this.refreshContext(cx),{tooltip:'Refresh review'}));
   const size=(size,cx)=>{if(this.height!==size.height||this.width!==size.width){this.height=size.height;this.width=size.width;cx.notify();}};
   if(switching)return nativeFrame(this.id).child(header).child(text('Reading active project…',true).p(14));
   if(this.panel==='submit')return nativeFrame(this.id).on_size_change(size).child(header).child(text(this.message).h(30).flex_none().px(14).py(6).truncate()).child(this.footer(cx));

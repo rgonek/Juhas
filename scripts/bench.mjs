@@ -1,6 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {performance} from 'node:perf_hooks';
-import {createCache} from '../mods/git-review/cache.js';
+import {createCache} from '../mods/juhas/cache.js';
 const args=process.argv.slice(2);const option=(name,fallback)=>{const i=args.indexOf(name);return i<0?fallback:args[i+1];};const root=option('--repo');if(!root)throw new Error('Usage: node scripts/bench.mjs --repo <root> [--commit SHA] [--samples 30]');
 const samples=Number(option('--samples','30'));if(!Number.isInteger(samples)||samples<2||samples>1000)throw new Error('Samples must be 2..1000');
 const git=(...argv)=>execFileSync('git',['--no-optional-locks','-c','core.fsmonitor=false',...argv],{cwd:root,maxBuffer:64*1024*1024,encoding:'utf8'});

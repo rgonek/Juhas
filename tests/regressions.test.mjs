@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fixture,run} from './helpers/repos.mjs';
-import {resolveRepo} from '../mods/git-review/repositories.js';
-import {resolveComparison} from '../mods/git-review/comparisons.js';
-import {loadPatch,listChangedFiles,parsePatch} from '../mods/git-review/diff.js';
-import {Controller} from '../mods/git-review/controller.js';
-import {createSubmitter} from '../mods/git-review/submit.js';
+import {resolveRepo} from '../mods/juhas/repositories.js';
+import {resolveComparison} from '../mods/juhas/comparisons.js';
+import {loadPatch,listChangedFiles,parsePatch} from '../mods/juhas/diff.js';
+import {Controller} from '../mods/juhas/controller.js';
+import {createSubmitter} from '../mods/juhas/submit.js';
 test('working tree identity stays stable until contents actually change',async t=>{
  const f=fixture(t);f.commit('base');writeFileSync(join(f.root,'new.txt'),'one');const repo=await resolveRepo(run,null,f.root);
  const scope={kind:'working-tree',baseRef:'HEAD'};const a=await resolveComparison(run,repo,scope);const b=await resolveComparison(run,repo,scope);assert.equal(a.id,b.id);

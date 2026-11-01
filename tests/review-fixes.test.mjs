@@ -2,15 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fixture,run} from './helpers/repos.mjs';
-import {selectBase} from '../mods/git-review/config.js';
-import {Controller} from '../mods/git-review/controller.js';
-import {resolveComparison} from '../mods/git-review/comparisons.js';
-import {resolveRepo} from '../mods/git-review/repositories.js';
-import {createSession,addDraft,reconcileDrafts} from '../mods/git-review/review.js';
-import {buildBatch,createSubmitter,isLiveTerminal,MAX_REVIEW_BYTES} from '../mods/git-review/submit.js';
+import {selectBase} from '../mods/juhas/config.js';
+import {Controller} from '../mods/juhas/controller.js';
+import {resolveComparison} from '../mods/juhas/comparisons.js';
+import {resolveRepo} from '../mods/juhas/repositories.js';
+import {createSession,addDraft,reconcileDrafts} from '../mods/juhas/review.js';
+import {buildBatch,createSubmitter,isLiveTerminal,MAX_REVIEW_BYTES} from '../mods/juhas/submit.js';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-function nativeClass(deps){deps={selectBase,isLiveTerminal,MAX_REVIEW_BYTES,...deps};let source=readFileSync(new URL('../mods/git-review/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class GitReview extends View','class GitReview extends View');return new Function('View',...Object.keys(deps),source+'\nreturn GitReview;')(class{},...Object.values(deps));}
+function nativeClass(deps){deps={selectBase,isLiveTerminal,MAX_REVIEW_BYTES,...deps};let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');return new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps));}
 test('amend with identical trees still makes comments on original revisions outdated',async t=>{
  const f=fixture(t);f.commit('a');f.commit('b');const repo=await resolveRepo(run,null,f.root);const a=await resolveComparison(run,repo,{kind:'commit',commit:'HEAD',parentIndex:0});f.git('commit','--amend','-m','amended message');const b=await resolveComparison(run,repo,{kind:'commit',commit:'HEAD',parentIndex:0});assert.equal(a.targetTree,b.targetTree);assert.notEqual(a.targetOid,b.targetOid);assert.notEqual(a.id,b.id);
  let s=createSession('s');s=addDraft(s,{id:'d',repoKey:repo.key,comparisonId:a.id,body:'fix'});assert.equal(reconcileDrafts(s,[b.id]).drafts[0].status,'outdated');

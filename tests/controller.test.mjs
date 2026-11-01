@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture,run} from './helpers/repos.mjs';
-import {Controller} from '../mods/git-review/controller.js';
-import {commentTarget} from '../mods/git-review/comments.js';
+import {Controller} from '../mods/juhas/controller.js';
+import {commentTarget} from '../mods/juhas/comments.js';
 test('controller opens selected commit, file, patch and restores drafts between views',async t=>{
  const f=fixture(t);f.commit('before\n');const head=f.commit('after\n');const data=new Map();const store={get:k=>data.get(k),set:(k,v)=>data.set(k,structuredClone(v))};
  const c=new Controller({run,store,sessionId:'session'});await c.openRepo(null,f.root);await c.selectScope({kind:'commit',commit:head,parentIndex:0});await c.selectFile(c.state.files[0].id);

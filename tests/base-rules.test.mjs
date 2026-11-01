@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as config from '../mods/git-review/config.js';
+import * as config from '../mods/juhas/config.js';
 const rules=[{pattern:'^feature/([^/]+)/[^/]+$',replacement:'integration/$1'}];
 const refs=[{name:'integration/project-42',fullName:'refs/heads/integration/project-42'},{name:'trunk',fullName:'refs/heads/trunk'}];
 test('capture rules resolve existing branches without project conventions in defaults',()=>{
@@ -34,8 +34,8 @@ test('optional local config tolerates only a missing file and exposes bad JSON o
 });
 import {readFileSync} from 'node:fs';
 function nativeBranchView(saved=''){
- let source=readFileSync(new URL('../mods/git-review/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class GitReview extends View','class GitReview extends View');
- const Native=new Function('View','selectBase',source+'\nreturn GitReview;')(class{},config.selectBase),view=Object.create(Native.prototype),calls=[];let base='';
+ let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
+ const Native=new Function('View','selectBase',source+'\nreturn Juhas;')(class{},config.selectBase),view=Object.create(Native.prototype),calls=[];let base='';
  view.config={baseRules:rules};view.inputs={base:{value:()=>base,set_value:v=>base=v},target:{value:()=> 'HEAD'}};view.controller={state:{refs,branch:'feature/project-42/task-9'},base:()=>saved,setBase:v=>{saved=v;calls.push(['save',v]);},selectScope:async scope=>calls.push(['scope',scope])};view.publish=()=>{};view.work=(_cx,action)=>view.pending=action();return {view,calls};
 }
 test('native Branch automatically applies a rule without pinning it as a manual override',async()=>{
@@ -48,7 +48,7 @@ test('native Branch preserves a manual choice and missing rule candidates open t
 });
 
 import {fixture,run} from './helpers/repos.mjs';
-import {Controller} from '../mods/git-review/controller.js';
+import {Controller} from '../mods/juhas/controller.js';
 test('automatic rule compares HEAD from the chosen target common ancestor using real Git',async t=>{
  const f=fixture(t);const base=f.commit('base');f.git('branch','integration/project-42');f.git('checkout','-b','feature/project-42/task-9');const tip=f.commit('feature');
  const data=new Map(),controller=new Controller({run,store:{get:k=>data.get(k),set:(k,v)=>data.set(k,v)}});await controller.openRepo(null,f.root);

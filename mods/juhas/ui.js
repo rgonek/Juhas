@@ -69,7 +69,7 @@ export function filesPane(view){
   const count=counts.get(f.newPath)||0;return h_flex().h(29).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
    .child(text(f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(f.status==='A'?t.ansi2:f.status==='D'?t.ansi1:t.ansi4).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
-   .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/git-review/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
+   .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
  },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){view.collapsedDirs??=new Set();if(view.collapsedDirs.has(f.path))view.collapsedDirs.delete(f.path);else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));
 }
 function codeCell(row,side,t){

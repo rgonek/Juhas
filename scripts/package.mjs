@@ -4,8 +4,8 @@ import {fileURLToPath} from 'node:url';
 const publicFiles=['README.md','RECIPE.md','LICENSE','THIRD_PARTY_NOTICES.md','scripts/install.mjs','scripts/install.ps1','scripts/install.sh','docs/compatibility.md','docs/design-brief.md','docs/performance.md','docs/acceptance.md'];
 const modules=['cache','comments','comparisons','config','context','controller','diff','git','graph','history','main','model','platform','presentation','repositories','review','review-ui','storage','submit','ui'];
 export function releaseFiles(source){
- const files=publicFiles.filter(f=>existsSync(join(source,f)));const mod=join(source,'mods','git-review');if(!existsSync(mod))return files;
- for(const name of [...modules.map(m=>m+'.js'),'mod.json','helpers/list-directories.ps1',...['expand','collapse','fetch','comment'].map(name=>'icons/'+name+'.svg')])if(existsSync(join(mod,name)))files.push(`mods/git-review/${name}`);
+ const files=publicFiles.filter(f=>existsSync(join(source,f)));const mod=join(source,'mods','juhas');if(!existsSync(mod))return files;
+ for(const name of [...modules.map(m=>m+'.js'),'mod.json','helpers/list-directories.ps1',...['expand','collapse','fetch','comment'].map(name=>'icons/'+name+'.svg')])if(existsSync(join(mod,name)))files.push(`mods/juhas/${name}`);
  return files.sort();
 }
 export function packageRelease({source,dest}){
@@ -19,5 +19,5 @@ export function packageRelease({source,dest}){
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const source=resolve(dirname(fileURLToPath(import.meta.url)),'..');const args=process.argv.slice(2);
  if(args.includes('--check'))console.log(JSON.stringify({ready:existsSync(join(source,'LICENSE')),files:releaseFiles(source),note:'No files copied; license and final native acceptance remain release gates'},null,2));
- else{const i=args.indexOf('--out');const dest=resolve(i>=0?args[i+1]:join(source,'dist','juhas-git-review'));console.log(JSON.stringify(packageRelease({source,dest}),null,2));}
+ else{const i=args.indexOf('--out');const dest=resolve(i>=0?args[i+1]:join(source,'dist','juhas'));console.log(JSON.stringify(packageRelease({source,dest}),null,2));}
 }

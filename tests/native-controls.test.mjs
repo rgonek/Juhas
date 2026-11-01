@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 function controls(){
  const element=(kind,id)=>{const state={kind,id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_'))target.handlers[key]=args[0];else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
  const names=['Button','Checkbox','Toggle','Tabs','Tab','Popover'],deps={div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),theme:()=>({})};for(const name of names)deps[name]={new:id=>element(name,id)};
- let source=readFileSync(new URL('../mods/git-review/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {button,checkbox,toggle,tabs,popover};')(...Object.values(deps));
+ let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {button,checkbox,toggle,tabs,popover};')(...Object.values(deps));
 }
 test('action controls use native Button selection, accessible labels and one activation callback',()=>{
  const ui=controls(),calls=[],button=ui.button('save','Save',(e,cx)=>calls.push(cx),{active:true});assert.equal(button.kind,'Button');assert.equal(button.values.selected,true);assert.equal(button.values.accessibility_label,'Save');button.handlers.on_click({},'context');assert.deepEqual(calls,['context']);

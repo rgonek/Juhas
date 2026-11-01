@@ -1,8 +1,8 @@
-# Design brief: Juhas Git Review
+# Design brief: Juhas
 
-Design a coherent, readable interface for **Juhas**, a native Git review mod for Herdr. Functionality exists, but the controls, toolbars and panels need a consistent visual hierarchy. Aim for the density and responsiveness of an IDE such as Rider.
+Design a coherent, readable interface for **Juhas**, a native Git review mod for Herdr. The product name is Juhas; Git review describes its function. Functionality exists, but the controls, toolbars and panels need a consistent visual hierarchy. Aim for the density and responsiveness of an IDE such as Rider.
 
-Source reference: https://github.com/rgonek/juhas. The brief is self-contained; access to the developer's computer is not required. If repository access is available, the UI composition is in `mods/git-review/main.js` and the shared control styles are in `mods/git-review/ui.js`.
+Source reference: https://github.com/rgonek/juhas. The brief is self-contained; access to the developer's computer is not required. If repository access is available, the UI composition is in `mods/juhas/main.js` and the shared control styles are in `mods/juhas/ui.js`.
 
 ## Workflow and views
 

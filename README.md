@@ -1,4 +1,6 @@
-# Juhas · Git Review for Herdr
+# Juhas
+
+Git review assistant for Herdr.
 
 A native Herdr mod for reviewing committed work and sending a batch of line comments to an agent terminal. Browse commits, compare revisions, review the final result of a branch, then revisit only changes since a review checkpoint. Use the compact sidebar or the full review card without leaving Herdr.
 
@@ -19,21 +21,21 @@ Clone or download this project, then run from its root:
 node scripts/install.mjs --layout main
 ```
 
-The installer copies `mods/git-review`, creates a personal layout named `git-review` from the chosen layout and checks the mod. Existing Git Review files are backed up under Herdr's `data` directory. Shipped Herdr files and the active layout are preserved. To install from another personal layout, replace `main` with its name. Layouts must contain an active terminal area; a layout already integrating this mod is refused.
+The installer copies `mods/juhas`, creates a personal layout named `juhas` from the chosen layout and checks the mod. Existing Juhas files are backed up under Herdr's `data` directory. Shipped Herdr files and the active layout are preserved. To install from another personal layout, replace `main` with its name. Layouts must contain an active terminal area; a layout already integrating this mod is refused.
 
 Select the new layout in Herdr, or explicitly activate it:
 
 ```powershell
-herdr-app do layout.switch --name git-review
+herdr-app do layout.switch --name juhas
 ```
 
 For a sandbox or nondefault installation use `--app-home <directory>`. Pass `--activate` to the installer only if you also want it to switch layouts. Windows `scripts/install.ps1` and Unix `scripts/install.sh` wrap the same installer.
 
-For manual installation copy `mods/git-review` into the Herdr home `mods` directory and follow [RECIPE.md](RECIPE.md) to embed sidebar, toolbar and full-card copies. Do not edit Herdr's shipped mods or generated `.d.ts` files.
+For manual installation copy `mods/juhas` into the Herdr home `mods` directory and follow [RECIPE.md](RECIPE.md) to embed sidebar, toolbar and full-card copies. Do not edit Herdr's shipped mods or generated `.d.ts` files.
 
 ## Review workflow
 
-1. Click **Review** beside **Files / Changes** in Herdr's top bar. It opens in their shared right-hand sidebar and follows the active project/tab directory, like the native panels. Inside a Git repository, that repository is selected automatically and there is no repository chooser. The default interface focuses on one repository. Repository selection, its path and manual ref/SHA fields are hidden; set `showAdvanced: true` to expose these controls. A parent with just one repository selects it automatically; in advanced mode **Repositories** offers only repositories below the current directory.
+1. Click **Juhas** beside **Files / Changes** in Herdr's top bar. It opens in their shared right-hand sidebar and follows the active project/tab directory, like the native panels. Inside a Git repository, that repository is selected automatically and there is no repository chooser. The default interface focuses on one repository. Repository selection, its path and manual ref/SHA fields are hidden; set `showAdvanced: true` to expose these controls. A parent with just one repository selects it automatically; in advanced mode **Repositories** offers only repositories below the current directory.
 2. Click the expand icon for the full work-area review. The collapse icon restores the terminal and the same review in the right-hand panel. History and changed files appear above the full-width diff, with native draggable dividers between the panes. The expanded state is remembered separately for each project. **Branches** opens a native popup to choose the ref to browse; **Current**, **All branches** and **Remotes** filter the graph; filters search text/hash, author or path. Click a commit and a changed file to read its diff. Single-click already opens the file, so double-click also does so.
 3. Select a comparison:
 
@@ -61,7 +63,7 @@ Changing revisions marks previous comments for that repository as outdated; it n
 
 Sidebar and full card share their session and selected comparison for the active context. Switching projects replaces the displayed repository; returning restores that context's review state. Different Herdr spaces use separate sessions by default. Changing repositories inside a multi-repository parent context retains the session's saved comments. A custom layout may supply an explicit `sessionId` on both copies. Repository selection and unsaved composers are additionally scoped to the active machine, space, tab and directory, so a saved selection cannot redirect a different project.
 
-When the code/file list has keyboard focus: `j` / `k` select files, `]` / `[` select commits, `c` adds a file comment, and Escape returns to the terminal with the review sidebar. Text fields retain their normal input, including Unicode. The always-visible tabs mod accepts `herdr-app do git-review-tabs.open` and `herdr-app do git-review-tabs.full`; this works even when the review itself is closed. Review commands also include `git-review.refresh`, `git-review.next-file`, `git-review.previous-file`, `git-review.next-commit`, and `git-review.previous-commit`. Shown views also accept `git-review.branch`, `git-review.branches`, `git-review.details`, `git-review.tree`, `git-review.diff-mode`, `git-review.whole-file` and `git-review.comments` and `git-review.preview`.
+When the code/file list has keyboard focus: `j` / `k` select files, `]` / `[` select commits, `c` adds a file comment, and Escape returns to the terminal with the review sidebar. Text fields retain their normal input, including Unicode. The always-visible tabs mod accepts `herdr-app do juhas-tabs.open` and `herdr-app do juhas-tabs.full`; this works even when the review itself is closed. Review commands also include `juhas.refresh`, `juhas.next-file`, `juhas.previous-file`, `juhas.next-commit`, and `juhas.previous-commit`. Shown views also accept `juhas.branch`, `juhas.branches`, `juhas.details`, `juhas.tree`, `juhas.diff-mode`, `juhas.whole-file` and `juhas.comments` and `juhas.preview`.
 
 ## Configuration
 
@@ -86,7 +88,7 @@ Repository scope comes from the current Herdr context; base branches and optiona
 
 No branch rule is enabled by default. This example automatically chooses `integration/cart` for `feature/cart` if it is the only existing candidate. A saved manual base takes priority; the picker can switch back with **Use automatic base**. A missing or ambiguous candidate opens the branch picker. A uniquely matching remote branch is supported when the local branch does not exist. The chosen base and its `auto`, `manual` or `configured` source are visible beside the comparison.
 
-Personal rules can live outside every source repository in `<Herdr home>/git-review.json` (normally `~/.config/herdr-app/git-review.json`). Both sidebar and full views read this optional local file. For example, a captured part of a branch name can select its integration branch:
+Personal rules can live outside every source repository in `<Herdr home>/juhas.json` (normally `~/.config/herdr-app/juhas.json`). Both sidebar and full views read this optional local file. For example, a captured part of a branch name can select its integration branch:
 
 ```json
 {
@@ -112,13 +114,13 @@ Submit records an in-flight batch before asking `hc` to send. If delivery is unc
 
 ## Remove / rollback
 
-Switch to your previous layout first. Remove the personal `layouts/git-review.json`, `mods/git-review` and `mods/git-review-tabs` from the Herdr home. If replacing an older version, the installer's backup can restore those paths. This does not remove shared review data or checkpoint refs: retain them to preserve history, or clean them deliberately after checking what you want to keep. Never delete all of `.git`, reset the repository or clear the real index to remove this mod.
+Switch to your previous layout first. Remove the personal `layouts/juhas.json`, `mods/juhas` and `mods/juhas-tabs` from the Herdr home. If replacing an older version, the installer's backup can restore those paths. This does not remove shared review data or checkpoint refs: retain them to preserve history, or clean them deliberately after checking what you want to keep. Never delete all of `.git`, reset the repository or clear the real index to remove this mod.
 
 ## Development and release
 
 ```powershell
 npm test
-herdr-app check mods/git-review
+herdr-app check mods/juhas
 node scripts/bench.mjs --repo <absolute-repository-root> --commit <nonempty-commit> --samples 30
 ```
 
@@ -131,3 +133,9 @@ Public release is pending the author's license choice and final acceptance. Unti
 ## UI design
 
 The self-contained [design brief](docs/design-brief.md) describes the workflow, native component inventory and design constraints without requiring access to a local Herdr installation.
+
+## Naming and existing installations
+
+The product and Herdr mod are **Juhas**: `mods/juhas`, `juhas.*` commands, the generated `juhas-tabs` integration and `juhas` layout. Git review describes its function. Personal settings use `<Herdr home>/juhas.json`; the previous `git-review.json` is read only when the new file is missing. Keep existing settings outside this repository.
+
+Internal `git-review.v1.*` shared-state keys, checkpoint refs and `git-review-*` panel IDs are retained for compatibility with saved comments, review previews and integrated personal layouts. An existing personal layout can update its review blocks to `mod: "juhas"` without renaming panel IDs or resetting its layout. The old mod folder may remain while validating the new one; it is not included in this distribution.

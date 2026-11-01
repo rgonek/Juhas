@@ -24,9 +24,9 @@ export function selectBase(refs,branch,config={},saved=''){
  const suggestions=suggestBases(refs,branch,config.baseRules||[]);
  return suggestions.length===1?{ref:suggestions[0].ref,source:'auto'}:null;
 }
-export async function readLocalConfig(read,path){
+export async function readLocalConfig(read,path,legacyPath=null){
  let source;
- try{source=await read(path);}catch(error){if(error.code==='ENOENT'||/no such file or directory|system cannot find (?:the file|the path) specified|os error [23]\b/i.test(error.message||''))return {};throw error;}
- if(source==null)return {};
- try{const value=JSON.parse(source.replace(/^\uFEFF/,''));if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Expected an object');resolveConfig(value);return value;}catch(error){throw new Error('Invalid Git Review local configuration: '+error.message);}
+ try{source=await read(path);}catch(error){if(error.code==='ENOENT'||/no such file or directory|system cannot find (?:the file|the path) specified|os error [23]\b/i.test(error.message||''))return legacyPath?readLocalConfig(read,legacyPath):{};throw error;}
+ if(source==null)return legacyPath?readLocalConfig(read,legacyPath):{};
+ try{const value=JSON.parse(source.replace(/^\uFEFF/,''));if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Expected an object');resolveConfig(value);return value;}catch(error){throw new Error('Invalid Juhas local configuration: '+error.message);}
 }

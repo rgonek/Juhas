@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {fixture,run,directories} from './helpers/repos.mjs';
-import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from '../mods/git-review/context.js';
+import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from '../mods/juhas/context.js';
 test('active project/tab determines context, including when the review mod has focus',()=>{
  assert.equal(reviewContext(null,null,[],[]).folder,null);
  const spaces=[{id:'one',active:true,machine:null,folder:'/one',tabs:[{id:'tab-one',active:true}]},{id:'two',active:false,machine:'remote',folder:'/two',tabs:[{id:'tab-two',active:true}]}];

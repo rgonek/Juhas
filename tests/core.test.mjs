@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import {mkdirSync,renameSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fixture,run,directories} from './helpers/repos.mjs';
-import {resolveRepo,discoverRepos} from '../mods/git-review/repositories.js';
-import {resolveConfig,suggestBases} from '../mods/git-review/config.js';
-import {resolveComparison} from '../mods/git-review/comparisons.js';
-import {listHistory,listRefs} from '../mods/git-review/history.js';
-import {listChangedFiles,loadPatch} from '../mods/git-review/diff.js';
-import {createCache,createRequestGate} from '../mods/git-review/cache.js';
-import {layoutGraph} from '../mods/git-review/graph.js';
-import {createSession,addDraft,reconcileDrafts,markSeen,deleteCheckpoint} from '../mods/git-review/review.js';
-import {loadSession,mutateSession} from '../mods/git-review/storage.js';
-import {buildBatch,createSubmitter} from '../mods/git-review/submit.js';
+import {resolveRepo,discoverRepos} from '../mods/juhas/repositories.js';
+import {resolveConfig,suggestBases} from '../mods/juhas/config.js';
+import {resolveComparison} from '../mods/juhas/comparisons.js';
+import {listHistory,listRefs} from '../mods/juhas/history.js';
+import {listChangedFiles,loadPatch} from '../mods/juhas/diff.js';
+import {createCache,createRequestGate} from '../mods/juhas/cache.js';
+import {layoutGraph} from '../mods/juhas/graph.js';
+import {createSession,addDraft,reconcileDrafts,markSeen,deleteCheckpoint} from '../mods/juhas/review.js';
+import {loadSession,mutateSession} from '../mods/juhas/storage.js';
+import {buildBatch,createSubmitter} from '../mods/juhas/submit.js';
 
 test('repo identity isolates linked worktrees and canonicalises a subfolder',async t=>{
  const f=fixture(t);f.commit('one\n');const sub=join(f.root,'sub');mkdirSync(sub);

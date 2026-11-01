@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fixture,run,directories} from './helpers/repos.mjs';
-import {resolveConfig,selectBase,readLocalConfig} from '../mods/git-review/config.js';
-import {Controller} from '../mods/git-review/controller.js';
-import {createCache} from '../mods/git-review/cache.js';
-import {createRunner} from '../mods/git-review/git.js';
-import {resolveRepositoryScope,allowedRepository,contextStorageKey} from '../mods/git-review/context.js';
+import {resolveConfig,selectBase,readLocalConfig} from '../mods/juhas/config.js';
+import {Controller} from '../mods/juhas/controller.js';
+import {createCache} from '../mods/juhas/cache.js';
+import {createRunner} from '../mods/juhas/git.js';
+import {resolveRepositoryScope,allowedRepository,contextStorageKey} from '../mods/juhas/context.js';
 function nativeView(){
  const data=new Map(),store={get:k=>data.get(k),set:(k,v)=>data.set(k,v)};let id=0;
- let source=readFileSync(new URL('../mods/git-review/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class GitReview extends View','class GitReview extends View');
+ let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const deps={resolveConfig,selectBase,readLocalConfig,readTextFile:async()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});},shared:store.get,setShared:store.set,store,Controller,createRunner,cache:createCache(),exec:(_command,args,options)=>run({root:options.cwd},args),scopeCache:new Map(),resolveRepositoryScope,allowedRepository,contextStorageKey,readDirectories:(_exec,_home,machine,path)=>directories(machine,path),appHome:()=>'',uid:()=>String(++id)};
- const Native=new Function('View',...Object.keys(deps),source+'\nreturn GitReview;')(class{},...Object.values(deps));const view=Object.create(Native.prototype);
+ const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps));const view=Object.create(Native.prototype);
  view.contextProps={};view.config={maxDepth:3,maxRepos:20};view.contextViews=new Map();view.policy={repos:[],canSwitch:false};view.inputs={};view.role='sidebar';view.sessionId='initial';
  for(const key of ['folder','base','target','query','author','path','comment','note']){let value='';view.inputs[key]={value:()=>value,set_value:next=>value=next};}
  view.work=(_cx,fn)=>view.pending=fn();return {view,store};

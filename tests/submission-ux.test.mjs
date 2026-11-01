@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as submission from '../mods/git-review/submit.js';
-import {utf8Bytes} from '../mods/git-review/git.js';
+import * as submission from '../mods/juhas/submit.js';
+import {utf8Bytes} from '../mods/juhas/git.js';
 const comments=[
  {id:'1',repoKey:'repo',root:'/workspace/project',comparisonId:'c',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40),newPath:'src/view.ts',oldPath:'src/view.ts',side:'new',startLine:8,endLine:8,quote:'some long quoted source code',body:'Fix the empty state'},
  {id:'2',repoKey:'repo',root:'/workspace/project',comparisonId:'c',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40),newPath:'src/view.ts',oldPath:'src/view.ts',side:'new',startLine:20,endLine:22,quote:'line 20\nline 21\nline 22',body:'Handle cancellation'},
@@ -47,9 +47,9 @@ test('edited payload byte limits and empty messages are checked before transport
 });
 import {readFileSync} from 'node:fs';
 function nativeSubmission(){
- const data=new Map();let selectedSession={...session,submittedBatches:[],drafts:comments.map(d=>({...d}))};let source=readFileSync(new URL('../mods/git-review/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class GitReview extends View','class GitReview extends View');
+ const data=new Map();let selectedSession={...session,submittedBatches:[],drafts:comments.map(d=>({...d}))};let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const deliveries=[],deps={...submission,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,v),agents:()=>[agent('right')],terminals:()=>[terminal('right'),terminal('manual')],submit:submission.createSubmitter(),exec:async(_cmd,args)=>{deliveries.push(args);return {code:0};}};
- const Native=new Function('View',...Object.keys(deps),source+'\nreturn GitReview;')(class{},...Object.values(deps)),view=Object.create(Native.prototype);
+ const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps)),view=Object.create(Native.prototype);
  view.controller={state:{repo:{key:'repo'},comparison:null},session:()=>selectedSession,mutate:fn=>selectedSession=fn(selectedSession)};view.currentContext=()=>({...context,key:'context'});view.activeContext=view.currentContext();view.reviewKey='review-key';view.inputs={note:{value:()=>''}};let text='';view.inputs.review={value:()=>text,set_value:value=>text=value};view.work=(_cx,fn)=>view.pending=fn();const cx={notify(){},write_to_clipboard:value=>data.set('clipboard',value)};return {view,data,deliveries,cx,getSession:()=>selectedSession};
 }
 test('native preview auto-selects the project agent and scopes the editable message to one repo',()=>{

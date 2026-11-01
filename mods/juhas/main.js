@@ -1,5 +1,5 @@
 import {View,div,svg} from 'gpui-kit';
-import {h_flex,v_flex,InputState,TextareaState,Textarea,h_resizable,v_resizable,resizable_panel,VirtualListScrollHandle} from 'gpui-base';
+import {h_flex,v_flex,InputState,TextareaState,Textarea,Editor,EditorState,h_resizable,v_resizable,resizable_panel,VirtualListScrollHandle} from 'gpui-base';
 import {exec,shared,setShared,props,focused,spaces,panes,terminals,theme,run,appHome,nextCommand,readTextFile,agents} from 'herdr';
 import {Controller} from './controller.js';
 import {createRunner,uid} from './git.js';
@@ -10,7 +10,7 @@ import {commentTarget,annotatePatch} from './comments.js';
 import {buildBatch,createSubmitter,updateBatch,detectRecipient,agentRecipients,isLiveTerminal,MAX_REVIEW_BYTES} from './submit.js';
 import {button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover} from './ui.js';
 import {expandReview,collapseReview} from './presentation.js';
-import {rangeSelection,changeGroups,stepChange,splitRows} from './review-ui.js';
+import {rangeSelection,changeGroups,stepChange,splitRows,patchCode} from './review-ui.js';
 import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from './context.js';
 
 // Module-local cache is shared by views; durable drafts are kept by Herdr shared state.
@@ -35,7 +35,13 @@ export default class Juhas extends View {
   if(this.role!=='bar')this.activateContext(this.currentContext(),cx);
   cx.spawn(async cx=>{for(;;){const command=await nextCommand();const name=typeof command==='string'?command:command.name;if(name==='preview')this.preview(cx);if(name==='branch')this.applyScope('branch',cx);if(name==='branches'){this.panel=this.panel==='historyRefs'?null:'historyRefs';cx.notify();}if(name==='details'){this.detailsOpen=!this.detailsOpen;if(this.detailsOpen)this.work(cx,()=>this.controller.loadDetails());cx.notify();}if(name==='diff-mode')this.setDiffMode(this.diffMode==='split'?'unified':'split',cx);if(name==='next-change')this.navigateChange(1,cx);if(name==='previous-change')this.navigateChange(-1,cx);if(name==='tree'){this.fileTree=!this.fileTree;cx.notify();}if(name==='whole-file')this.work(cx,()=>this.controller.expandFile());if(name==='comments'){this.panel=this.panel==='drafts'?null:'drafts';cx.notify();}if(name==='refresh')this.refreshContext(cx);if(name==='full')this.full();if(name==='terminal')this.terminal();if(name==='next-file')this.moveFile(1,cx);if(name==='previous-file')this.moveFile(-1,cx);if(name==='next-commit')this.moveCommit(1,cx);if(name==='previous-commit')this.moveCommit(-1,cx);}});
  }
- close(){this.diffScroll?.release();}
+ close(){this.diffScroll?.release();this.copyEditor?.release();}
+ openCodeCopy(side,cx){
+  const s=this.controller.state;if(!s.patch||s.patch.binary||s.patch.modeOnly)return;
+  if(this.panel==='comment'&&this.inputs.comment.value().trim()){this.message='Save or cancel the current comment first';cx.notify();return;}
+  if(!this.copyEditor){this.copyEditor=EditorState.new({readonly:true,line_numbers:false,folding:false});this.copyEditor.on('focus',()=>{this.inputFocused=true;});this.copyEditor.on('blur',()=>{this.inputFocused=false;});}
+  this.copyEditor.set_value(patchCode(s.patch,side));this.copySide=side;this.copySource=this.diffChangeKey();this.copyPath=s.file?.newPath;this.panel='copy-code';cx.notify();
+ }
  diffChangeKey(){const s=this.controller.state;return JSON.stringify([s.comparison?.id,s.file?.id,this.diffMode]);}
  setDiffMode(mode,cx){this.diffMode=mode;this.changeCursor=null;cx.notify();}
  navigateChange(direction,cx){
@@ -185,6 +191,12 @@ export default class Juhas extends View {
  }
  footer(cx){
   const s=this.controller.session(),t=theme();let content=v_flex().flex_none().border_t(1).border_color(t.border);
+  if(this.panel==='copy-code'&&this.copySource===this.diffChangeKey())return content.h(260).min_h(0).min_w(0)
+   .child(h_flex().px(10).py(6).gap(6).items_center().child(text(`Loaded fragments · ${this.copyPath}`).flex_1().min_w(0).truncate())
+    .child(buttonGroup('copy-side',[{value:'old',label:'Original'},{value:'new',label:'Modified'}],this.copySide,(side,cx)=>this.openCodeCopy(side,cx)))
+    .child(button('copy-code-all','Copy all',(_e,cx)=>cx.write_to_clipboard(this.copyEditor.value()),{tooltip:'Copy the code shown below, without diff markers'}))
+    .child(button('close-copy-code','Close',(_e,cx)=>{this.panel=null;cx.notify();})))
+   .child(Editor.new(this.copyEditor).flex_1().min_h(0).min_w(0));
   if(this.panel==='comment')return content.p(10).gap(7).child(text(`Comment · ${this.target?.newPath||''} · ${this.target?.side||'file'} ${this.target?.startLine??''}${this.target?.endLine!==this.target?.startLine?'-'+this.target?.endLine:''}`))
    .child(Textarea.new(this.inputs.comment).h(76).px(8).py(6).bg(t.background).border_1().border_color(t.border).text_color(t.foreground).rounded(8)).child(h_flex().gap(6).flex_wrap().child(button('save-comment','Save comment',(_e,cx)=>this.saveComment(cx),{primary:true})).child(button('cancel-comment','Cancel',(_e,cx)=>{this.panel=null;setShared(this.composerKey||`git-review.v1.composer.${this.sessionId}`,null);cx.notify();})).child(text('Click another line on the same side to extend the range',true)));
   if(this.panel==='repos')return content.h(190).child(section('Repositories')).child(v_flex().flex_1().overflow_y_scrollbar().children((this.discovered||[]).map(repo=>button(repo.key,repo.root,(_e,cx)=>{this.panel=null;this.openFolder(repo.root,cx);}))).child(button('close-repos','Close',(_e,cx)=>{this.panel=null;cx.notify();})));
@@ -226,10 +238,10 @@ export default class Juhas extends View {
   if(this.panel==='submit')return nativeFrame(this.id).on_size_change(size).child(header).child(text(this.message).h(30).flex_none().px(14).py(6).truncate()).child(this.footer(cx));
   const location=h_flex().px(14).py(8).gap(8).items_center().child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.muted).child(s.repo?.root||this.activeContext?.folder||'No active directory'))
    .when(Boolean(this.policy?.canSwitch),e=>e.child(button('context-repos','Repositories',(_e,cx)=>{this.discovered=this.policy.repos;this.panel='repos';cx.notify();})));
-  const scope=v_flex().px(8).pb(8).gap(5)
+  const scope=v_flex().px(8).pt(8).pb(8).gap(5)
    .when(Boolean(this.config.showAdvanced),e=>e.child(h_flex().gap(5).child(field(this.inputs.base,'Base ref / SHA')).child(button('pick-base','Refs',(_e,cx)=>{this.panel='refs';cx.notify();})).child(field(this.inputs.target,'Target ref / SHA'))))
    .child(buttonGroup('scope',[['commit','Commit'],['range','Range'],['branch','Branch'],['since-review','Since review'],['working-tree','Uncommitted']].map(([value,label])=>({value,label,tooltip:value==='branch'?'Compare against a base branch from the common ancestor':value==='range'?'Select first and last commit for a combined diff':label})),this.rangePicking?'range':s.comparison?.scope.kind,(kind,cx)=>this.applyScope(kind,cx)))
-   .when(Boolean(s.comparison),e=>e.child(h_flex().gap(6).items_center().child(text(s.comparison.label,true).truncate()).when(s.comparison.scope.kind==='branch'||this.panel==='refs',e=>e.child(popover('change-base',s.comparison.scope.kind==='branch'?`Base: ${s.comparison.scope.baseRef.replace(/^refs\/(heads|remotes)\//,'')} · ${this.baseSource||'manual'} ▾`:'Choose base branch',this.panel==='refs',(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false),{tooltip:this.inputs.base.value()||'Choose base branch'})))));
+   .when(Boolean(s.comparison&&(s.comparison.scope.kind==='branch'||this.panel==='refs')),e=>e.child(h_flex().gap(6).items_center().child(popover('change-base',s.comparison.scope.kind==='branch'?`Base: ${s.comparison.scope.baseRef.replace(/^refs\/(heads|remotes)\//,'')} · ${this.baseSource||'manual'} ▾`:'Choose base branch',this.panel==='refs',(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false),{tooltip:this.inputs.base.value()||'Choose base branch'}))));
   const actions=h_flex().px(8).pb(8).gap(5).flex_wrap().child(toggle('drafts',`Comments · ${session.drafts.length}`,this.panel==='drafts',(pressed,cx)=>{this.panel=pressed?'drafts':null;cx.notify();}))
    .child(button('submit-preview','Submit review',(_e,cx)=>this.preview(cx),{primary:true})).child(button('mark-seen','Mark seen',(_e,cx)=>this.work(cx,async()=>{await this.controller.markSeen();this.message='Checkpoint saved; comments retained';})))
    .when(!this.compact,e=>e.child(toggle('filters-toggle','Filters',this.filtersOpen,(pressed,cx)=>{this.filtersOpen=pressed;cx.notify();})))

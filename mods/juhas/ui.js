@@ -1,5 +1,5 @@
 import {div,PathBuilder,svg} from 'gpui-kit';
-import {h_flex,v_flex,v_virtual_list,Scrollbar,Input,Button,Checkbox,Toggle,Popover} from 'gpui-base';
+import {h_flex,v_flex,v_virtual_list,Scrollbar,Input,Button,Checkbox,Toggle,Popover,TextView} from 'gpui-base';
 import {theme,settings} from 'herdr';
 import {layoutGraph} from './graph.js';
 import {fileRows,splitRows,changeGroups} from './review-ui.js';
@@ -31,6 +31,7 @@ export function popover(id,label,open,change,content,{tooltip=label}={}){
 }
 export function field(state,_placeholder,width){const t=theme();return Input.new(state).h(32).min_w(0).when(Boolean(width),e=>e.w(width)).when(!width,e=>e.flex_1()).px(8).rounded(8).border_1().border_color(t.border).bg(t.background).text_color(t.foreground).text_size(12);}
 export function text(value,dim=false){const t=theme();return div().text_size(12).text_color(dim?t.muted:t.foreground).child(value);}
+export function selectableText(id,value){return TextView.html(id,`<p>${String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</p>`).selectable(true).scrollable(false);}
 export function virtualList(id,items,height,row,click,scrollHandle=null){return v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(v_virtual_list(id,items.length,height,i=>String(items[i].id??items[i].oid??i),range=>items.slice(range.start,range.end).map(row)).when(Boolean(scrollHandle),el=>el.track_scroll(scrollHandle)).on_item_click(click).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());}
 export function section(title){const t=theme();return div().h(28).flex_none().px(10).py(6).text_size(10).font_semibold().text_color(t.muted).bg(t.chrome).child(title.toUpperCase());}
 export function graphCell(row){
@@ -55,7 +56,7 @@ export function historyPane(view,cx){
   .child(buttonGroup('history-filter',[{value:'HEAD',label:'Current',tooltip:'Show history reachable from the current branch'},{value:'all',label:'All branches'}],view.historyRef,(ref,cx)=>filter(ref,cx)))
   .child(checkbox('graph-remotes','Remotes',view.remotes,(checked,cx)=>{view.remotes=checked;view.work(cx,()=>view.controller.loadHistory(view.filters()));},{tooltip:'Include remote branches in All branches'})))
   .child(list).when(Boolean(view.detailsOpen&&commit),e=>e.child(v_flex().flex_none().max_h(130).overflow_y_scrollbar().p(10).gap(5).border_t(1).border_color(t.border)
-    .child(text(s.details?.subject||commit.subject).font_semibold()).child(text(s.details?.author||`${commit.author} · ${new Date(commit.timestamp*1000).toLocaleString()}`,true)).child(text(commit.oid,true)).child(text(s.details?.body||'',true)).child(text(commit.refs.join(', '),true))))
+    .child(selectableText(`${view.id}-commit-details`,[s.details?.subject||commit.subject,s.details?.author||`${commit.author} · ${new Date(commit.timestamp*1000).toLocaleString()}`,commit.oid,s.details?.body||'',commit.refs.join(', ')].filter(Boolean).join('\n')))))
   .when(s.hasMore,e=>e.child(button('history-more','Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true)))));
 }
 export function filesPane(view){
@@ -117,6 +118,7 @@ export function diffPane(view){
     .child(buttonGroup('change-navigation',[{value:-1,label:'↑',tooltip:'Previous change; continues to the previous file',disabled:!changes.length||Boolean(view.busy)},{value:1,label:'↓',tooltip:'Next change; continues to the next file',disabled:!changes.length||Boolean(view.busy)}],null,(direction,cx)=>view.navigateChange(direction,cx))).child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true).tooltip('Current change / total change groups in this file'))
     .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
     .child(button('expand-context','Whole file',(_e,cx)=>view.work(cx,()=>view.controller.expandFile()),{tooltip:'Load unchanged lines between and around hunks'}))
+    .child(button('select-code','Select / copy',(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy loaded code in a native read-only editor'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly)))
     .child(button('comment-file','Comment',(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on the whole file'}))))
   .when(Boolean(s.patch&&!s.patch.complete),e=>e.child(text(`Incomplete: ${s.patch.reason}`).p(8).text_color(t.ansi1)))
   .child(div().flex_1().min_h(0).min_w(0).w_full().overflow_hidden().child(div().id(`${view.id}-diff-horizontal`).size_full().min_w(0).overflow_x_scrollbar().child(div().min_w(minWidth).w_full().h_full().child(body))));

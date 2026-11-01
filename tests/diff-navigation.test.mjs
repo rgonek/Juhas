@@ -4,6 +4,17 @@ import * as models from '../mods/juhas/review-ui.js';
 import {annotatePatch} from '../mods/juhas/comments.js';
 import {readFileSync} from 'node:fs';
 const line=(id,side)=>({id,kind:'line',side,text:id,oldLine:side==='new'?null:1,newLine:side==='old'?null:1});
+test('copyable code preserves source whitespace, excludes opposite-side lines and separates unloaded gaps',()=>{
+ const patch={hunks:[{lines:[{...line('old','old'),text:'\tbefore <T>'},line('new','new'),line('shared','context')]},{lines:[line('later','new')]}]};
+ assert.equal(models.patchCode(patch,'old'),'\tbefore <T>\nshared\n\n');
+ assert.equal(models.patchCode(patch,'new'),'new\nshared\n\nlater');assert.equal(models.patchCode(null),'');
+});
+test('code selection uses one retained readonly native editor and preserves an unsaved comment',()=>{
+ const {view}=nativeView(),cx={notify(){}};view.inputs={comment:{value:()=>''}};view.controller.state.patch={hunks:[{lines:[line('before','old'),line('after','new')]}]};
+ view.openCodeCopy('new',cx);const editor=view.copyEditor;assert.equal(editor.options.readonly,true);assert.equal(editor.value(),'after');assert.equal(view.panel,'copy-code');
+ view.openCodeCopy('old',cx);assert.equal(view.copyEditor,editor);assert.equal(editor.value(),'before');
+ view.panel='comment';view.inputs.comment.value=()=> 'unsaved';view.openCodeCopy('new',cx);assert.equal(view.panel,'comment');assert.equal(editor.value(),'before');
+});
 test('change navigation groups replacements, ignores comments and separates unchanged context',()=>{
  const rows=[{id:'h',kind:'hunk'},line('old','old'),{id:'comment',kind:'comment'},line('new','new'),line('context','context'),line('next','new')];
  assert.deepEqual(models.changeGroups(rows).map(row=>[row.id,row.index]),[['old',1],['next',5]]);
@@ -16,7 +27,7 @@ test('split replacement lines stay paired when comments are attached to either s
  const old=line('old','old'),next=line('new','new'),oldComment={id:'old-comment',kind:'comment',draft:{side:'old'}},newComment={id:'new-comment',kind:'comment',draft:{side:'new'}};
  const rows=models.splitRows([old,oldComment,next,newComment]);assert.equal(rows[0].old,old);assert.equal(rows[0].next,next);assert.deepEqual(rows.slice(1),[oldComment,newComment]);
 });
-function nativeView(){let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');const Native=new Function('View','changeGroups','stepChange','annotatePatch','splitRows',source+'\nreturn Juhas;')(class{},models.changeGroups,models.stepChange,annotatePatch,models.splitRows),view=Object.create(Native.prototype),scroll=[];
+function nativeView(){let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');const Native=new Function('View','changeGroups','stepChange','annotatePatch','splitRows','patchCode','EditorState',source+'\nreturn Juhas;')(class{},models.changeGroups,models.stepChange,annotatePatch,models.splitRows,models.patchCode,{new:options=>({options,on(){},set_value(value){this.text=value;},value(){return this.text;}})}),view=Object.create(Native.prototype),scroll=[];
  view.controller={state:{comparison:{id:'c'},file:{id:'f'}}};view.diffMode='unified';view.diffRows=[line('one','new'),line('context','context'),line('two','old')];view.diffScroll={scroll_to_item:(...args)=>scroll.push(args)};view.diffRowsKey=JSON.stringify(['c','f','unified']);return {view,scroll};}
 test('native navigation scrolls through the retained handle without reading Git or opening a comment',()=>{
  const {view,scroll}=nativeView(),cx={notify(){}};view.navigateChange(1,cx);view.navigateChange(1,cx);view.navigateChange(-1,cx);assert.deepEqual(scroll,[[0,'top'],[2,'top'],[0,'top']]);assert.equal(view.panel,undefined);

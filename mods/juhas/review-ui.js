@@ -36,6 +36,9 @@ export function changeGroups(rows){
  const groups=[];let changing=false;
  rows.forEach((row,index)=>{if(row.kind==='comment')return;const changed=row.kind==='line'&&(row.side==='old'||row.side==='new')||row.kind==='pair'&&(row.old?.side==='old'||row.next?.side==='new');if(changed&&!changing)groups.push({id:row.id,index});changing=Boolean(changed);});return groups;
 }
+export function patchCode(patch,side='new'){
+ const field=side==='old'?'oldLine':'newLine';return (patch?.hunks||[]).map(hunk=>hunk.lines.filter(line=>line[field]!=null).map(line=>line.text).join('\n')).join('\n\n');
+}
 export function stepChange(groups,currentId,direction){
  if(!groups.length)return null;const current=groups.findIndex(group=>group.id===currentId);return groups[current<0?(direction>0?0:groups.length-1):(current+(direction>0?1:-1)+groups.length)%groups.length];
 }

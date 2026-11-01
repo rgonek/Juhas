@@ -23,7 +23,7 @@ export function toggle(id,label,pressed,change,{tooltip=label}={}){
 }
 export function buttonGroup(id,items,selected,select){
  const t=theme();return h_flex().id(id).role('group').accessibility_label(id).flex_none().rounded(6).border_1().border_color(t.border).overflow_hidden()
-  .children(items.map((item,index)=>button(`${id}-${item.value}`,item.label,(_event,cx)=>select(item.value,cx),{active:item.value===selected,tooltip:item.tooltip||item.label}).rounded(0).when(index>0,el=>el.border_l(1).border_color(t.border))));
+  .children(items.map((item,index)=>button(`${id}-${item.value}`,item.label,(_event,cx)=>select(item.value,cx),{active:item.value===selected,tooltip:item.tooltip||item.label}).disabled(Boolean(item.disabled)).rounded(0).when(index>0,el=>el.border_l(1).border_color(t.border))));
 }
 export function popover(id,label,open,change,content,{tooltip=label}={}){
  const t=theme();return Popover.new(id).open(Boolean(open)).on_open_change(change).trigger(button(`${id}-trigger`,label,null,{tooltip}))
@@ -114,8 +114,8 @@ export function diffPane(view){
   .child(h_flex().min_h(36).flex_none().px(10).gap(4).flex_wrap().items_center().border_b(1).border_color(t.border)
    .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).text_size(12).child(s.file?.newPath||'Diff'))
    .when(Boolean(s.file),e=>e.child(buttonGroup('diff-mode',[{value:'unified',label:'Unified'},{value:'split',label:'Split',tooltip:'Side by side'}],view.diffMode||'unified',(mode,cx)=>view.setDiffMode(mode,cx)))
-    .child(button('previous-change','↑',(_e,cx)=>view.navigateChange(-1,cx),{tooltip:'Previous change in this file'}).disabled(!changes.length||Boolean(view.busy))).child(button('next-change','↓',(_e,cx)=>view.navigateChange(1,cx),{tooltip:'Next change in this file'}).disabled(!changes.length||Boolean(view.busy))).child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true))
-    .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old'},{value:'new',label:'New'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
+    .child(buttonGroup('change-navigation',[{value:-1,label:'↑',tooltip:'Previous change in this file',disabled:!changes.length||Boolean(view.busy)},{value:1,label:'↓',tooltip:'Next change in this file',disabled:!changes.length||Boolean(view.busy)}],null,(direction,cx)=>view.navigateChange(direction,cx))).child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true).tooltip('Current change / total change groups in this file'))
+    .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
     .child(button('expand-context','Whole file',(_e,cx)=>view.work(cx,()=>view.controller.expandFile()),{tooltip:'Load unchanged lines between and around hunks'}))
     .child(button('comment-file','Comment',(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on the whole file'}))))
   .when(Boolean(s.patch&&!s.patch.complete),e=>e.child(text(`Incomplete: ${s.patch.reason}`).p(8).text_color(t.ansi1)))

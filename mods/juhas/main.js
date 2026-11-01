@@ -6,11 +6,11 @@ import {createRunner,uid} from './git.js';
 import {createCache} from './cache.js';
 import {readDirectories} from './platform.js';
 import {resolveConfig,suggestBases,selectBase,readLocalConfig} from './config.js';
-import {commentTarget} from './comments.js';
+import {commentTarget,annotatePatch} from './comments.js';
 import {buildBatch,createSubmitter,updateBatch,detectRecipient,agentRecipients,isLiveTerminal,MAX_REVIEW_BYTES} from './submit.js';
 import {button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover} from './ui.js';
 import {expandReview,collapseReview} from './presentation.js';
-import {rangeSelection,changeGroups,stepChange} from './review-ui.js';
+import {rangeSelection,changeGroups,stepChange,splitRows} from './review-ui.js';
 import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from './context.js';
 
 // Module-local cache is shared by views; durable drafts are kept by Herdr shared state.
@@ -41,7 +41,23 @@ export default class Juhas extends View {
  navigateChange(direction,cx){
   if(this.busy||this.diffRowsKey!==this.diffChangeKey())return;
   const groups=changeGroups(this.diffRows||[]),source=this.diffChangeKey(),current=this.changeCursor?.source===source?this.changeCursor.id:null,target=stepChange(groups,current,direction);
+  const index=groups.findIndex(group=>group.id===current);
+  if((index>=0&&(direction>0?index===groups.length-1:index===0))||!groups.length){this.navigateFileChange(direction,cx);return;}
   if(!target)return;this.changeCursor={source,id:target.id};this.diffScroll.scroll_to_item(target.index,'top');cx.notify();
+ }
+ navigateFileChange(direction,cx){
+  const controller=this.controller,s=controller.state,comparison=s.comparison?.id,mode=this.diffMode,files=s.files.slice(),start=files.findIndex(file=>file.id===s.file?.id),step=direction>0?1:-1;
+  this.work(cx,async()=>{
+   for(let i=start+step;i>=0&&i<files.length;i+=step){
+    if(this.controller!==controller||controller.state.comparison?.id!==comparison||this.diffMode!==mode)return;
+    this.selectedStart=null;await controller.selectFile(files[i].id);this.publish();
+    if(this.controller!==controller||controller.state.comparison?.id!==comparison||controller.state.file?.id!==files[i].id||this.diffMode!==mode)return;
+    const state=controller.state,annotated=annotatePatch(state.patch,controller.session().drafts,comparison,state.file?.newPath),rows=mode==='split'?splitRows(annotated):annotated,target=stepChange(changeGroups(rows),null,direction);
+    this.changeCursor=null;if(!target)continue;
+    this.changeCursor={source:this.diffChangeKey(),id:target.id};this.diffScroll.scroll_to_item(target.index,'top');return;
+   }
+   this.message=direction>0?'End of review':'Start of review';
+  });
  }
  async workAsync(cx,action){this.runningActions=(this.runningActions||0)+1;this.busy=true;this.message='';cx.notify();try{await action();}catch(e){this.message=e.message;}finally{this.runningActions--;this.busy=this.runningActions>0;cx.notify();}}
  work(cx,action){cx.spawn(async cx=>this.workAsync(cx,action));}

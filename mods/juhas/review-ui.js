@@ -20,8 +20,23 @@ export function fileRows(files,tree=false,collapsed=new Set()){
  walk(root);return rows;
 }
 export function splitRows(rows){
- const result=[];let removed=[],added=[];
- const flush=()=>{for(let i=0;i<Math.max(removed.length,added.length);i++){const old=removed[i],next=added[i];result.push({id:'split:'+(next?.id||old.id),kind:'pair',old,next});}removed=[];added=[];};
- for(const row of rows){if(row.kind==='line'&&row.side==='old')removed.push(row);else if(row.kind==='line'&&row.side==='new')added.push(row);else{flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}}flush();return result;
+ const result=[];let removed=[],added=[],comments=new Map(),lastChange=null;
+ const flush=()=>{
+  for(let i=0;i<Math.max(removed.length,added.length);i++){const old=removed[i],next=added[i];result.push({id:'split:'+(next?.id||old.id),kind:'pair',old,next});result.push(...(comments.get(old?.id)||[]),...(comments.get(next?.id)||[]));}
+  removed=[];added=[];comments=new Map();lastChange=null;
+ };
+ for(const row of rows){
+  if(row.kind==='line'&&(row.side==='old'||row.side==='new')){(row.side==='old'?removed:added).push(row);lastChange=row;}
+  else if(row.kind==='comment'&&lastChange){if(!comments.has(lastChange.id))comments.set(lastChange.id,[]);comments.get(lastChange.id).push(row);}
+  else{flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}
+ }
+ flush();return result;
+}
+export function changeGroups(rows){
+ const groups=[];let changing=false;
+ rows.forEach((row,index)=>{if(row.kind==='comment')return;const changed=row.kind==='line'&&(row.side==='old'||row.side==='new')||row.kind==='pair'&&(row.old?.side==='old'||row.next?.side==='new');if(changed&&!changing)groups.push({id:row.id,index});changing=Boolean(changed);});return groups;
+}
+export function stepChange(groups,currentId,direction){
+ if(!groups.length)return null;const current=groups.findIndex(group=>group.id===currentId);return groups[current<0?(direction>0?0:groups.length-1):(current+(direction>0?1:-1)+groups.length)%groups.length];
 }
 export function rangeSelection(history,first,last){const a=history.findIndex(c=>c.oid===first),b=history.findIndex(c=>c.oid===last);if(a<0||b<0)return null;return {kind:'range',base:history[Math.max(a,b)].oid,target:history[Math.min(a,b)].oid,includeBase:true};}

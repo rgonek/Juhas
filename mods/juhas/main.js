@@ -1,5 +1,5 @@
 import {View,div,svg} from 'gpui-kit';
-import {h_flex,v_flex,InputState,TextareaState,Textarea,h_resizable,v_resizable,resizable_panel} from 'gpui-base';
+import {h_flex,v_flex,InputState,TextareaState,Textarea,h_resizable,v_resizable,resizable_panel,VirtualListScrollHandle} from 'gpui-base';
 import {exec,shared,setShared,props,focused,spaces,panes,terminals,theme,run,appHome,nextCommand,readTextFile,agents} from 'herdr';
 import {Controller} from './controller.js';
 import {createRunner,uid} from './git.js';
@@ -8,9 +8,9 @@ import {readDirectories} from './platform.js';
 import {resolveConfig,suggestBases,selectBase,readLocalConfig} from './config.js';
 import {commentTarget} from './comments.js';
 import {buildBatch,createSubmitter,updateBatch,detectRecipient,agentRecipients,isLiveTerminal,MAX_REVIEW_BYTES} from './submit.js';
-import {button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,tabs,popover} from './ui.js';
+import {button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover} from './ui.js';
 import {expandReview,collapseReview} from './presentation.js';
-import {rangeSelection} from './review-ui.js';
+import {rangeSelection,changeGroups,stepChange} from './review-ui.js';
 import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from './context.js';
 
 // Module-local cache is shared by views; durable drafts are kept by Herdr shared state.
@@ -25,7 +25,7 @@ export default class Juhas extends View {
   this.selectionKey=`git-review.v1.selection.${this.sessionId}`;this.seenSelection=null;this.busy=false;this.message='';this.panel=null;this.target=null;this.selectedStart=null;this.filtersOpen=false;
   this.config=resolveConfig(shared('git-review.v1.config')||{},p.config||{});this.historyRef='HEAD';
   this.diffMode='unified';this.fileTree=false;this.detailsOpen=false;this.remotes=true;this.historyWidth=480;this.listHeight=230;this.contextProps=p;this.followContext=true;this.contextViews=new Map();this.runningActions=0;this.policy={repos:[],canSwitch:false,kind:'empty'};
-  this.controller=new Controller({run:createRunner(exec),store,sessionId:this.sessionId,cache});this.handle=cx.focus_handle();
+  this.controller=new Controller({run:createRunner(exec),store,sessionId:this.sessionId,cache});this.handle=cx.focus_handle();this.diffScroll=VirtualListScrollHandle.new();
   const placeholders={folder:'Repository or parent folder',base:'Base ref / SHA',target:'Target ref / SHA',query:'Text or hash',author:'Author',path:'Path',comment:'Write feedback…',note:'Optional review note',review:'Edit the message that will be copied or sent…'};
   this.inputs={};for(const key of Object.keys(placeholders))this.inputs[key]=(key==='comment'||key==='review'?TextareaState:InputState).new({value:key==='target'?'HEAD':'',placeholder:placeholders[key]});
   for(const input of Object.values(this.inputs)){input.on('focus',()=>{this.inputFocused=true;});input.on('blur',()=>{this.inputFocused=false;});}
@@ -33,7 +33,15 @@ export default class Juhas extends View {
   this.inputs.comment.on('change',(_e,cx)=>{this.persistComposer();cx.notify();});
   this.inputs.folder.on('submit',(_e,cx)=>this.openFolder(this.inputs.folder.value(),cx));
   if(this.role!=='bar')this.activateContext(this.currentContext(),cx);
-  cx.spawn(async cx=>{for(;;){const command=await nextCommand();const name=typeof command==='string'?command:command.name;if(name==='preview')this.preview(cx);if(name==='branch')this.applyScope('branch',cx);if(name==='branches'){this.panel=this.panel==='historyRefs'?null:'historyRefs';cx.notify();}if(name==='details'){this.detailsOpen=!this.detailsOpen;if(this.detailsOpen)this.work(cx,()=>this.controller.loadDetails());cx.notify();}if(name==='diff-mode'){this.diffMode=this.diffMode==='split'?'unified':'split';cx.notify();}if(name==='tree'){this.fileTree=!this.fileTree;cx.notify();}if(name==='whole-file')this.work(cx,()=>this.controller.expandFile());if(name==='comments'){this.panel=this.panel==='drafts'?null:'drafts';cx.notify();}if(name==='refresh')this.refreshContext(cx);if(name==='full')this.full();if(name==='terminal')this.terminal();if(name==='next-file')this.moveFile(1,cx);if(name==='previous-file')this.moveFile(-1,cx);if(name==='next-commit')this.moveCommit(1,cx);if(name==='previous-commit')this.moveCommit(-1,cx);}});
+  cx.spawn(async cx=>{for(;;){const command=await nextCommand();const name=typeof command==='string'?command:command.name;if(name==='preview')this.preview(cx);if(name==='branch')this.applyScope('branch',cx);if(name==='branches'){this.panel=this.panel==='historyRefs'?null:'historyRefs';cx.notify();}if(name==='details'){this.detailsOpen=!this.detailsOpen;if(this.detailsOpen)this.work(cx,()=>this.controller.loadDetails());cx.notify();}if(name==='diff-mode')this.setDiffMode(this.diffMode==='split'?'unified':'split',cx);if(name==='next-change')this.navigateChange(1,cx);if(name==='previous-change')this.navigateChange(-1,cx);if(name==='tree'){this.fileTree=!this.fileTree;cx.notify();}if(name==='whole-file')this.work(cx,()=>this.controller.expandFile());if(name==='comments'){this.panel=this.panel==='drafts'?null:'drafts';cx.notify();}if(name==='refresh')this.refreshContext(cx);if(name==='full')this.full();if(name==='terminal')this.terminal();if(name==='next-file')this.moveFile(1,cx);if(name==='previous-file')this.moveFile(-1,cx);if(name==='next-commit')this.moveCommit(1,cx);if(name==='previous-commit')this.moveCommit(-1,cx);}});
+ }
+ close(){this.diffScroll?.release();}
+ diffChangeKey(){const s=this.controller.state;return JSON.stringify([s.comparison?.id,s.file?.id,this.diffMode]);}
+ setDiffMode(mode,cx){this.diffMode=mode;this.changeCursor=null;cx.notify();}
+ navigateChange(direction,cx){
+  if(this.busy||this.diffRowsKey!==this.diffChangeKey())return;
+  const groups=changeGroups(this.diffRows||[]),source=this.diffChangeKey(),current=this.changeCursor?.source===source?this.changeCursor.id:null,target=stepChange(groups,current,direction);
+  if(!target)return;this.changeCursor={source,id:target.id};this.diffScroll.scroll_to_item(target.index,'top');cx.notify();
  }
  async workAsync(cx,action){this.runningActions=(this.runningActions||0)+1;this.busy=true;this.message='';cx.notify();try{await action();}catch(e){this.message=e.message;}finally{this.runningActions--;this.busy=this.runningActions>0;cx.notify();}}
  work(cx,action){cx.spawn(async cx=>this.workAsync(cx,action));}
@@ -204,7 +212,7 @@ export default class Juhas extends View {
    .when(Boolean(this.policy?.canSwitch),e=>e.child(button('context-repos','Repositories',(_e,cx)=>{this.discovered=this.policy.repos;this.panel='repos';cx.notify();})));
   const scope=v_flex().px(8).pb(8).gap(5)
    .when(Boolean(this.config.showAdvanced),e=>e.child(h_flex().gap(5).child(field(this.inputs.base,'Base ref / SHA')).child(button('pick-base','Refs',(_e,cx)=>{this.panel='refs';cx.notify();})).child(field(this.inputs.target,'Target ref / SHA'))))
-   .child(tabs('scope',[['commit','Commit'],['range','Range'],['branch','Branch'],['since-review','Since review'],['working-tree','Uncommitted']].map(([value,label])=>({value,label,tooltip:value==='branch'?'Compare against a base branch from the common ancestor':value==='range'?'Select first and last commit for a combined diff':label})),this.rangePicking?'range':s.comparison?.scope.kind,(kind,cx)=>this.applyScope(kind,cx)))
+   .child(buttonGroup('scope',[['commit','Commit'],['range','Range'],['branch','Branch'],['since-review','Since review'],['working-tree','Uncommitted']].map(([value,label])=>({value,label,tooltip:value==='branch'?'Compare against a base branch from the common ancestor':value==='range'?'Select first and last commit for a combined diff':label})),this.rangePicking?'range':s.comparison?.scope.kind,(kind,cx)=>this.applyScope(kind,cx)))
    .when(Boolean(s.comparison),e=>e.child(h_flex().gap(6).items_center().child(text(s.comparison.label,true).truncate()).when(s.comparison.scope.kind==='branch'||this.panel==='refs',e=>e.child(popover('change-base',s.comparison.scope.kind==='branch'?`Base: ${s.comparison.scope.baseRef.replace(/^refs\/(heads|remotes)\//,'')} · ${this.baseSource||'manual'} ▾`:'Choose base branch',this.panel==='refs',(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false),{tooltip:this.inputs.base.value()||'Choose base branch'})))));
   const actions=h_flex().px(8).pb(8).gap(5).flex_wrap().child(toggle('drafts',`Comments · ${session.drafts.length}`,this.panel==='drafts',(pressed,cx)=>{this.panel=pressed?'drafts':null;cx.notify();}))
    .child(button('submit-preview','Submit review',(_e,cx)=>this.preview(cx),{primary:true})).child(button('mark-seen','Mark seen',(_e,cx)=>this.work(cx,async()=>{await this.controller.markSeen();this.message='Checkpoint saved; comments retained';})))

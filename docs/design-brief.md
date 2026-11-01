@@ -27,3 +27,5 @@ There is no ready-made Tree/Diff JavaScript binding in the target runtime. Selec
 Public references: [components](https://gpui-kit.com/component/), [unstyled primitives](https://gpui-kit.com/base/), [JavaScript layer](https://gpui-kit.com/shell/). The full styled Rust catalog is broader than the JavaScript components available here.
 
 Deliver a short critique and a proposed visual direction, followed by mockups for expanded review, sidebar review and submission. Map the design to the available components. Preserve functionality, performance and Git/delivery behavior; focus on presentation and interaction clarity.
+
+Toolbar mode/filter choices use grouped native Buttons, as in the Diff gallery, rather than tab controls. Change navigation is provided by previous/next buttons within the selected file. Saved review notes use annotation cards beneath source lines, on the corresponding side in split mode. Independent source scrolling with linked vertical alignment is not part of the current JavaScript API; avoid custom wheel-event synchronization.

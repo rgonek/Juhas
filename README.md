@@ -47,7 +47,7 @@ For manual installation copy `mods/juhas` into the Herdr home `mods` directory a
    | Since review | Last checkpoint for this worktree versus the chosen target. |
    | Uncommitted | HEAD versus tracked and untracked nonignored working files. Kept separate from historical comparisons. |
 
-Files can be shown as a flat list or collapsible tree, with status colors, added/deleted line counts and comment badges. **Details** shows the selected commit message, author, email, date and refs. The header fetch button runs `git fetch --all --prune` and refreshes the review.
+Files can be shown as a flat list or collapsible tree. Tree view compacts single-child folders without direct files into paths such as `Client/Pages/Clients` and shows the number of changed files in each subtree, with status colors, added/deleted line counts and comment badges. **Details** shows the selected commit message, author, email, date and refs. The header fetch button runs `git fetch --all --prune` and refreshes the review.
 
 **Unified / Side by side** changes the diff display. In side by side mode, **Comment: old / new** chooses the side used by a row click, because native virtual rows expose one click target per row. **Whole file** loads unchanged context on demand, subject to the same patch limits.
 

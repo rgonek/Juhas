@@ -59,6 +59,8 @@ Initial repository publication preparation: the complete local suite passed 85 t
 
 Juhas naming update: the distributable mod is `mods/juhas`, the visible product label is Juhas and commands use the `juhas.*` prefix. Installer layout/tabs names, package metadata, asset/helper paths, documentation and tests use the new name. Personal `juhas.json` configuration takes precedence; a missing new file falls back to the old configuration name, while malformed new configuration is surfaced. Existing shared-state/checkpoint namespaces and layout block identifiers are deliberately unchanged to preserve saved work. The full suite passed 88 tests without failures or skips; native mod checks passed after updating an existing personal layout without regenerating it.
 
+Compact file tree: single-child directory chains with no direct files are rendered as one slash-separated row. Direct files or branching stop compaction. Folder labels include the number of changed files in the complete subtree, including collapsed descendants. Counts are computed while building the existing in-memory tree, without extra Git reads. Existing collapsed paths remain recognized after compaction; reopening clears the compressed chain's aliases. Four tree-model tests, four native control tests and the existing tree regression passed. Installed native mod check passed. The running sidebar was visually checked with compact directory names and muted subtree counts.
+
 ## Release acceptance still requiring separate evidence
 
 - Native UI verification on macOS/Linux; remote CI must run after a repository is published.

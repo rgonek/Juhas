@@ -1,10 +1,22 @@
 // Pure presentation models; retain original patch rows for comment anchors.
 export function fileRows(files,tree=false,collapsed=new Set()){
  if(!tree)return files;
- const root={dirs:new Map(),files:[]};
- for(const file of files){const parts=file.newPath.split('/');let node=root;for(const name of parts.slice(0,-1)){if(!node.dirs.has(name))node.dirs.set(name,{dirs:new Map(),files:[]});node=node.dirs.get(name);}node.files.push(file);}
+ const node=()=>({dirs:new Map(),files:[],fileCount:0}),root=node();
+ for(const file of files){const parts=file.newPath.split('/');let current=root;current.fileCount++;
+  for(const name of parts.slice(0,-1)){if(!current.dirs.has(name))current.dirs.set(name,node());current=current.dirs.get(name);current.fileCount++;}
+  current.files.push(file);
+ }
  const rows=[];
- const walk=(node,prefix='',depth=0)=>{for(const [name,child] of [...node.dirs].sort(([a],[b])=>a.localeCompare(b))){const path=prefix+name+'/';rows.push({id:'dir:'+path,directory:true,path,name,depth,closed:collapsed.has(path)});if(!collapsed.has(path))walk(child,path,depth+1);}for(const file of node.files.sort((a,b)=>a.newPath.localeCompare(b.newPath)))rows.push({...file,name:file.newPath.split('/').at(-1),depth});};
+ const walk=(current,prefix='',depth=0)=>{
+  for(const [name,child] of [...current.dirs].sort(([a],[b])=>a.localeCompare(b))){
+   let branch=child,path=prefix+name+'/',names=[name],paths=[path];
+   while(!branch.files.length&&branch.dirs.size===1){const [nextName,next]=branch.dirs.entries().next().value;path+=nextName+'/';names.push(nextName);paths.push(path);branch=next;}
+   const closed=paths.some(path=>collapsed.has(path));
+   rows.push({id:'dir:'+path,directory:true,path,paths,name:names.join('/'),depth,fileCount:child.fileCount,closed});
+   if(!closed)walk(branch,path,depth+1);
+  }
+  for(const file of current.files.sort((a,b)=>a.newPath.localeCompare(b.newPath)))rows.push({...file,name:file.newPath.split('/').at(-1),depth});
+ };
  walk(root);return rows;
 }
 export function splitRows(rows){

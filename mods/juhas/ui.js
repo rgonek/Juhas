@@ -65,12 +65,12 @@ export function filesPane(view){
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${s.files.length}`).flex_1())
   .child(toggle('file-tree','Tree',view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
  .child(virtualList(`${view.id}-files`,rows,29,f=>{
-  if(f.directory)return h_flex().h(29).pl(9+f.depth*14).items_center().text_size(12).text_color(t.muted).child(`${f.closed?'▸':'▾'}  ${f.name}`);
+  if(f.directory)return h_flex().h(29).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(div().w(12).flex_none().child(f.closed?'▸':'▾')).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
   const count=counts.get(f.newPath)||0;return h_flex().h(29).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
    .child(text(f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(f.status==='A'?t.ansi2:f.status==='D'?t.ansi1:t.ansi4).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
- },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){view.collapsedDirs??=new Set();if(view.collapsedDirs.has(f.path))view.collapsedDirs.delete(f.path);else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));
+ },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));
 }
 function codeCell(row,side,t){
  const line=row?.[side==='old'?'oldLine':'newLine'];return h_flex().flex_1().min_w(0).h(22).gap(8).px(8).items_center().overflow_hidden()

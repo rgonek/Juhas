@@ -15,7 +15,7 @@ import {rangeSelection,changeGroups,stepChange,splitRows,patchCode} from './revi
 import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from './context.js';
 import {listHistory} from './history.js';
 
-// Module-local cache is shared by views; durable drafts are kept by Herdr shared state.
+// Each mod copy has its own module generation; durable drafts use Herdr shared state.
 const cache=createCache();
 const submit=createSubmitter();
 const store={get:shared,set:setShared};
@@ -77,18 +77,19 @@ export default class Juhas extends View {
    this.message=direction>0?'End of review':'Start of review';
   });
  }
- async workAsync(cx,action){this.runningActions=(this.runningActions||0)+1;this.busy=true;this.message='';this.notifyEditor(cx);try{await action();}catch(e){this.message=e.message;}finally{this.runningActions--;this.busy=this.runningActions>0;this.notifyEditor(cx);}}
+ async workAsync(cx,action){this.runningActions=(this.runningActions||0)+1;this.busy=true;this.message='';this.notifyEditor(cx);try{await action();}catch(e){this.message=e.message;}finally{this.runningActions--;this.busy=this.runningActions>0;this.rememberLoadedView();this.notifyEditor(cx);}}
  work(cx,action){cx.spawn(async cx=>this.workAsync(cx,action));}
  currentContext(){return reviewContext(this.contextProps||{},focused(),spaces(),panes());}
  activateContext(context,cx){
   if(this.busy)return;
   const refreshing=this.refreshingContextKey===context.key;this.refreshingContextKey=null;
-  if(this.activeContext){this.persistComposer();this.persistReview();this.contextViews.set(this.activeContext.key,{controller:this.controller,policy:this.policy,historyRef:this.historyRef,historyFull:this.historyFull,allChangesFrom:this.allChangesFrom,manualCommitBase:this.manualCommitBase,fields:Object.fromEntries(Object.entries(this.inputs).map(([key,state])=>[key,state.value()]))});}
+  if(this.activeContext){this.rememberLoadedView();this.persistComposer();this.persistReview();this.contextViews.set(this.activeContext.key,{controller:this.controller,policy:this.policy,historyRef:this.historyRef,historyFull:this.historyFull,allChangesFrom:this.allChangesFrom,manualCommitBase:this.manualCommitBase,fields:Object.fromEntries(Object.entries(this.inputs).map(([key,state])=>[key,state.value()]))});}
   this.activeContext=context;this.sessionId=this.contextProps.sessionId||context.spaceId||context.key;
   this.selectionKey=contextStorageKey('selection',this.sessionId,context);this.composerKey=contextStorageKey('composer',this.sessionId,context);this.reviewKey=contextStorageKey('review',this.sessionId,context);
   this.seenSelection=null;this.seenComposer=undefined;this.panel=null;this.target=null;this.selectedStart=null;this.editId=null;this.batch=null;this.message='';this.rangeAnchor=null;this.rangePicking=false;this.commitAnchor=null;this.filtersOpen=false;
   const saved=this.contextViews.get(context.key);this.controller=saved?.controller||new Controller({run:createRunner(exec),store,sessionId:this.sessionId,cache});this.policy=saved?.policy||{repos:[],canSwitch:false,kind:'empty'};this.historyRef=saved?.historyRef||'HEAD';this.historyFull=Boolean(saved?.historyFull);this.allChangesFrom=saved?.allChangesFrom||'branch';this.manualCommitBase=saved?.manualCommitBase||null;this.lastAppliedFrom=this.allChangesFrom;this.choosingCommitBase=false;
   this.restoringComposer=true;for(const [key,input] of Object.entries(this.inputs))input.set_value(saved?.fields?.[key]||(key==='folder'?context.folder||'':key==='target'?'HEAD':''));this.restoringComposer=false;
+  if(!refreshing&&this.restoreLoadedView(shared(this.selectionKey),cx))return;
   if(saved?.policy?.ready){this.restoreBase();cx.notify();return;}
   const controller=this.controller;
   this.work(cx,async()=>{
@@ -130,10 +131,29 @@ export default class Juhas extends View {
    .child(button('from-checkpoint','Last review checkpoint',(_e,cx)=>this.chooseCompareFrom('checkpoint',cx)))
    .child(button('from-commit','Choose commit…',(_e,cx)=>{this.allChangesFrom='commit';this.choosingCommitBase=true;this.loadCommitBases(cx);cx.notify();}));
  }
- refreshContext(cx){this.localConfigPromise=null;scopeCache.clear();this.refreshingContextKey=this.activeContext?.key;if(this.activeContext)this.contextViews.delete(this.activeContext.key);this.activeContext=null;cx.notify();}
- publish(){const s=this.controller.state;if(!s.repo||(this.followContext&&!this.activeContext))return;const selection={root:s.repo.root,machine:s.repo.machine,scope:s.comparison?.scope,comparison:s.comparison,fileId:s.file?.id,allChangesFrom:this.allChangesFrom||'branch',manualCommitBase:this.manualCommitBase||null,version:uid()};this.seenSelection=JSON.stringify(selection);setShared(this.selectionKey,selection);}
+ // A bounded, process-only cache bridges Herdr's separate module generations.
+ // Initialize lazily: loading a failed hot-reload must not mutate global state.
+ viewSnapshots(){return globalThis[Symbol.for('juhas.loadedViews.v1')]??=createCache({maxEntries:8,maxBytes:33554432});}
+ viewConfigKey(){return JSON.stringify([shared('git-review.v1.config')||{},this.contextProps?.config||{}]);}
+ rememberLoadedView(){
+  if(this.busy||!this.activeContext||!this.policy?.ready||!this.controller.state.repo)return;
+  const selected=shared(this.selectionKey);if(!selected||JSON.stringify(selected)!==this.seenSelection)return;
+  const snapshot={version:selected.version,configKey:this.viewConfigKey(),config:this.config,state:this.controller.state,policy:this.policy,historyRef:this.historyRef,historyFull:this.historyFull,allChangesFrom:this.allChangesFrom,manualCommitBase:this.manualCommitBase,diffMode:this.diffMode,fileTree:this.fileTree,detailsOpen:this.detailsOpen,filtersOpen:this.filtersOpen,fields:Object.fromEntries(Object.entries(this.inputs).filter(([key])=>!['comment','review','note'].includes(key)).map(([key,input])=>[key,input.value()]))};
+  this.viewSnapshots().set(this.selectionKey,JSON.parse(JSON.stringify(snapshot)));
+ }
+ restoreLoadedView(selected,cx){
+  if(!selected||!this.activeContext)return false;const saved=this.viewSnapshots().get(this.selectionKey);
+  if(!saved||saved.version!==selected.version||saved.configKey!==this.viewConfigKey()||!allowedRepository(saved.policy,selected.root))return false;
+  const snapshot=JSON.parse(JSON.stringify(saved));this.controller.state=snapshot.state;this.policy=snapshot.policy;this.config=snapshot.config;
+  for(const key of ['historyRef','historyFull','allChangesFrom','manualCommitBase','diffMode','fileTree','detailsOpen','filtersOpen'])this[key]=snapshot[key];this.lastAppliedFrom=this.allChangesFrom||'branch';
+  this.restoringComposer=true;try{for(const [key,value] of Object.entries(snapshot.fields))this.inputs[key]?.set_value(value);}finally{this.restoringComposer=false;}
+  this.seenSelection=JSON.stringify(selected);this.restoreBase();cx.notify();return true;
+ }
+ refreshContext(cx){this.localConfigPromise=null;scopeCache.clear();this.viewSnapshots().set(this.selectionKey,null);this.refreshingContextKey=this.activeContext?.key;if(this.activeContext)this.contextViews.delete(this.activeContext.key);this.activeContext=null;cx.notify();}
+ publish(){const s=this.controller.state;if(!s.repo||(this.followContext&&!this.activeContext))return;const selection={root:s.repo.root,machine:s.repo.machine,scope:s.comparison?.scope,comparison:s.comparison,fileId:s.file?.id,allChangesFrom:this.allChangesFrom||'branch',manualCommitBase:this.manualCommitBase||null,version:uid()};this.seenSelection=JSON.stringify(selection);setShared(this.selectionKey,selection);this.rememberLoadedView();}
  sync(cx){if(this.role==='bar'||this.busy)return;const selected=shared(this.selectionKey);const key=JSON.stringify(selected);if(!selected||key===this.seenSelection)return;this.seenSelection=key;
   if(this.policy?.ready&&!allowedRepository(this.policy,selected.root))return;
+  if(this.restoreLoadedView(selected,cx))return;
   this.work(cx,async()=>{if(this.controller.state.repo?.root!==selected.root){this.resetRepositoryFields();await this.controller.openRepo(selected.machine,selected.root);}this.allChangesFrom=selected.allChangesFrom||(selected.scope?.kind==='since-review'?'checkpoint':selected.scope?.kind==='range'&&!selected.scope.includeBase?'commit':'branch');this.manualCommitBase=selected.manualCommitBase||(selected.scope?.kind==='range'&&!selected.scope.includeBase?selected.scope.base:null);this.lastAppliedFrom=this.allChangesFrom;if(selected.comparison&&(selected.comparison.id!==this.controller.state.comparison?.id||JSON.stringify(selected.comparison.scope)!==JSON.stringify(this.controller.state.comparison?.scope)))await this.controller.selectResolved(selected.comparison);else if(!selected.comparison&&selected.scope&&JSON.stringify(selected.scope)!==JSON.stringify(this.controller.state.comparison?.scope))await this.controller.selectScope(selected.scope);if(selected.fileId&&selected.fileId!==this.controller.state.file?.id)await this.controller.selectFile(selected.fileId);this.inputs.folder.set_value(selected.root);this.restoreBase();if(this.controller.setHistoryBase)await this.updateFeatureHistory();});
  }
  deferSync(cx){
@@ -193,8 +213,8 @@ export default class Juhas extends View {
   if(thenPreview)this.preview(cx);
  });}
  fetch(cx){if(this.busy)return;this.work(cx,async()=>{await this.controller.fetch();this.publish();this.message='Fetch completed';});}
- full(){expandReview(run);}
- terminal(){collapseReview(run);}
+ full(){this.publish();expandReview(run);}
+ terminal(){this.publish();collapseReview(run);}
  renderBar(){return h_flex().h(34).px(8).gap(6).items_center().bg(theme().chrome).child(button('review-terminal','Terminal',()=>this.terminal())).child(button('review-full','Juhas',()=>this.full())).child(button('review-sidebar','Sidebar',()=>run('layout.toggle',{id:'git-review-sidebar'})));}
  reviewStorageKey(){return this.reviewKey||`git-review.v1.review.${this.sessionId}`;}
  persistReview(){if(!this.batch)return;setShared(this.reviewStorageKey(),{repoKey:this.controller.state.repo?.key,batch:this.batch,includeQuotes:Boolean(this.includeQuotes),includeGitContext:Boolean(this.includeGitContext),recipientSource:this.recipientSource});}

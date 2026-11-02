@@ -1,4 +1,4 @@
-# Installing or adapting Juhas
+# Juhas — Review coding-agent work inside Herdr
 
 This is a native JavaScript Herdr mod, not a webview. It requires Herdr App 0.1.11 or later with the documented JavaScript APIs. Read your installation's `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts`; those files are authoritative for the installed version.
 

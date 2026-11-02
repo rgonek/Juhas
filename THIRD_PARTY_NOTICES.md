@@ -14,6 +14,6 @@ Design references:
 
 Juhas uses unmodified SVG icons from [Lucide](https://github.com/lucide-icons/lucide), the icon family used by Herdr's shipped UI. Vendored from commit `a630cec77eac6568b989e87e4947a8bfe45caacd`; no dependency on another installed mod's asset paths is required.
 
-Local asset names map to upstream names: refresh = refresh-cw, fetch = download, expand = maximize-2, collapse = minimize-2, comment = message-square, more = ellipsis. Copy, arrow-up, arrow-down, chevron-right, chevron-down and check retain their upstream names.
+Local asset names map to upstream names: refresh = refresh-cw, fetch = download, expand = maximize-2, collapse = minimize-2, comment = message-square, more = ellipsis. Copy, arrow-up, arrow-down, chevron-right, chevron-down, check and loader-circle retain their upstream names.
 
 Copyright (c) 2026 Lucide Icons and Contributors. Feather-derived icons also carry Copyright (c) 2013-present Cole Bemis. The full ISC and MIT notices are included in [LICENSE-Lucide.txt](mods/juhas/icons/LICENSE-Lucide.txt) and distributed with the mod.

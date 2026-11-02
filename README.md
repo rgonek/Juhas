@@ -147,3 +147,6 @@ Split mode currently keeps a single shared diff scroll region. Independent horiz
 The review header summarizes the selected comparison with its commit and changed-file counts. Commit mode counts one commit; aggregate comparisons count the resolved Git DAG range rather than the visible history page. Uncommitted comparisons show files without a commit count. Counts for immutable revisions are cached. Resolving a base is indicated in History and beside the comparison base; an older response cannot replace a newer base choice.
 
 Saved comments can be filtered by Current/Outdated status and source comparison. These are browsing filters: Submit review still includes all saved comments for the repository. Clear all also applies to the current repository, including comments hidden by filters; comments from other repositories are preserved.
+
+
+History shows a native animated loading indicator during initial reads, refreshes, base resolution and pagination, without removing loaded rows or changing panel height. The sidebar shows it in the Juhas header. History and Files use the same row height, including the history graph.

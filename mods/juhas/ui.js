@@ -54,25 +54,28 @@ export function draftsPane(view,cx){
      .child(text(d.body).truncate()).child(text(sourceLabel(d),true).text_size(10)))
     .child(button(`edit-${d.id}`,'Edit',(_e,cx)=>view.editDraft(d,cx))).child(button(`delete-${d.id}`,'Delete',(_e,cx)=>{view.controller.removeComment(d.id);cx.notify();})))));
 }
+export const LIST_ROW_HEIGHT=29;
+export function historyLoadingIndicator(state){const label=state.historyBaseLoading?'Resolving base...':state.historyLoadingMore?'Loading more commits...':'Loading Git history...';return h_flex().gap(4).flex_none().items_center().tooltip(label).accessibility_label(label).child(svg('mods/juhas/icons/loader-circle.svg').size(12).text_color(theme().muted).spin(900)).child(text(state.historyBaseLoading?'Base...':state.historyLoadingMore?'More...':'Loading...',true));}
 export function graphCell(row){
- const t=theme(),colors=[t.ansi4,t.ansi2,t.ansi5,t.ansi3,t.ansi6];const x=lane=>8+lane*11;const paths=[];
- for(let i=0;i<row.before.length;i++)if(row.before[i]&&i!==row.lane){const to=row.after.indexOf(row.before[i]);if(to>=0)paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(i),0).line_to(x(to),26).build(),colors[i%colors.length]).absolute().inset_0());}
- paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(row.lane),0).line_to(x(row.lane),13).build(),colors[row.lane%colors.length]).absolute().inset_0());
- for(const e of row.edges)paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(e.from),13).line_to(x(e.to),26).build(),colors[e.to%colors.length]).absolute().inset_0());
- return div().relative().w(Math.min(120,Math.max(28,(Math.max(row.before.length,row.after.length)+1)*11))).h(26).flex_none().overflow_hidden().children(paths).child(div().absolute().left(x(row.lane)-3).top(10).size(6).rounded(3).bg(colors[row.lane%colors.length]));
+ const height=LIST_ROW_HEIGHT,mid=height/2,t=theme(),colors=[t.ansi4,t.ansi2,t.ansi5,t.ansi3,t.ansi6];const x=lane=>8+lane*11;const paths=[];
+ for(let i=0;i<row.before.length;i++)if(row.before[i]&&i!==row.lane){const to=row.after.indexOf(row.before[i]);if(to>=0)paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(i),0).line_to(x(to),height).build(),colors[i%colors.length]).absolute().inset_0());}
+ paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(row.lane),0).line_to(x(row.lane),mid).build(),colors[row.lane%colors.length]).absolute().inset_0());
+ for(const e of row.edges)paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(e.from),mid).line_to(x(e.to),height).build(),colors[e.to%colors.length]).absolute().inset_0());
+ return div().relative().w(Math.min(120,Math.max(28,(Math.max(row.before.length,row.after.length)+1)*11))).h(height).flex_none().overflow_hidden().children(paths).child(div().absolute().left(x(row.lane)-3).top(mid-3).size(6).rounded(3).bg(colors[row.lane%colors.length]));
 }
 export function historyPane(view,cx){
  const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows;
  const first=s.history.findIndex(c=>c.oid===(view.commitAnchor||s.comparison?.scope.base)),last=s.history.findIndex(c=>c.oid===s.comparison?.targetOid);
  const selected=(c,i)=>view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
- const list=virtualList(`${view.id}-history`,s.history,26,c=>{const i=s.history.indexOf(c);return h_flex().h(26).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
+ const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c);return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}`)
   .child(graphCell(rows[i])).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(`${c.refs?.length?'['+c.refs.join(', ')+'] ':''}${c.subject}`))
   .child(div().w(95).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author))
   .child(div().w(60).flex_none().text_size(10).text_color(t.dim).child(c.oid.slice(0,8)));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().gap(4)
-  .child(section(s.historyBaseLoading?'History · resolving base…':view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())
+  .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())
+  .when(Boolean(s.historyLoading||s.historyBaseLoading),e=>e.child(historyLoadingIndicator(s)))
   .child(popover('history-options',svg('mods/juhas/icons/more.svg').size(14),view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
    .child(button('history-feature','Feature branch commits',(_e,cx)=>view.setHistoryView('feature',cx)))
    .child(button('history-full','Show full history',(_e,cx)=>view.setHistoryView('full',cx)))
@@ -84,16 +87,16 @@ export function historyPane(view,cx){
    .child(toggle('history-filters','Search filters',view.filtersOpen,(pressed,cx)=>{view.filtersOpen=pressed;cx.notify();})),{tooltip:'History options'})))
   .child(list).when(Boolean(view.detailsOpen&&commit),e=>e.child(v_flex().flex_none().max_h(130).overflow_y_scrollbar().p(10).gap(5).border_t(1).border_color(t.border)
     .child(text(s.details?.subject||commit.subject).font_semibold()).child(text(s.details?.author||`${commit.author} · ${new Date(commit.timestamp*1000).toLocaleString()}`,true)).child(commitId(commit.oid)).child(text(s.details?.body||'',true)).child(text(commit.refs.join(', '),true))))
-  .when(s.hasMore,e=>e.child(button('history-more','Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true)))));
+  .when(s.hasMore,e=>e.child(button('history-more',s.historyLoadingMore?'Loading...':'Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true))).disabled(Boolean(s.historyLoading||s.historyBaseLoading))));
 }
 export function filesPane(view){
  const s=view.controller.state,t=theme(),drafts=view.controller.session().drafts,rows=fileRows(s.files,view.fileTree,view.collapsedDirs||new Set());
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${s.files.length}`).flex_1())
   .child(toggle('file-tree','Tree',view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
- .child(virtualList(`${view.id}-files`,rows,29,f=>{
-  if(f.directory)return h_flex().h(29).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
-  const count=counts.get(f.newPath)||0;return h_flex().h(29).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
+ .child(virtualList(`${view.id}-files`,rows,LIST_ROW_HEIGHT,f=>{
+  if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
+  const count=counts.get(f.newPath)||0;return h_flex().h(LIST_ROW_HEIGHT).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
    .child(text(f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(f.status==='A'?t.ansi2:f.status==='D'?t.ansi1:t.ansi4).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));

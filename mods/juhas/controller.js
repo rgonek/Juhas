@@ -7,11 +7,11 @@ import {createCache,createRequestGate} from './cache.js';
 import {loadSession,mutateSession} from './storage.js';
 import {addDraft,markSeen,lastCheckpoint} from './review.js';
 export class Controller {
- constructor({run,store,sessionId='default',cache=createCache()}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false};}
+ constructor({run,store,sessionId='default',cache=createCache(),onChange=()=>{}}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.onChange=onChange;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false,historyLoading:false,historyLoadingMore:false};}
  session(){return loadSession(this.store,this.sessionId);}
  mutate(fn){return mutateSession(this.store,this.sessionId,fn);}
  async openRepo(machine,folder){
-  const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');
+  const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');this.state.historyLoading=false;this.state.historyLoadingMore=false;
   const repo=await resolveRepo(this.run,machine,folder);if(!this.gate.isCurrent(token))return;if(!repo)throw new Error('Folder is not inside a Git repository; use Discover to find nested repositories');
   const [refs,branch]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD'])]);if(!this.gate.isCurrent(token))return;
   this.state={...this.state,repo,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false};
@@ -20,14 +20,16 @@ export class Controller {
  }
  async loadHistory(filters={},more=false){
   const repo=this.state.repo;if(!repo)return;const filtersKey=JSON.stringify(filters);const skip=more?this.state.history.length:0;
-  const token=this.historyGate.begin(JSON.stringify([repo.key,filters,skip]));const ref=more?this.state.historyRef:filters.ref||'HEAD',exclude=more?this.state.historyExclude:filters.exclude;const result=await listHistory(this.run,repo,{...filters,ref,exclude,skip});if(!this.historyGate.isCurrent(token)||repo.key!==this.state.repo?.key)return;
-  this.state.history=more?[...this.state.history,...result.commits]:result.commits;this.state.historyRef=result.ref;this.state.historyExclude=result.exclude;this.state.hasMore=result.hasMore;this.state.filtersKey=filtersKey;
+  const token=this.historyGate.begin(JSON.stringify([repo.key,filters,skip]));const ref=more?this.state.historyRef:filters.ref||'HEAD',exclude=more?this.state.historyExclude:filters.exclude;this.state.historyLoading=true;this.state.historyLoadingMore=more;this.onChange();
+  try{const result=await listHistory(this.run,repo,{...filters,ref,exclude,skip});if(!this.historyGate.isCurrent(token)||repo.key!==this.state.repo?.key)return;
+   this.state.history=more?[...this.state.history,...result.commits]:result.commits;this.state.historyRef=result.ref;this.state.historyExclude=result.exclude;this.state.hasMore=result.hasMore;this.state.filtersKey=filtersKey;
+  }finally{if(this.historyGate.isCurrent(token)&&repo.key===this.state.repo?.key){this.state.historyLoading=false;this.state.historyLoadingMore=false;this.onChange();}}
  }
  async setHistoryBase(baseRef){
-  const repo=this.state.repo;if(!repo)return false;const token=this.baseGate.begin(baseRef);this.historyGate.begin('base');this.state.historyBaseLoading=true;let base=null,error=null;
+  const repo=this.state.repo;if(!repo)return false;const token=this.baseGate.begin(baseRef);this.historyGate.begin('base');this.state.historyLoading=false;this.state.historyLoadingMore=false;this.state.historyBaseLoading=true;this.onChange();let base=null,error=null;
   if(baseRef)try{base=(await resolveComparison(this.run,repo,{kind:'branch',baseRef,targetRef:'HEAD'})).baseOid;}catch(e){error=e.message;}
   if(!this.baseGate.isCurrent(token)||this.state.repo?.key!==repo.key)return false;
-  this.state.featureBaseOid=base;this.state.historyBaseRef=baseRef||null;this.state.historyBaseError=error;this.state.historyBaseLoading=false;return true;
+  this.state.featureBaseOid=base;this.state.historyBaseRef=baseRef||null;this.state.historyBaseError=error;this.state.historyBaseLoading=false;this.onChange();return true;
  }
  async summarizeComparison(comparison){
   if(!comparison.targetOid)return {...comparison,commitCount:null};

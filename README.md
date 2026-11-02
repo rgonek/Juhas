@@ -105,6 +105,7 @@ refs and do not change your branch, index or working tree. Comments keep their
 original revisions and line ranges; outdated feedback is marked rather than
 silently moved to another line. Full code quotes and Git headers are optional.
 
+The author reports successful review delivery to a coding agent in real use.
 A send acknowledgement means the terminal accepted the message, not that the
 agent finished the changes. Uncertain deliveries retain drafts and are not
 retried automatically. See [local data and delivery](docs/usage.md#local-data-and-delivery)

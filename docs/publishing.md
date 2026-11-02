@@ -70,11 +70,11 @@ publication; that does not prevent distributing a Herdr mod through GitHub.
 
 ## Deferred acceptance
 
-The owner has deferred the final clean-profile install, full Herdr restart and
-review-to-test-agent smoke test. It has not been performed and is not claimed
-as completed acceptance. Fresh isolated installation checks, deterministic
-controller/transport tests and native rendering checks remain useful evidence,
-but cover different things. Keep this limitation visible for the initial beta;
+The owner reports successful review delivery to a coding agent in real use.
+The separate clean-profile install and full Herdr restart smoke test is deferred
+and has not been performed. Fresh isolated installation checks, deterministic
+controller/transport tests and native rendering checks cover different things.
+Keep this distinction visible for the initial beta;
 see the [verification record](acceptance.md).
 
 ## Publication steps

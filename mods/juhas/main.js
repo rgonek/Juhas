@@ -116,7 +116,7 @@ export default class Juhas extends View {
  baseChoice(){const s=this.controller.state;return selectBase(s.refs,s.branch||'',this.config,this.controller.base());}
  restoreBase(){const choice=this.baseChoice();this.inputs.base.set_value(choice?.ref||'');this.baseSource=choice?.source||null;return choice;}
  async updateFeatureHistory(){if(!this.controller.setHistoryBase)return;await this.controller.setHistoryBase(this.baseChoice()?.ref);await this.controller.loadHistory(this.filters());}
- reviewMode(){return this.controller.state.comparison?.scope.kind==='commit'?'commit':'all';}
+ reviewMode(){const selected=shared(this.selectionKey),scope=this.controller.state.comparison?.scope||selected?.scope||selected?.comparison?.scope;return !scope||scope.kind==='commit'?'commit':'all';}
  setHistoryView(mode,cx){this.historyFull=mode!=='feature';this.historyRef=mode==='all'?'all':'HEAD';this.panel=null;this.work(cx,()=>this.controller.loadHistory(this.filters()));}
  applyAllChanges(cx){this.pendingScope=null;this.applyScope(this.allChangesFrom==='checkpoint'?'since-review':this.allChangesFrom==='commit'?'manual-base':'branch',cx);}
  chooseCompareFrom(value,cx){this.allChangesFrom=value;this.panel=null;if(value==='commit'&&!this.manualCommitBase){this.panel='compareFrom';this.loadCommitBases(cx);return;}this.applyAllChanges(cx);}

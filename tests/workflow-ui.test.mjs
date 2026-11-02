@@ -28,3 +28,12 @@ test('sidebar and expanded synchronize both mode and baseline even for identical
  const data=new Map(),a=view(data).v,b=view(data).v,cx={notify(){}};a.controller.setBase('refs/heads/trunk');a.allChangesFrom='commit';a.manualCommitBase='chosen';a.controller.state.comparison={id:'same-trees',scope:{kind:'range',base:'chosen',target:'HEAD',includeBase:false}};a.publish();
  b.role='full';b.controller.state.comparison={id:'same-trees',scope:{kind:'commit',commit:'head'}};b.sync(cx);await b.pending;assert.equal(b.reviewMode(),'all');assert.equal(b.manualCommitBase,'chosen');assert.equal(b.allChangesFrom,'commit');assert.equal(b.controller.state.comparison.scope.kind,'range');
 });
+
+
+test('cold startup shows the persisted mode before Git restores the comparison; new contexts default to Commit',()=>{
+ const {v,sharedData}=view();v.controller.state.comparison=null;
+ assert.equal(v.reviewMode(),'commit');
+ sharedData.set('selection',JSON.parse(JSON.stringify({scope:{kind:'commit',commit:'chosen',parentIndex:1}})));assert.equal(v.reviewMode(),'commit');
+ for(const scope of [{kind:'branch',baseRef:'trunk'},{kind:'since-review',checkpointId:'round'},{kind:'range',base:'chosen',includeBase:false},{kind:'working-tree'}]){sharedData.set('selection',{scope});assert.equal(v.reviewMode(),'all');}
+ v.controller.state.comparison={scope:{kind:'commit',commit:'current'}};assert.equal(v.reviewMode(),'commit');
+});

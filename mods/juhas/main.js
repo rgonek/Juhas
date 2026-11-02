@@ -257,8 +257,8 @@ export default class Juhas extends View {
   try{session=this.controller.session();}catch(e){return text(e.message).p(20);}
   const switching=this.followContext&&this.currentContext().key!==this.activeContext?.key;
   const header=h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child(this.compact?'Juhas':`Juhas${!switching&&s.branch?' · '+s.branch:''}`))
-   .child(button('open-full',svg(`mods/juhas/icons/${this.compact?'expand':'collapse'}.svg`).size(16),()=>this.compact?this.full():this.terminal(),{tooltip:this.compact?'Expand review':'Return to sidebar'}))
-   .child(button('fetch-review',svg('mods/juhas/icons/fetch.svg').size(16),(_e,cx)=>this.fetch(cx),{tooltip:'Fetch all remotes'})).child(button('refresh-review','↻',(_e,cx)=>this.refreshContext(cx),{tooltip:'Refresh review'}));
+   .child(button('fetch-review',svg('mods/juhas/icons/fetch.svg').size(16),(_e,cx)=>this.fetch(cx),{tooltip:'Fetch all remotes'})).child(button('refresh-review','↻',(_e,cx)=>this.refreshContext(cx),{tooltip:'Refresh review'}))
+   .child(button('open-full',svg(`mods/juhas/icons/${this.compact?'expand':'collapse'}.svg`).size(16),()=>this.compact?this.full():this.terminal(),{tooltip:this.compact?'Expand review':'Return to sidebar'}));
   const size=(size,cx)=>{if(this.height!==size.height||this.width!==size.width){this.height=size.height;this.width=size.width;cx.notify();}};
   if(switching)return nativeFrame(this.id).child(header).child(text('Reading active project…',true).p(14));
   if(this.panel==='submit')return nativeFrame(this.id).on_size_change(size).child(header).child(text(this.message).h(30).flex_none().px(14).py(6).truncate()).child(this.footer(cx));

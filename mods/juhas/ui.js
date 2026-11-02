@@ -51,8 +51,8 @@ export function historyPane(view,cx){
   .child(div().w(95).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author))
   .child(div().w(60).flex_none().text_size(10).text_color(t.dim).child(c.oid.slice(0,8)));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
- return v_flex().size_full().min_w(0).min_h(0).child(h_flex().min_h(34).flex_none().items_center().gap(4).flex_wrap()
-  .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1())
+ return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().gap(4)
+  .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())
   .child(popover('history-options','⋯',view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
    .child(button('history-feature','Feature branch commits',(_e,cx)=>view.setHistoryView('feature',cx)))
    .child(button('history-full','Show full history',(_e,cx)=>view.setHistoryView('full',cx)))

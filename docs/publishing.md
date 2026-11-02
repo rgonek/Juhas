@@ -23,9 +23,10 @@ Description:
 
 Suggested topics: herdr-mod, herdr, gpui, git, code-review, coding-agents.
 
-Use preview.png for the README and repository preview. It is cropped from an
-actual native Juhas view with synthetic review data; it contains no terminal,
-real project paths, agent messages or unrelated spaces.
+Use preview.png as the README and repository preview. It combines an illustration
+with the actual native Juhas view using synthetic data. The separate
+docs/images/review.png contains the same native screenshot without the artwork.
+Neither image contains real project paths, agent messages or unrelated spaces.
 
 For community discovery, publish a GitHub repository tagged herdr-mod. Include
 mods/juhas, RECIPE.md and preview.png, without a root layouts directory. Listing
@@ -91,7 +92,7 @@ see the [verification record](acceptance.md).
 ## Updating the preview
 
 Capture the native view with sample data using herdr-app shot. Crop to the
-review panel before saving preview.png; exclude terminal output, real paths,
+review panel before saving docs/images/review.png; exclude terminal output, real paths,
 space names and other windows. Keep raw captures in ignored scratch storage.
 Inspect the cropped image and keep it aligned with the shipped UI. Presentation
 work must not send a review or create a checkpoint in a user's repository.

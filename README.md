@@ -1,4 +1,4 @@
-# Juhas 🐑
+# Juhas 🧑‍🌾
 
 **Review the agent’s work. Keep the conversation in Herdr.**
 
@@ -6,9 +6,9 @@ Your coding agent makes the commits. Juhas helps you see what changed, leave
 comments beside the code and send one clear round of feedback — without leaving
 Herdr or pasting snippets into a chat.
 
-![Juhas reviewing sample changes inside Herdr](preview.png)
+![A shepherd and sheep beside a native Juhas review with sample code](preview.png)
 
-*A real native review view, using sample code and comments.*
+*A native Juhas review with sample data, presented alongside an illustration.*
 
 ## From commits to a conversation
 
@@ -33,6 +33,12 @@ one place.
 Juhas uses Herdr’s native GPUI controls. It works with local Git repositories
 and agent terminals; no GitHub account or pull request is required. Base-branch
 rules are yours to configure, with no built-in team conventions.
+
+## A closer look
+
+![A native Juhas review with sample history, changed files and an inline comment](docs/images/review.png)
+
+*A real native review view, using sample code and comments.*
 
 ## Install
 

@@ -1,7 +1,7 @@
 import {existsSync,readFileSync,readdirSync,mkdirSync,copyFileSync} from 'node:fs';
 import {join,resolve,dirname,relative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
-const publicFiles=['README.md','RECIPE.md','preview.png','LICENSE','NOTICE','THIRD_PARTY_NOTICES.md','scripts/install.mjs','scripts/install.ps1','scripts/install.sh','docs/usage.md','docs/publishing.md','docs/compatibility.md','docs/design-brief.md','docs/performance.md','docs/acceptance.md'];
+const publicFiles=['README.md','RECIPE.md','preview.png','LICENSE','NOTICE','THIRD_PARTY_NOTICES.md','scripts/install.mjs','scripts/install.ps1','scripts/install.sh','docs/images/review.png','docs/usage.md','docs/publishing.md','docs/compatibility.md','docs/design-brief.md','docs/performance.md','docs/acceptance.md'];
 const modules=['cache','comments','comparisons','config','context','controller','diff','git','graph','history','inline-editor','main','model','platform','presentation','repositories','review','review-ui','storage','submit','ui'];
 export function releaseFiles(source){
  const files=publicFiles.filter(f=>existsSync(join(source,f)));const mod=join(source,'mods','juhas');if(!existsSync(mod))return files;

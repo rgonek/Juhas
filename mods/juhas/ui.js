@@ -15,7 +15,7 @@ export function button(id,label,action,options={}){
 export function checkbox(id,label,checked,change,{tooltip=label}={}){
  const t=theme();return control(Checkbox.new(id)).checked(Boolean(checked)).tab_index(0).accessibility_label(label).on_change(change)
   .child(h_flex().gap(6).items_center().tooltip(tooltip)
-   .child(div().size(14).flex_none().rounded(3).border_1().border_color(checked?t.accent:t.border).bg(checked?t.accent:t.background).flex().items_center().justify_center().text_size(11).text_color(t.accent_foreground).child(checked?'✓':''))
+   .child(div().size(14).flex_none().rounded(3).border_1().border_color(checked?t.accent:t.border).bg(checked?t.accent:t.background).flex().items_center().justify_center().text_size(11).text_color(t.accent_foreground).when(checked,el=>el.child(svg('mods/juhas/icons/check.svg').size(11))))
    .child(label));
 }
 export function toggle(id,label,pressed,change,{tooltip=label}={}){
@@ -53,7 +53,7 @@ export function historyPane(view,cx){
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().gap(4)
   .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())
-  .child(popover('history-options','⋯',view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
+  .child(popover('history-options',svg('mods/juhas/icons/more.svg').size(14),view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
    .child(button('history-feature','Feature branch commits',(_e,cx)=>view.setHistoryView('feature',cx)))
    .child(button('history-full','Show full history',(_e,cx)=>view.setHistoryView('full',cx)))
    .child(button('history-all','All branches',(_e,cx)=>view.setHistoryView('all',cx)))
@@ -72,7 +72,7 @@ export function filesPane(view){
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${s.files.length}`).flex_1())
   .child(toggle('file-tree','Tree',view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
  .child(virtualList(`${view.id}-files`,rows,29,f=>{
-  if(f.directory)return h_flex().h(29).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(div().w(12).flex_none().child(f.closed?'▸':'▾')).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
+  if(f.directory)return h_flex().h(29).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
   const count=counts.get(f.newPath)||0;return h_flex().h(29).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
    .child(text(f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(f.status==='A'?t.ansi2:f.status==='D'?t.ansi1:t.ansi4).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
@@ -122,10 +122,10 @@ export function diffPane(view){
   .child(h_flex().min_h(36).flex_none().px(10).gap(4).flex_wrap().justify_end().items_center().border_b(1).border_color(t.border)
    .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).text_size(12).child(s.file?.newPath||'Diff'))
    .when(Boolean(s.file),e=>e.child(buttonGroup('diff-mode',[{value:'unified',label:'Unified'},{value:'split',label:'Split',tooltip:'Side by side'}],view.diffMode||'unified',(mode,cx)=>view.setDiffMode(mode,cx)))
-    .child(buttonGroup('change-navigation',[{value:-1,label:'↑',tooltip:'Previous change; continues to the previous file',disabled:!changes.length||Boolean(view.busy)},{value:1,label:'↓',tooltip:'Next change; continues to the next file',disabled:!changes.length||Boolean(view.busy)}],null,(direction,cx)=>view.navigateChange(direction,cx))).child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true).tooltip('Current change / total change groups in this file'))
+    .child(buttonGroup('change-navigation',[{value:-1,label:svg('mods/juhas/icons/arrow-up.svg').size(14),tooltip:'Previous change; continues to the previous file',disabled:!changes.length||Boolean(view.busy)},{value:1,label:svg('mods/juhas/icons/arrow-down.svg').size(14),tooltip:'Next change; continues to the next file',disabled:!changes.length||Boolean(view.busy)}],null,(direction,cx)=>view.navigateChange(direction,cx))).child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true).tooltip('Current change / total change groups in this file'))
     .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
     .child(button('comment-file',h_flex().gap(5).items_center().child(svg('mods/juhas/icons/comment.svg').size(14)).child('Comment'),(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on the whole file'}))
-    .child(popover('diff-more','⋯',view.panel==='diffMore',(open,cx)=>{if(open||view.panel==='diffMore')view.panel=open?'diffMore':null;cx.notify();},()=>v_flex().size_full()
+    .child(popover('diff-more',svg('mods/juhas/icons/more.svg').size(14),view.panel==='diffMore',(open,cx)=>{if(open||view.panel==='diffMore')view.panel=open?'diffMore':null;cx.notify();},()=>v_flex().size_full()
      .child(button('expand-context','Whole file',(_e,cx)=>{view.panel=null;view.work(cx,()=>view.controller.expandFile());},{tooltip:'Load unchanged lines between and around hunks'}))
      .child(button('select-code','Select / copy',(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy loaded code in a native read-only editor'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))),{tooltip:'More diff options'}))))
   .when(Boolean(s.patch&&!s.patch.complete),e=>e.child(text(`Incomplete: ${s.patch.reason}`).p(8).text_color(t.ansi1)))

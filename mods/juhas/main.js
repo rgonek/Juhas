@@ -298,7 +298,7 @@ export default class Juhas extends View {
     .child(buttonGroup('scope',[{value:'commit',label:'Commit'},{value:'all',label:'All changes'}],mode,(kind,cx)=>kind==='all'?this.applyAllChanges(cx):this.applyScope('commit',cx)))
     .when(mode==='all'&&!comparison?.mutableTarget&&!advancedRange,e=>e.child(popover('compare-from',`Compare from: ${from==='branch'?'Base branch':from==='checkpoint'?'Last review checkpoint':'Choose commit'} ▾`,this.panel==='compareFrom',(open,cx)=>{if(open||this.panel==='compareFrom'){this.panel=open?'compareFrom':null;this.choosingCommitBase=false;}cx.notify();},()=>this.compareFromPicker(),{tooltip:'Choose the baseline for the final diff against HEAD'})))
     .child(div().flex_1())
-    .child(popover('review-more','⋯',this.panel==='reviewMore',(open,cx)=>{if(open||this.panel==='reviewMore')this.panel=open?'reviewMore':null;cx.notify();},()=>v_flex().size_full()
+    .child(popover('review-more',svg('mods/juhas/icons/more.svg').size(14),this.panel==='reviewMore',(open,cx)=>{if(open||this.panel==='reviewMore')this.panel=open?'reviewMore':null;cx.notify();},()=>v_flex().size_full()
      .child(section('Advanced comparisons'))
      .child(button('advanced-working-tree','Uncommitted',(_e,cx)=>{this.panel=null;this.applyScope('working-tree',cx);}))
      .child(button('advanced-range','Inclusive commit range…',(_e,cx)=>{this.panel=null;this.applyScope('range',cx);}))

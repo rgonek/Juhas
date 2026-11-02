@@ -71,3 +71,15 @@ Diff controls and annotations: all toolbar mode/filter/side selectors now use gr
 - Author's public license choice. No community source was copied; see THIRD_PARTY_NOTICES.md.
 
 Do not describe declared CI coverage, source inspection, or a mod check as completed cross-platform native testing. A core send acknowledgement means delivery to a terminal, not completion by an agent.
+
+## Simplified agent review workflow
+
+The default UI now has Commit and All changes. All changes reuses existing branch, exclusive range and since-review comparisons against HEAD. Its branch/manual/checkpoint source is retained across individual commits and synchronized between sidebar and expanded views, including comparisons whose tree IDs coincide. Legacy inclusive ranges and working-tree comparisons remain behind More; History options retain full/all/ref browsing, remotes, details and search.
+
+Feature history excludes merge-base ancestors while preserving topology, merges, filters and pinned pagination. Missing or ambiguous bases fall back to HEAD history and require the existing explicit picker for All changes. Configured rules and per-worktree/branch overrides remain generic and unchanged.
+
+Draft validity is independent of comparison visibility. Original revisions, sides, ranges and quotes remain unchanged. Original committed targets must remain reachable from HEAD; mutable snapshots retain strict fingerprint checks. Git execution errors surface without relabeling existing notes. This verifies source context, not whether later code addressed the feedback. New checkpoint branch metadata is additive within schema version 1. Automatic selection checks live branch, worktree and ancestry; legacy branchless checkpoints remain accessible by explicit ID. Mark seen displays and records the selected committed target, not an unrelated newer HEAD. Submit review is disabled for an empty current-repository draft set; recipient, preview, transport and deduplication behavior are unchanged.
+
+Native Windows verification used an isolated repository and dedicated review sessions. Expanded Commit and final All changes diff, a 340-pixel sidebar, disabled empty Submit and History's native popover were inspected from window frames. Popover states were opened programmatically in a disposable test mod, not by a mouse end-to-end test. Computer Use's native pipe was unavailable. No real branch, working tree, checkpoint or private configuration was changed and no feedback was sent. Cross-platform native verification and performance budgets remain separate gates.
+
+Final verification: npm test passed 115 tests, with no failures or skips. After the final per-project baseline restoration fix, 7 context/workflow tests passed. Source and installed native checks passed. The native Compare from menu and commit-base list were also rendered and inspected in the disposable probe. Test tabs were closed and the probe archived outside installed mods; deployed source modules match the repository. No test review was sent.

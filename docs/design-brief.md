@@ -1,6 +1,6 @@
 # Design brief: Juhas
 
-Design a coherent, readable interface for **Juhas**, a native Git review mod for Herdr. The product name is Juhas; Git review describes its function. Functionality exists, but the controls, toolbars and panels need a consistent visual hierarchy. Aim for the density and responsiveness of an IDE such as Rider.
+**Juhas** is a native Herdr helper for reviewing work by coding agents. Preserve the existing layout and native appearance while keeping the daily workflow small and responsive. Expanded review is the primary workspace; the sidebar shares the same model. The product name is Juhas.
 
 Source reference: https://github.com/rgonek/juhas. The brief is self-contained; access to the developer's computer is not required. If repository access is available, the UI composition is in `mods/juhas/main.js` and the shared control styles are in `mods/juhas/ui.js`.
 
@@ -9,7 +9,10 @@ Source reference: https://github.com/rgonek/juhas. The brief is self-contained; 
 An agent creates commits; the user reviews them, attaches comments to files/lines and submits one message back to an agent session.
 
 - Support a narrow sidebar and an expanded work-area view, with an obvious way to switch between them.
-- Comparison modes: Commit, Range, Branch, Since review, Uncommitted.
+- Primary modes: **Commit** (default, selected commit versus parent) and **All changes** (final effect against HEAD).
+- All changes has one **Compare from** popover: Base branch / Last review checkpoint / Choose commit. Branch uses merge-base; Choose commit excludes that commit. Show the resolved base and automatic/manual origin. Reuse local configuration and the existing branch picker; no built-in naming conventions.
+- History defaults to feature commits after merge-base, with HEAD fallback. Full history, all branches, remotes, details and search live in History's **⋯**. Uncommitted and inclusive Range remain in the review **⋯**.
+- Mode changes preserve draft provenance and the All changes baseline. Comments from multiple commits form one batch. Disable empty Submit review. Secondary Mark seen explicitly names the target SHA and saves a branch/worktree checkpoint without sending or approving anything.
 - Expanded review has history and changed files above a full-width diff. Both horizontal and vertical dividers are draggable.
 - History includes a graph, subject, author and refs; details are optional. Files support a list/tree, status colors, line statistics and comment counts. Diff supports unified/side-by-side views and on-demand unchanged context.
 - Submission auto-selects an unambiguous project agent. The final message is editable and copyable; **Include code** and **Include Git context** are off by default. Send/Copy/Cancel stay at the bottom while the editor scrolls.
@@ -26,6 +29,6 @@ There is no ready-made Tree/Diff JavaScript binding in the target runtime. Selec
 
 Public references: [components](https://gpui-kit.com/component/), [unstyled primitives](https://gpui-kit.com/base/), [JavaScript layer](https://gpui-kit.com/shell/). The full styled Rust catalog is broader than the JavaScript components available here.
 
-Deliver a short critique and a proposed visual direction, followed by mockups for expanded review, sidebar review and submission. Map the design to the available components. Preserve functionality, performance and Git/delivery behavior; focus on presentation and interaction clarity.
+Keep the existing expanded History + Files / full-width Diff composition. Use existing native components rather than introducing a new visual system. Preserve Git, comments, checkpoints and delivery safety; move uncommon Git browsing controls into advanced menus.
 
-Toolbar mode/filter choices use grouped native Buttons, as in the Diff gallery, rather than tab controls. Change navigation is provided by previous/next buttons within the selected file. Saved review notes use annotation cards beneath source lines, on the corresponding side in split mode. Independent source scrolling with linked vertical alignment is not part of the current JavaScript API; avoid custom wheel-event synchronization.
+Toolbar mode/filter choices use grouped native Buttons, as in the Diff gallery, rather than tab controls. Change navigation is provided by previous/next buttons that continue across changed files. Saved review notes use annotation cards beneath source lines, on the corresponding side in split mode. Independent source scrolling with linked vertical alignment is not part of the current JavaScript API; avoid custom wheel-event synchronization.

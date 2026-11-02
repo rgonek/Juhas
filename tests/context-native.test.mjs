@@ -21,9 +21,11 @@ test('switching projects replaces Git and comments; returning restores the corre
  const first={key:'project-a',spaceId:'a',folder:a.root,machine:null},second={key:'project-b',spaceId:'b',folder:b.root,machine:null};
  view.activateContext(first,cx);await view.pending;const controllerA=view.controller,keyA=view.selectionKey,rootA=view.controller.state.repo.root;
  view.controller.addComment({repoKey:view.controller.state.repo.key,comparisonId:view.controller.state.comparison.id,newPath:'file.txt'},'Keep project A comment');view.panel='comment';view.target={repoKey:view.controller.state.repo.key,newPath:'file.txt'};view.inputs.comment.set_value('Unsaved A text');
+ view.allChangesFrom='commit';view.manualCommitBase='saved-baseline';view.lastAppliedFrom='commit';
  store.set('git-review.v1.selection.b',{root:rootA,scope:{kind:'commit',commit:'HEAD'}});
  view.activateContext(second,cx);await view.pending;assert.notEqual(view.selectionKey,keyA);assert.notEqual(view.controller.state.repo.root,rootA);assert.equal(view.controller.state.repo.root,b.git('rev-parse','--show-toplevel'));assert.equal(view.controller.session().drafts.length,0);assert.equal(view.inputs.comment.value(),'');assert.equal(view.policy.canSwitch,false);
- view.activateContext(first,cx);assert.equal(view.controller,controllerA);assert.equal(view.controller.session().drafts[0].body,'Keep project A comment');await view.syncComposer(cx);assert.equal(view.inputs.comment.value(),'Unsaved A text');
+ assert.equal(view.allChangesFrom,'branch');assert.equal(view.lastAppliedFrom,'branch');assert.equal(view.manualCommitBase,null);
+ view.activateContext(first,cx);assert.equal(view.controller,controllerA);assert.equal(view.controller.session().drafts[0].body,'Keep project A comment');assert.equal(view.allChangesFrom,'commit');assert.equal(view.lastAppliedFrom,'commit');assert.equal(view.manualCommitBase,'saved-baseline');await view.syncComposer(cx);assert.equal(view.inputs.comment.value(),'Unsaved A text');
  const next=a.commit('project A updated');view.refreshContext(cx);view.activateContext(first,cx);await view.pending;assert.equal(view.controller.state.comparison.targetOid,next);
 });
 test('single-repository context cannot be switched to another saved repository',async t=>{

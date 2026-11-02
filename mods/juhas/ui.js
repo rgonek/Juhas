@@ -50,11 +50,18 @@ export function historyPane(view,cx){
   .child(graphCell(rows[i])).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(`${c.refs?.length?'['+c.refs.join(', ')+'] ':''}${c.subject}`))
   .child(div().w(95).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author))
   .child(div().w(60).flex_none().text_size(10).text_color(t.dim).child(c.oid.slice(0,8)));},(id,cx)=>view.selectCommit(id,cx));
- const filter=(ref,cx)=>{view.historyRef=ref;view.work(cx,()=>view.controller.loadHistory(view.filters()));};
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().min_h(34).flex_none().items_center().gap(4).flex_wrap()
-  .child(buttonGroup('history-filter',[{value:'HEAD',label:'Current',tooltip:'Show history reachable from the current branch'},{value:'all',label:'All branches'}],view.historyRef,(ref,cx)=>filter(ref,cx)))
-  .child(checkbox('graph-remotes','Remotes',view.remotes,(checked,cx)=>{view.remotes=checked;view.work(cx,()=>view.controller.loadHistory(view.filters()));},{tooltip:'Include remote branches in All branches'})))
+  .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1())
+  .child(popover('history-options','⋯',view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
+   .child(button('history-feature','Feature branch commits',(_e,cx)=>view.setHistoryView('feature',cx)))
+   .child(button('history-full','Show full history',(_e,cx)=>view.setHistoryView('full',cx)))
+   .child(button('history-all','All branches',(_e,cx)=>view.setHistoryView('all',cx)))
+   .child(checkbox('graph-remotes','Include remotes',view.remotes,(checked,cx)=>{view.remotes=checked;view.work(cx,()=>view.controller.loadHistory(view.filters()));}))
+   .child(button('history-branch-picker','Browse branches…',(_e,cx)=>{view.panel='historyRefs';cx.notify();}))
+   .child(button('history-base-picker','Choose base branch…',(_e,cx)=>{view.panel='refs';cx.notify();}))
+   .child(toggle('history-details','Commit details',view.detailsOpen,(pressed,cx)=>{view.detailsOpen=pressed;if(pressed)view.work(cx,()=>view.controller.loadDetails());cx.notify();}))
+   .child(toggle('history-filters','Search filters',view.filtersOpen,(pressed,cx)=>{view.filtersOpen=pressed;cx.notify();})),{tooltip:'History options'})))
   .child(list).when(Boolean(view.detailsOpen&&commit),e=>e.child(v_flex().flex_none().max_h(130).overflow_y_scrollbar().p(10).gap(5).border_t(1).border_color(t.border)
     .child(text(s.details?.subject||commit.subject).font_semibold()).child(text(s.details?.author||`${commit.author} · ${new Date(commit.timestamp*1000).toLocaleString()}`,true)).child(commitId(commit.oid)).child(text(s.details?.body||'',true)).child(text(commit.refs.join(', '),true))))
   .when(s.hasMore,e=>e.child(button('history-more','Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true)))));

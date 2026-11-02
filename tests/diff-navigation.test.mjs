@@ -13,7 +13,7 @@ test('code selection uses one retained readonly native editor and preserves an u
  const {view}=nativeView(),cx={notify(){}};view.inputs={comment:{value:()=>''}};view.controller.state.patch={hunks:[{lines:[line('before','old'),line('after','new')]}]};
  view.openCodeCopy('new',cx);const editor=view.copyEditor;assert.equal(editor.options.readonly,true);assert.equal(editor.value(),'after');assert.equal(view.panel,'copy-code');
  view.openCodeCopy('old',cx);assert.equal(view.copyEditor,editor);assert.equal(editor.value(),'before');
- view.panel='comment';view.inputs.comment.value=()=> 'unsaved';view.openCodeCopy('new',cx);assert.equal(view.panel,'comment');assert.equal(editor.value(),'before');
+ view.panel='comment';view.target={comparisonId:'c',newPath:'file'};view.inputs.comment.value=()=> 'unsaved';view.openCodeCopy('new',cx);assert.equal(view.panel,'comment');assert.equal(editor.value(),'before');
 });
 test('change navigation groups replacements, ignores comments and separates unchanged context',()=>{
  const rows=[{id:'h',kind:'hunk'},line('old','old'),{id:'comment',kind:'comment'},line('new','new'),line('context','context'),line('next','new')];

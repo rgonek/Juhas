@@ -3,7 +3,7 @@ import {h_flex,v_flex,v_virtual_list,Scrollbar,Input,Button,Checkbox,Toggle,Popo
 import {theme,settings} from 'herdr';
 import {layoutGraph} from './graph.js';
 import {fileRows,splitRows,changeGroups} from './review-ui.js';
-import {annotatePatch} from './comments.js';
+import {annotatePatch,composerRows,commentHeight,INLINE_EDITOR_HEIGHT} from './comments.js';
 export function nativeFrame(id){const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13);}
 function control(element,{active=false,primary=false,segment=false}={}){const t=theme();return element.h(28).flex_none().px(8).flex().gap(6).items_center().justify_center().rounded(6).text_size(12).cursor_pointer()
  .text_color(primary?t.solid_foreground:t.foreground).bg(primary?t.solid:active?t.selected:segment?t.chrome:t.background)
@@ -85,29 +85,29 @@ function codeCell(row,side,t){
   .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(line??'')))
   .child(div().text_color(row?.side==='old'?t.ansi1:row?.side==='new'?t.ansi2:t.foreground).child(row?.text.replace(/\t/g,'    ')||''));
 }
-const COMMENT_HEIGHT=112;
-function commentCard(row,viewId){
+function commentCard(row,viewId,width='100%'){
  const t=theme(),draft=row.draft,location=draft?.side?`${draft.side==='old'?'Original':'Modified'} · ${draft.startLine}${draft.endLine!==draft.startLine?'–'+draft.endLine:''}`:'File comment';
- const header=h_flex().h(30).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border)
+ const header=h_flex().h(24).flex_none().px(8).gap(6).items_center()
   .child(svg('mods/juhas/icons/comment.svg').size(14).flex_none().text_color(t.muted))
-  .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().text_color(t.foreground).child(`Review comment · ${location}`))
-  .child(text('Draft',true).flex_none());
- const body=div().id(`${viewId}-${row.id}-body`).flex_1().min_h(0).min_w(0).px(10).py(6).overflow_y_scrollbar().text_size(12).text_color(t.foreground).child(row.text);
- return v_flex().h(COMMENT_HEIGHT).w_full().min_w(0).px(12).py(8).tooltip('Click to edit this comment')
-  .child(v_flex().flex_1().min_h(0).min_w(0).rounded(8).border_1().border_color(t.border).bg(t.raised).child(header).child(body));
+  .child(div().flex_1().min_w(0).truncate().text_size(11).font_semibold().text_color(t.muted).child(location));
+ const body=div().id(`${viewId}-${row.id}-body`).h(commentHeight(row.text)-42).flex_none().min_w(0).px(8).py(4).overflow_y_scrollbar().text_size(12).line_height('18px').text_color(t.foreground).child(row.text);
+ return v_flex().h(commentHeight(row.text)).w_full().max_w(width||'100%').min_w(0).px(8).py(8).tooltip('Click to edit this comment')
+  .child(v_flex().h(commentHeight(row.text)-16).flex_none().min_w(0).rounded(8).border_1().border_color(t.border).bg(t.raised).child(header).child(body));
 }
 export function diffPane(view){
  const s=view.controller.state,t=theme(),annotated=annotatePatch(s.patch,view.controller.session().drafts,s.comparison?.id,s.file?.newPath),split=view.diffMode==='split';
- const rows=split?splitRows(annotated):annotated,changes=changeGroups(rows);view.patchRows=annotated;view.diffRows=rows;view.diffRowsKey=view.diffChangeKey();const activeChange=view.changeCursor?.source===view.diffRowsKey?changes.findIndex(change=>change.id===view.changeCursor.id):-1;
+ const activeTarget=view.inlineEditor&&view.target?.comparisonId===s.comparison?.id&&view.target?.newPath===s.file?.newPath?view.target:null,composed=composerRows(annotated,activeTarget,view.editId);
+ const clickSource=view.diffChangeKey();
+ const display=split?splitRows(composed):composed,rows=s.patch?.binary||s.patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:s.patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display,changes=changeGroups(rows);view.patchRows=annotated;view.diffRows=rows;view.diffRowsKey=view.diffChangeKey();const activeChange=view.changeCursor?.source===view.diffRowsKey?changes.findIndex(change=>change.id===view.changeCursor.id):-1;
  let body;
  if(!s.file)body=text('Select a file to review').p(20);
  else if(!s.patch)body=text(view.busy?'Reading diff…':'No diff loaded').p(20);
- else if(s.patch.binary)body=text('Binary file changed · use File comment to leave feedback').p(20);
- else if(s.patch.modeOnly)body=text('File mode or submodule changed · no text hunks').p(20);
- else body=virtualList(`${view.id}-diff-${split?'split':'unified'}`,rows,rows.map(r=>r.kind==='comment'?COMMENT_HEIGHT:22),row=>{
-  if(row.kind==='comment'){
-   if(!split||!row.draft?.side)return commentCard(row,view.id);
-   return h_flex().h(COMMENT_HEIGHT).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(commentCard(row,view.id)):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(commentCard(row,view.id)):div().flex_1().min_w(0));
+ else body=virtualList(`${view.id}-diff-${split?'split':'unified'}`,rows,rows.map(r=>r.kind==='editor'?INLINE_EDITOR_HEIGHT:r.kind==='comment'?commentHeight(r.text):r.kind==='notice'?46:22),row=>{
+  if(row.kind==='notice')return text(row.text,true).h(46).p(12);
+  if(row.kind==='comment'||row.kind==='editor'){
+   const height=row.kind==='editor'?INLINE_EDITOR_HEIGHT:commentHeight(row.text),content=()=>row.kind==='editor'?div().h(height).w_full().max_w(view.width||'100%').child(view.inlineEditor):commentCard(row,view.id,view.width);
+   if(!split||!row.draft?.side)return content();
+   return h_flex().h(height).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0));
   }
   if(row.kind==='hunk')return div().h(22).px(10).bg(t.raised).text_color(t.accent).font_family(settings().font_family).text_size(11).child(row.text);
   if(row.kind==='pair')return h_flex().h(22).font_family(settings().font_family).text_size(12).child(codeCell(row.old,'old',t)).child(div().w(1).h_full().bg(t.border)).child(codeCell(row.next,'new',t));
@@ -116,17 +116,18 @@ export function diffPane(view){
   return h_flex().h(22).px(8).gap(8).items_center().font_family(settings().font_family).text_size(12).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
    .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.oldLine??''))).child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.newLine??'')))
    .child(div().text_color(color).child(`${mark} ${row.text.replace(/\t/g,'    ')}`));
- },(id,cx)=>{const row=rows.find(r=>r.id===id);if(row?.kind==='pair'){const line=view.commentSide==='old'?(row.old||row.next):(row.next||row.old);if(line)view.selectLine(line.id,cx);}else view.selectLine(id,cx);},view.diffScroll);
- const minWidth=split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
+ },(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rows.find(r=>r.id===id);if(row?.kind==='editor'||row?.kind==='notice')return;if(row?.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line)view.selectLine(line.id,cx,line.side==='context'?side:null,line);}else view.selectLine(id,cx,null,row);},view.diffScroll);
+ const minWidth=s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
-  .child(h_flex().min_h(36).flex_none().px(10).gap(4).flex_wrap().items_center().border_b(1).border_color(t.border)
+  .child(h_flex().min_h(36).flex_none().px(10).gap(4).flex_wrap().justify_end().items_center().border_b(1).border_color(t.border)
    .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).text_size(12).child(s.file?.newPath||'Diff'))
    .when(Boolean(s.file),e=>e.child(buttonGroup('diff-mode',[{value:'unified',label:'Unified'},{value:'split',label:'Split',tooltip:'Side by side'}],view.diffMode||'unified',(mode,cx)=>view.setDiffMode(mode,cx)))
     .child(buttonGroup('change-navigation',[{value:-1,label:'↑',tooltip:'Previous change; continues to the previous file',disabled:!changes.length||Boolean(view.busy)},{value:1,label:'↓',tooltip:'Next change; continues to the next file',disabled:!changes.length||Boolean(view.busy)}],null,(direction,cx)=>view.navigateChange(direction,cx))).child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true).tooltip('Current change / total change groups in this file'))
     .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
-    .child(button('expand-context','Whole file',(_e,cx)=>view.work(cx,()=>view.controller.expandFile()),{tooltip:'Load unchanged lines between and around hunks'}))
-    .child(button('select-code','Select / copy',(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy loaded code in a native read-only editor'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly)))
-    .child(button('comment-file','Comment',(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on the whole file'}))))
+    .child(button('comment-file',h_flex().gap(5).items_center().child(svg('mods/juhas/icons/comment.svg').size(14)).child('Comment'),(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on the whole file'}))
+    .child(popover('diff-more','⋯',view.panel==='diffMore',(open,cx)=>{if(open||view.panel==='diffMore')view.panel=open?'diffMore':null;cx.notify();},()=>v_flex().size_full()
+     .child(button('expand-context','Whole file',(_e,cx)=>{view.panel=null;view.work(cx,()=>view.controller.expandFile());},{tooltip:'Load unchanged lines between and around hunks'}))
+     .child(button('select-code','Select / copy',(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy loaded code in a native read-only editor'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))),{tooltip:'More diff options'}))))
   .when(Boolean(s.patch&&!s.patch.complete),e=>e.child(text(`Incomplete: ${s.patch.reason}`).p(8).text_color(t.ansi1)))
   .child(div().flex_1().min_h(0).min_w(0).w_full().overflow_hidden().child(div().id(`${view.id}-diff-horizontal`).size_full().min_w(0).overflow_x_scrollbar().child(div().min_w(minWidth).w_full().h_full().child(body))));
 }

@@ -2,10 +2,10 @@ import {existsSync,readFileSync,readdirSync,mkdirSync,copyFileSync} from 'node:f
 import {join,resolve,dirname,relative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const publicFiles=['README.md','RECIPE.md','LICENSE','THIRD_PARTY_NOTICES.md','scripts/install.mjs','scripts/install.ps1','scripts/install.sh','docs/compatibility.md','docs/design-brief.md','docs/performance.md','docs/acceptance.md'];
-const modules=['cache','comments','comparisons','config','context','controller','diff','git','graph','history','main','model','platform','presentation','repositories','review','review-ui','storage','submit','ui'];
+const modules=['cache','comments','comparisons','config','context','controller','diff','git','graph','history','inline-editor','main','model','platform','presentation','repositories','review','review-ui','storage','submit','ui'];
 export function releaseFiles(source){
  const files=publicFiles.filter(f=>existsSync(join(source,f)));const mod=join(source,'mods','juhas');if(!existsSync(mod))return files;
- for(const name of [...modules.map(m=>m+'.js'),'mod.json','helpers/list-directories.ps1',...['expand','collapse','fetch','comment'].map(name=>'icons/'+name+'.svg')])if(existsSync(join(mod,name)))files.push(`mods/juhas/${name}`);
+ for(const name of [...modules.map(m=>m+'.js'),'mod.json','helpers/list-directories.ps1',...['expand','collapse','fetch','refresh','comment','copy'].map(name=>'icons/'+name+'.svg')])if(existsSync(join(mod,name)))files.push(`mods/juhas/${name}`);
  return files.sort();
 }
 export function packageRelease({source,dest}){

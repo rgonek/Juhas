@@ -26,6 +26,14 @@ test('outdated comments and renamed paths keep precise context in compact text',
  const draft={...comments[0],oldPath:'src/old.ts',newPath:'src/new.ts',status:'outdated'};
  const batch=submission.buildBatch({id:'s',drafts:[draft]},[],{agentAddress:'t1'});assert.match(batch.text,/OUTDATED/);assert.match(batch.text,/src\/old.ts/);assert.match(batch.text,/src\/new.ts/);assert.match(batch.text,new RegExp(draft.targetOid));
 });
+test('overlapping feedback from different commits has distinct source revisions and bounded automatic excerpts',()=>{
+ const first={...comments[0],id:'first',quote:'first version\n'+'long '.repeat(100)},second={...comments[0],id:'second',comparisonId:'next',targetOid:'c'.repeat(40),quote:'second version'};
+ const batch=submission.buildBatch({id:'s',drafts:[first,second]},[],{repoKey:'repo'});assert.match(batch.text,/bbbbbbbbbbbb/);assert.match(batch.text,/cccccccccccc/);assert.match(batch.text,/> first version/);assert.match(batch.text,/> second version/);assert.ok(!batch.text.includes(first.quote));assert.equal(batch.includeQuotes,false);assert.equal(batch.includeGitContext,false);assert.equal(batch.draftSnapshots.first,JSON.stringify(first));
+ const sparse=submission.buildBatch({id:'s',drafts:[first,{...second,startLine:90,endLine:90}]},[],{repoKey:'repo'});assert.ok(!sparse.text.includes('first version'));assert.match(sparse.text,/bbbbbbbbbbbb/);
+});
+test('a single current comment retains a compact source ID even if the agent later advances HEAD',()=>{
+ const draft=comments[0],batch=submission.buildBatch({id:'s',drafts:[draft]},[{id:draft.comparisonId,repoKey:'repo'}],{repoKey:'repo'});assert.match(batch.text,/@ bbbbbbbbbbbb/);assert.ok(!batch.text.includes(draft.targetOid));assert.ok(!batch.text.includes(draft.quote));
+});
 const context={spaceId:'s',tabId:'tab',machine:null};
 const terminal=(address,extra={})=>({address,state:'live',program:{agent:true},...extra});
 const agent=(address,tab='tab',space='s')=>({address,space,tab,program:{agent:true}});
@@ -54,6 +62,9 @@ function nativeSubmission(){
 }
 test('native preview auto-selects the project agent and scopes the editable message to one repo',()=>{
  const {view,deliveries,cx}=nativeSubmission();view.preview(cx);assert.equal(view.panel,'submit');assert.equal(view.batch.agentAddress,'right');assert.deepEqual(view.batch.draftIds,['1','2']);assert.equal(view.inputs.review.value(),view.batch.text);assert.equal(deliveries.length,0);
+});
+test('preview refuses stale project context before selecting an agent or generating a message',()=>{
+ const {view,cx,deliveries}=nativeSubmission();view.followContext=true;view.currentContext=()=>({...context,key:'another-project'});view.preview(cx);assert.equal(view.batch,undefined);assert.match(view.message,/Project context changed/);assert.equal(deliveries.length,0);
 });
 test('native edits survive changing recipient, cancellation/reopen and Copy uses the exact edited text',()=>{
  const {view,data,cx}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('My edited review');view.changeReview(cx);view.buildPreview('manual',cx);assert.equal(view.batch.text,'My edited review');assert.equal(view.batch.agentAddress,'manual');view.copyReview(cx);assert.equal(data.get('clipboard'),'My edited review');view.panel=null;view.batch=null;view.preview(cx);assert.equal(view.batch.text,'My edited review');assert.equal(view.batch.agentAddress,'manual');

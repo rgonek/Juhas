@@ -81,6 +81,11 @@ export class Controller {
   const current=await resolveComparison(this.run,this.state.repo,c.scope,this.session().checkpoints);if(current.id!==c.id){await this.selectScope(c.scope);throw new Error('Working tree changed; unsaved comment retained. Refresh its context before saving');}
  }
  addComment(target,body,id=uid()){const c=this.state.comparison;const status=c?.repoKey===target.repoKey&&c.id===target.comparisonId?'current':target.status||(!c||target.targetOid?'current':'outdated');return this.mutate(s=>addDraft(s,{...target,id,body,status,sessionId:s.id}));}
+ updateCommentBody(target,body,id){
+  if(!body?.trim())throw new Error('Comment cannot be empty');
+  const fields=['repoKey','comparisonId','baseOid','targetOid','oldPath','newPath','side','startLine','endLine','quote','mutableTarget','targetTree'];
+  return this.mutate(s=>{const saved=s.drafts.find(d=>d.id===id);if(!saved||fields.some(key=>saved[key]!==target[key]))throw new Error('Comment source changed; your unsaved text is retained');return {...s,drafts:s.drafts.map(d=>d.id===id?{...d,body}:d)};});
+ }
  removeComment(id){return this.mutate(s=>({...s,drafts:s.drafts.filter(d=>d.id!==id)}));}
  async markSeen(){const c=this.state.comparison,repo=this.state.repo;if(!c)throw new Error('Choose a comparison');if(c.mutableTarget||!c.targetOid)throw new Error('Checkpoint requires a committed target');const branch=(await this.run(repo,['symbolic-ref','--short','-q','HEAD'])).stdout.trim();if(!branch||branch!==this.state.branch)throw new Error('Branch context changed or detached; refresh before marking seen');if(!await isAncestor(this.run,repo,c.targetOid,'HEAD'))throw new Error('Selected commit is outside the current branch');const checkpoint=await markSeen(this.run,repo,c,branch);this.mutate(s=>({...s,checkpoints:[...s.checkpoints,checkpoint]}));return checkpoint;}
  async lastCheckpoint(){return lastCheckpoint(this.run,this.state.repo,this.state.branch,this.session().checkpoints);}

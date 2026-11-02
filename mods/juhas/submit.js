@@ -12,18 +12,25 @@ export function detectRecipient(terminals,agents,context){
  if(tab.length===1)return tab[0];if(tab.length>1)return null;
  return candidates.length===1?candidates[0]:null;
 }
+function sourceRevision(draft){return draft.side==='old'?(draft.baseOid||'empty'):(draft.targetOid||`working tree based on ${draft.baseOid||'empty'}${draft.targetTree?' snapshot '+draft.targetTree:''}`);}
+function shortRevision(value,all){if(!/^[a-f0-9]{40,64}$/.test(value))return value;let length=12;while(length<value.length&&all.some(other=>other!==value&&other.startsWith(value.slice(0,length))))length+=4;return value.slice(0,length);}
+function excerpt(value){const lines=value.split('\n'),head=lines.slice(0,3).join('\n'),short=head.slice(0,240);return short+(lines.length>3||head.length>240?'\n…':'');}
+function overlaps(a,b){const path=d=>d.side==='old'?(d.oldPath||d.newPath):d.newPath;return a!==b&&a.side===b.side&&path(a)===path(b)&&sourceRevision(a)!==sourceRevision(b)&&a.startLine!=null&&b.startLine!=null&&a.startLine<=(b.endLine??b.startLine)&&b.startLine<=(a.endLine??a.startLine);}
 export function buildBatch(session,comparisons,{agentAddress=null,note='',repoKey=null,includeQuotes=false,includeGitContext=false}={}){
  const drafts=session.drafts.filter(draft=>repoKey==null||draft.repoKey===repoKey).slice().sort((a,b)=>a.repoKey.localeCompare(b.repoKey)||(a.newPath||a.oldPath||'').localeCompare(b.newPath||b.oldPath||'')||(a.startLine??0)-(b.startLine??0)||a.id.localeCompare(b.id));
  if(!drafts.length)throw new Error('No comments to submit for this repository');
  const repositories=new Map();for(const draft of drafts){if(!repositories.has(draft.repoKey))repositories.set(draft.repoKey,new Map());const groups=repositories.get(draft.repoKey);if(!groups.has(draft.comparisonId))groups.set(draft.comparisonId,[]);groups.get(draft.comparisonId).push(draft);}
  const chunks=['# Code review',note];
- for(const [key,groups] of repositories){const first=[...groups.values()][0][0],comparison=comparisons.find(c=>c.id===first.comparisonId);if(includeGitContext)chunks.push('\n## '+(comparison?.root||first.root||key));
+ for(const [key,groups] of repositories){const repositoryDrafts=[...groups.values()].flat(),sources=[...new Set(repositoryDrafts.map(sourceRevision))],first=repositoryDrafts[0],comparison=comparisons.find(c=>c.id===first.comparisonId);if(includeGitContext)chunks.push('\n## '+(comparison?.root||first.root||key));
   for(const [id,group] of groups){const first=group[0];if(includeGitContext)chunks.push(`${first.baseOid||'empty'} → ${first.targetOid||'working tree'}`);const files=new Map();for(const draft of group){const file=JSON.stringify([draft.oldPath,draft.newPath]);if(!files.has(file))files.set(file,[]);files.get(file).push(draft);}
    for(const file of files.values()){const first=file[0],renamed=first.oldPath&&first.newPath&&first.oldPath!==first.newPath;chunks.push('\n### '+(renamed?first.oldPath+' → ':'')+(first.newPath||first.oldPath));
     for(const draft of file){const location=draft.startLine==null?'file':`${draft.side||'new'} ${draft.startLine}${draft.endLine!=null&&draft.endLine!==draft.startLine?'-'+draft.endLine:''}`;
-     const original=draft.side==='old'?(draft.baseOid||'empty'):(draft.targetOid||`working tree based on ${draft.baseOid||'empty'}`);
-     chunks.push(`- ${location}${draft.status==='outdated'?` [OUTDATED${includeGitContext?'':' @ '+original}]`:''}: ${draft.body}`);
-     if(includeQuotes&&draft.quote)chunks.push(draft.quote.split('\n').map(line=>'> '+line).join('\n'));
+     // The agent may advance HEAD after this comparison was captured. A compact
+     // source ID keeps even a single-comment review anchored to that snapshot.
+     const original=sourceRevision(draft),historical=comparisons.some(c=>c.repoKey===key)&&!comparisons.some(c=>c.id===draft.comparisonId),needSource=Boolean(draft.targetOid||draft.baseOid||draft.mutableTarget)||groups.size>1||historical;
+     chunks.push(`- ${location}${!includeGitContext&&needSource&&draft.status!=='outdated'?' @ '+shortRevision(original,sources):''}${draft.status==='outdated'?` [OUTDATED${includeGitContext?'':' @ '+original}]`:''}: ${draft.body}`);
+     const needExcerpt=draft.status==='outdated'||Boolean(draft.mutableTarget&&draft.side!=='old')||repositoryDrafts.some(other=>overlaps(draft,other));
+     if(draft.quote&&(includeQuotes||needExcerpt))chunks.push((includeQuotes?draft.quote:excerpt(draft.quote)).split('\n').map(line=>'> '+line).join('\n'));
     }
    }
   }

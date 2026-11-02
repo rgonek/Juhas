@@ -7,14 +7,14 @@ import {createCache,createRequestGate} from './cache.js';
 import {loadSession,mutateSession} from './storage.js';
 import {addDraft,markSeen,lastCheckpoint} from './review.js';
 export class Controller {
- constructor({run,store,sessionId='default',cache=createCache()}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false};}
+ constructor({run,store,sessionId='default',cache=createCache()}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false};}
  session(){return loadSession(this.store,this.sessionId);}
  mutate(fn){return mutateSession(this.store,this.sessionId,fn);}
  async openRepo(machine,folder){
-  const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');
+  const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');
   const repo=await resolveRepo(this.run,machine,folder);if(!this.gate.isCurrent(token))return;if(!repo)throw new Error('Folder is not inside a Git repository; use Discover to find nested repositories');
   const [refs,branch]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD'])]);if(!this.gate.isCurrent(token))return;
-  this.state={...this.state,repo,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null};
+  this.state={...this.state,repo,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false};
   const head=await this.run(repo,['rev-parse','--verify','HEAD']);if(head.code!==0){this.state.empty=true;return;}
   this.state.empty=false;await this.loadHistory();
  }
@@ -24,9 +24,18 @@ export class Controller {
   this.state.history=more?[...this.state.history,...result.commits]:result.commits;this.state.historyRef=result.ref;this.state.historyExclude=result.exclude;this.state.hasMore=result.hasMore;this.state.filtersKey=filtersKey;
  }
  async setHistoryBase(baseRef){
-  const repo=this.state.repo;if(!repo)return;let base=null,error=null;
+  const repo=this.state.repo;if(!repo)return false;const token=this.baseGate.begin(baseRef);this.historyGate.begin('base');this.state.historyBaseLoading=true;let base=null,error=null;
   if(baseRef)try{base=(await resolveComparison(this.run,repo,{kind:'branch',baseRef,targetRef:'HEAD'})).baseOid;}catch(e){error=e.message;}
-  if(this.state.repo?.key===repo.key){this.state.featureBaseOid=base;this.state.historyBaseRef=baseRef||null;this.state.historyBaseError=error;}
+  if(!this.baseGate.isCurrent(token)||this.state.repo?.key!==repo.key)return false;
+  this.state.featureBaseOid=base;this.state.historyBaseRef=baseRef||null;this.state.historyBaseError=error;this.state.historyBaseLoading=false;return true;
+ }
+ async summarizeComparison(comparison){
+  if(!comparison.targetOid)return {...comparison,commitCount:null};
+  if(comparison.scope.kind==='commit')return {...comparison,commitCount:1};
+  const key=JSON.stringify([comparison.repoKey,comparison.baseOid,comparison.targetOid,'commit-count']);let count=this.cache.get(key);
+  try{if(count==null){const raw=(await git(this.run,comparison.repo,['rev-list','--count',comparison.targetOid,...(comparison.baseOid?['^'+comparison.baseOid]:[]),'--'])).trim();count=Number(raw);if(!/^\d+$/.test(raw)||!Number.isSafeInteger(count))throw new Error('Invalid Git commit count');this.cache.set(key,count);}}
+  catch(error){return {...comparison,commitCount:null,summaryError:error.message};}
+  return {...comparison,commitCount:count,summaryError:null};
  }
  async reconcileComments(comparison){
   const repo=this.state.repo;if(!repo)return;
@@ -49,6 +58,7 @@ export class Controller {
   let loaded=immutable?this.cache.get(scopeKey):null;
   if(!loaded){const comparison=fromHistory(repo,scope,this.state.history)||await resolveComparison(this.run,repo,scope,this.session().checkpoints);const filesKey=JSON.stringify([repo.key,comparison.baseTree,comparison.targetTree,'files']);let files=this.cache.get(filesKey);if(!files){files=await listChangedFiles(this.run,comparison);if(!comparison.mutableTarget)this.cache.set(filesKey,files);}loaded={comparison,files};if(immutable)this.cache.set(scopeKey,loaded);}
   if(!this.gate.isCurrent(token))return;
+  loaded={...loaded,comparison:await this.summarizeComparison(loaded.comparison)};if(!this.gate.isCurrent(token))return;
   this.state={...this.state,comparison:loaded.comparison,details:null,files:loaded.files,file:null,patch:null,error:null};
   await this.reconcileComments(loaded.comparison);
  }
@@ -74,7 +84,7 @@ export class Controller {
   if(snapshot.mutableTarget){comparison=await resolveComparison(this.run,repo,snapshot.scope,this.session().checkpoints);if(comparison.id!==snapshot.id)throw new Error('Working tree changed; refresh the source comparison before switching views');}
   else if(![snapshot.baseTree,snapshot.targetTree].every(x=>/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(x)))throw new Error('Invalid resolved comparison');
   const key=JSON.stringify([repo.key,comparison.baseTree,comparison.targetTree,'files']);let files=comparison.mutableTarget?null:this.cache.get(key);if(!files){files=await listChangedFiles(this.run,comparison);if(!comparison.mutableTarget)this.cache.set(key,files);}
-  if(!this.gate.isCurrent(token))return;this.state={...this.state,comparison,details:null,files,file:null,patch:null};await this.reconcileComments(comparison);
+  comparison=await this.summarizeComparison(comparison);if(!this.gate.isCurrent(token))return;this.state={...this.state,comparison,details:null,files,file:null,patch:null};await this.reconcileComments(comparison);
  }
  async validateComment(target){
   const c=this.state.comparison;if(!c?.mutableTarget||c.repoKey!==target.repoKey)return;

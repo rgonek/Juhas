@@ -9,7 +9,7 @@ import {resolveConfig,suggestBases,selectBase,readLocalConfig} from './config.js
 import {commentTarget,annotatePatch,composerRows} from './comments.js';
 import InlineEditor from './inline-editor.js';
 import {buildBatch,createSubmitter,updateBatch,detectRecipient,agentRecipients,isLiveTerminal,MAX_REVIEW_BYTES} from './submit.js';
-import {button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover} from './ui.js';
+import {button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover,draftsPane} from './ui.js';
 import {expandReview,collapseReview} from './presentation.js';
 import {rangeSelection,changeGroups,stepChange,splitRows,patchCode} from './review-ui.js';
 import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from './context.js';
@@ -86,7 +86,7 @@ export default class Juhas extends View {
   if(this.activeContext){this.rememberLoadedView();this.persistComposer();this.persistReview();this.contextViews.set(this.activeContext.key,{controller:this.controller,policy:this.policy,historyRef:this.historyRef,historyFull:this.historyFull,allChangesFrom:this.allChangesFrom,manualCommitBase:this.manualCommitBase,fields:Object.fromEntries(Object.entries(this.inputs).map(([key,state])=>[key,state.value()]))});}
   this.activeContext=context;this.sessionId=this.contextProps.sessionId||context.spaceId||context.key;
   this.selectionKey=contextStorageKey('selection',this.sessionId,context);this.composerKey=contextStorageKey('composer',this.sessionId,context);this.reviewKey=contextStorageKey('review',this.sessionId,context);
-  this.seenSelection=null;this.seenComposer=undefined;this.panel=null;this.target=null;this.selectedStart=null;this.editId=null;this.batch=null;this.message='';this.rangeAnchor=null;this.rangePicking=false;this.commitAnchor=null;this.filtersOpen=false;
+  this.seenSelection=null;this.seenComposer=undefined;this.panel=null;this.draftStatus='all';this.draftSource='all';this.draftSourcePicker=false;this.target=null;this.selectedStart=null;this.editId=null;this.batch=null;this.message='';this.rangeAnchor=null;this.rangePicking=false;this.commitAnchor=null;this.filtersOpen=false;
   const saved=this.contextViews.get(context.key);this.controller=saved?.controller||new Controller({run:createRunner(exec),store,sessionId:this.sessionId,cache});this.policy=saved?.policy||{repos:[],canSwitch:false,kind:'empty'};this.historyRef=saved?.historyRef||'HEAD';this.historyFull=Boolean(saved?.historyFull);this.allChangesFrom=saved?.allChangesFrom||'branch';this.manualCommitBase=saved?.manualCommitBase||null;this.lastAppliedFrom=this.allChangesFrom;this.choosingCommitBase=false;
   this.restoringComposer=true;for(const [key,input] of Object.entries(this.inputs))input.set_value(saved?.fields?.[key]||(key==='folder'?context.folder||'':key==='target'?'HEAD':''));this.restoringComposer=false;
   if(!refreshing&&this.restoreLoadedView(shared(this.selectionKey),cx))return;
@@ -115,7 +115,7 @@ export default class Juhas extends View {
  }
  baseChoice(){const s=this.controller.state;return selectBase(s.refs,s.branch||'',this.config,this.controller.base());}
  restoreBase(){const choice=this.baseChoice();this.inputs.base.set_value(choice?.ref||'');this.baseSource=choice?.source||null;return choice;}
- async updateFeatureHistory(){if(!this.controller.setHistoryBase)return;await this.controller.setHistoryBase(this.baseChoice()?.ref);await this.controller.loadHistory(this.filters());}
+ async updateFeatureHistory(){const controller=this.controller;if(!controller.setHistoryBase)return;const applied=await controller.setHistoryBase(this.baseChoice()?.ref);if(applied===false||this.controller!==controller)return;await controller.loadHistory(this.filters());}
  reviewMode(){const selected=shared(this.selectionKey),scope=this.controller.state.comparison?.scope||selected?.scope||selected?.comparison?.scope;return !scope||scope.kind==='commit'?'commit':'all';}
  setHistoryView(mode,cx){this.historyFull=mode!=='feature';this.historyRef=mode==='all'?'all':'HEAD';this.panel=null;this.work(cx,()=>this.controller.loadHistory(this.filters()));}
  applyAllChanges(cx){this.pendingScope=null;this.applyScope(this.allChangesFrom==='checkpoint'?'since-review':this.allChangesFrom==='commit'?'manual-base':'branch',cx);}
@@ -133,7 +133,7 @@ export default class Juhas extends View {
  }
  // A bounded, process-only cache bridges Herdr's separate module generations.
  // Initialize lazily: loading a failed hot-reload must not mutate global state.
- viewSnapshots(){return globalThis[Symbol.for('juhas.loadedViews.v1')]??=createCache({maxEntries:8,maxBytes:33554432});}
+ viewSnapshots(){return globalThis[Symbol.for('juhas.loadedViews.v2')]??=createCache({maxEntries:8,maxBytes:33554432});}
  viewConfigKey(){return JSON.stringify([shared('git-review.v1.config')||{},this.contextProps?.config||{}]);}
  rememberLoadedView(){
   if(this.busy||!this.activeContext||!this.policy?.ready||!this.controller.state.repo)return;
@@ -273,7 +273,7 @@ export default class Juhas extends View {
     .child(button('skip-before-review','Skip for this review',(_e,cx)=>this.preview(cx,{skipUnsaved:true}),{tooltip:'Keep the unsaved text, but omit it from this review'}).disabled(!s.drafts.some(d=>d.repoKey===this.controller.state.repo?.key)))
     .child(button('back-to-comment','Back',(_e,cx)=>{this.panel='comment';this.notifyEditor(cx,true);})))
   if(this.panel==='repos')return content.h(190).child(section('Repositories')).child(v_flex().flex_1().overflow_y_scrollbar().children((this.discovered||[]).map(repo=>button(repo.key,repo.root,(_e,cx)=>{this.panel=null;this.openFolder(repo.root,cx);}))).child(button('close-repos','Close',(_e,cx)=>{this.panel=null;cx.notify();})));
-  if(this.panel==='drafts')return content.h(Math.min(260,80+s.drafts.length*45)).child(h_flex().items_center().child(section(`Saved comments · ${s.drafts.length}`).flex_1()).child(button('clear-comments','Clear all',(_e,cx)=>{this.controller.mutate(session=>({...session,drafts:[]}));cx.notify();},{tooltip:'Delete all saved comments in this review session'}))).child(v_flex().flex_1().min_h(0).overflow_y_scrollbar().children(s.drafts.map(d=>h_flex().gap(6).px(8).py(4).items_center().child(div().flex_1().min_w(0).text_size(12).text_color(d.status==='outdated'?t.ansi3:t.foreground).child(`${d.status==='outdated'?'[OUTDATED] ':''}${d.newPath} ${d.startLine??''}: ${d.body}`)).child(button(`edit-${d.id}`,'Edit',(_e,cx)=>{this.editDraft(d,cx);})).child(button(`delete-${d.id}`,'Delete',(_e,cx)=>{this.controller.removeComment(d.id);cx.notify();})))));
+  if(this.panel==='drafts')return content.child(draftsPane(this,cx));
   if(this.panel==='submit'){
    const recipient=terminals().find(t=>(t.address||t.id)===this.batch?.agentAddress),canSend=Boolean(this.batch?.agentAddress&&this.batch?.text?.trim()&&this.batch.utf8Bytes<=MAX_REVIEW_BYTES&&!this.sending);
    return v_flex().flex_1().min_h(0).min_w(0).w_full()
@@ -318,12 +318,13 @@ export default class Juhas extends View {
     .child(buttonGroup('scope',[{value:'commit',label:'Commit'},{value:'all',label:'All changes'}],mode,(kind,cx)=>kind==='all'?this.applyAllChanges(cx):this.applyScope('commit',cx)))
     .when(mode==='all'&&!comparison?.mutableTarget&&!advancedRange,e=>e.child(popover('compare-from',`Compare from: ${from==='branch'?'Base branch':from==='checkpoint'?'Last review checkpoint':'Choose commit'} ▾`,this.panel==='compareFrom',(open,cx)=>{if(open||this.panel==='compareFrom'){this.panel=open?'compareFrom':null;this.choosingCommitBase=false;}cx.notify();},()=>this.compareFromPicker(),{tooltip:'Choose the baseline for the final diff against HEAD'})))
     .child(div().flex_1())
+    .child(text(comparison?`${comparison.mutableTarget?'Uncommitted':comparison.commitCount!=null?comparison.commitCount+' '+(comparison.commitCount===1?'commit':'commits'):comparison.scope.kind==='commit'?'1 commit':comparison.summaryError?'Count unavailable':'... commits'} \u00b7 ${s.files.length} ${s.files.length===1?'file':'files'}`:'',true).tooltip(comparison?.summaryError||'Commits and changed files in the selected comparison; independent of history filters'))
     .child(popover('review-more',svg('mods/juhas/icons/more.svg').size(14),this.panel==='reviewMore',(open,cx)=>{if(open||this.panel==='reviewMore')this.panel=open?'reviewMore':null;cx.notify();},()=>v_flex().size_full()
      .child(section('Advanced comparisons'))
      .child(button('advanced-working-tree','Uncommitted',(_e,cx)=>{this.panel=null;this.applyScope('working-tree',cx);}))
      .child(button('advanced-range','Inclusive commit range…',(_e,cx)=>{this.panel=null;this.applyScope('range',cx);}))
      .child(button('advanced-base','Choose base branch…',(_e,cx)=>{this.panel='refs';cx.notify();})),{tooltip:'More review options'})))
-   .when(mode==='all'&&!comparison?.mutableTarget&&!advancedRange,e=>e.child(h_flex().gap(6).items_center().child(text(baseLabel,true).truncate())
+   .when(mode==='all'&&!comparison?.mutableTarget&&!advancedRange,e=>e.child(h_flex().gap(6).items_center().child(text(baseLabel+(s.historyBaseLoading?' · resolving…':''),true).truncate())
     .when(from==='branch',e=>e.child(popover('change-base','Change…',this.panel==='refs',(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false),{tooltip:'Choose a base branch or return to automatic selection'})))))
    .when(Boolean(advancedRange),e=>e.child(text('Advanced inclusive commit range',true)))
    .when(Boolean(comparison?.mutableTarget),e=>e.child(text('Uncommitted changes',true)))

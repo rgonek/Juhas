@@ -37,3 +37,6 @@ test('cold startup shows the persisted mode before Git restores the comparison; 
  for(const scope of [{kind:'branch',baseRef:'trunk'},{kind:'since-review',checkpointId:'round'},{kind:'range',base:'chosen',includeBase:false},{kind:'working-tree'}]){sharedData.set('selection',{scope});assert.equal(v.reviewMode(),'all');}
  v.controller.state.comparison={scope:{kind:'commit',commit:'current'}};assert.equal(v.reviewMode(),'commit');
 });
+
+
+test('a superseded base resolution does not start another history load',async()=>{const {v}=view();let loads=0;v.controller.setHistoryBase=async()=>false;v.controller.loadHistory=async()=>{loads++;};await v.updateFeatureHistory();assert.equal(loads,0);});

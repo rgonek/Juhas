@@ -107,3 +107,6 @@ test('native checkbox payloads set generation options instead of inverting them 
 test('dismissal of an old native picker does not close a different active panel',()=>{
  const {view,cx}=nativeSubmission();view.panel='comment';view.setReferencePicker(true,false,cx);assert.equal(view.panel,'comment');view.setReferencePicker(false,true,cx);assert.equal(view.panel,'refs');view.setReferencePicker(false,false,cx);assert.equal(view.panel,null);
 });
+
+
+test('saved-comment browsing filters do not omit comments from the review batch',()=>{const {view,cx}=nativeSubmission();view.draftStatus='outdated';view.draftSource='another-comparison';view.preview(cx);assert.deepEqual(view.batch.draftIds,['1','2']);});

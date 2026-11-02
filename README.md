@@ -142,3 +142,8 @@ The product and Herdr mod are **Juhas**: `mods/juhas`, `juhas.*` commands, the g
 Internal `git-review.v1.*` shared-state keys, checkpoint refs and `git-review-*` panel IDs are retained for compatibility with saved comments, review previews and integrated personal layouts. An existing personal layout can update its review blocks to `mod: "juhas"` without renaming panel IDs or resetting its layout. The old mod folder may remain while validating the new one; it is not included in this distribution.
 
 Split mode currently keeps a single shared diff scroll region. Independent horizontal scroll per source side with synchronized vertical alignment is not exposed as a complete control in the installed JavaScript API; no custom wheel-event synchronization is implemented. The scroll viewport is bounded to the diff panel.
+
+
+The review header summarizes the selected comparison with its commit and changed-file counts. Commit mode counts one commit; aggregate comparisons count the resolved Git DAG range rather than the visible history page. Uncommitted comparisons show files without a commit count. Counts for immutable revisions are cached. Resolving a base is indicated in History and beside the comparison base; an older response cannot replace a newer base choice.
+
+Saved comments can be filtered by Current/Outdated status and source comparison. These are browsing filters: Submit review still includes all saved comments for the repository. Clear all also applies to the current repository, including comments hidden by filters; comments from other repositories are preserved.

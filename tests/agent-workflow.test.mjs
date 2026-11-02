@@ -21,9 +21,9 @@ test('checkpoint choice skips rewritten ancestry, foreign worktrees and unknown 
 async function setup(t){const f=fixture(t);const base=f.commit('base\n');f.git('checkout','-b','feature/topic');const first=f.commit('intermediate\n'),head=f.commit('final\n');const c=new Controller({run,store:store()});await c.openRepo(null,f.root);return {f,c,base,first,head};}
 test('agent review uses final branch trees, feature history and exclusive manual baselines',async t=>{
  const {c,base,first,head}=await setup(t);await c.setHistoryBase('trunk');await c.loadHistory({exclude:c.state.featureBaseOid});assert.deepEqual(c.state.history.map(x=>x.oid),[head,first]);
- await c.selectScope({kind:'commit',commit:head});await c.selectFile(c.state.files[0].id);assert.equal(c.state.comparison.baseOid,first);assert.match(c.state.patch.hunks[0].lines.map(x=>x.text).join('\n'),/intermediate/);
- await c.selectScope({kind:'branch',baseRef:'trunk',targetRef:'HEAD'});await c.selectFile(c.state.files[0].id);assert.equal(c.state.comparison.baseOid,base);const text=c.state.patch.hunks[0].lines.map(x=>x.text).join('\n');assert.match(text,/final/);assert.doesNotMatch(text,/intermediate/);
- await c.selectScope({kind:'range',base:first,target:'HEAD',includeBase:false});assert.equal(c.state.comparison.baseOid,first);
+ await c.selectScope({kind:'commit',commit:head});await c.selectFile(c.state.files[0].id);assert.equal(c.state.comparison.baseOid,first);assert.equal(c.state.comparison.commitCount,1);assert.match(c.state.patch.hunks[0].lines.map(x=>x.text).join('\n'),/intermediate/);
+ await c.selectScope({kind:'branch',baseRef:'trunk',targetRef:'HEAD'});await c.selectFile(c.state.files[0].id);assert.equal(c.state.comparison.baseOid,base);assert.equal(c.state.comparison.commitCount,2);const text=c.state.patch.hunks[0].lines.map(x=>x.text).join('\n');assert.match(text,/final/);assert.doesNotMatch(text,/intermediate/);
+ await c.selectScope({kind:'range',base:first,target:'HEAD',includeBase:false});assert.equal(c.state.comparison.baseOid,first);assert.equal(c.state.comparison.commitCount,1);
 });
 test('comments across commit and branch views retain revisions and batch together; amend invalidates only removed source',async t=>{
  const {c,f,first,head}=await setup(t);for(const id of [first,head]){await c.selectScope({kind:'commit',commit:id});await c.selectFile(c.state.files[0].id);const line=c.state.patch.hunks[0].lines.find(l=>l.side==='new');c.addComment(commentTarget(c.state.comparison,c.state.file,line),'fix '+id,id);}

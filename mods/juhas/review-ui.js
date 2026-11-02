@@ -43,3 +43,4 @@ export function stepChange(groups,currentId,direction){
  if(!groups.length)return null;const current=groups.findIndex(group=>group.id===currentId);return groups[current<0?(direction>0?0:groups.length-1):(current+(direction>0?1:-1)+groups.length)%groups.length];
 }
 export function rangeSelection(history,first,last){const a=history.findIndex(c=>c.oid===first),b=history.findIndex(c=>c.oid===last);if(a<0||b<0)return null;return {kind:'range',base:history[Math.max(a,b)].oid,target:history[Math.min(a,b)].oid,includeBase:true};}
+export function filterDrafts(drafts,{repoKey,status='all',source='all'}={}){return drafts.filter(d=>(repoKey==null||d.repoKey===repoKey)&&(status==='all'||(d.status||'current')===status)&&(source==='all'||d.comparisonId===source));}

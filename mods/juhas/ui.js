@@ -2,7 +2,7 @@ import {div,PathBuilder,svg} from 'gpui-kit';
 import {h_flex,v_flex,v_virtual_list,Scrollbar,Input,Button,Checkbox,Toggle,Popover} from 'gpui-base';
 import {theme,settings} from 'herdr';
 import {layoutGraph} from './graph.js';
-import {fileRows,splitRows,changeGroups} from './review-ui.js';
+import {fileRows,splitRows,changeGroups,filterDrafts} from './review-ui.js';
 import {annotatePatch,composerRows,commentHeight,INLINE_EDITOR_HEIGHT} from './comments.js';
 export function nativeFrame(id){const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13);}
 function control(element,{active=false,primary=false,segment=false}={}){const t=theme();return element.h(28).flex_none().px(8).flex().gap(6).items_center().justify_center().rounded(6).text_size(12).cursor_pointer()
@@ -34,6 +34,26 @@ export function text(value,dim=false){const t=theme();return div().text_size(12)
 export function commitId(oid){return h_flex().gap(4).items_center().child(text(oid,true)).child(button('copy-commit-id',svg('mods/juhas/icons/copy.svg').size(13),(_e,cx)=>cx.write_to_clipboard(oid),{tooltip:'Copy full commit ID'}).h(22).w(22).px(0));}
 export function virtualList(id,items,height,row,click,scrollHandle=null){return v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(v_virtual_list(id,items.length,height,i=>String(items[i].id??items[i].oid??i),range=>items.slice(range.start,range.end).map(row)).when(Boolean(scrollHandle),el=>el.track_scroll(scrollHandle)).on_item_click(click).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());}
 export function section(title){const t=theme();return div().h(28).flex_none().px(10).py(6).text_size(10).font_semibold().text_color(t.muted).bg(t.chrome).child(title.toUpperCase());}
+export function draftsPane(view,cx){
+ const repoKey=view.controller.state.repo?.key,drafts=filterDrafts(view.controller.session().drafts,{repoKey}),status=view.draftStatus||'all',source=view.draftSource||'all',visible=filterDrafts(drafts,{status,source}),sources=[...new Map(drafts.map(d=>[d.comparisonId,d])).values()];
+ const sourceLabel=d=>d.targetOid?`${d.baseOid?.slice(0,8)||'empty'} → ${d.targetOid.slice(0,8)}`:'Working tree';
+ const choose=(value,cx)=>{view.draftSource=value;view.draftSourcePicker=false;cx.notify();};
+ return v_flex().h(300).min_h(0).min_w(0)
+  .child(h_flex().items_center().child(section(`Saved comments · ${visible.length}/${drafts.length}`).flex_1())
+   .child(button('clear-comments','Clear all',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},{tooltip:'Delete all saved comments in this repository, including comments hidden by filters'}).disabled(!drafts.length)))
+  .child(h_flex().min_h(36).flex_none().px(8).py(4).gap(6).flex_wrap().items_center()
+   .child(buttonGroup('draft-status',[{value:'all',label:'All'},{value:'current',label:'Current'},{value:'outdated',label:'Outdated'}],status,(value,cx)=>{view.draftStatus=value;cx.notify();}))
+   .child(popover('draft-source',source==='all'?'All comparisons':sourceLabel(sources.find(d=>d.comparisonId===source)||{}),Boolean(view.draftSourcePicker),(open,cx)=>{view.draftSourcePicker=open;cx.notify();},()=>v_flex().size_full().min_h(0)
+    .child(button('draft-source-all','All comparisons',(_e,cx)=>choose('all',cx)))
+    .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar().children(sources.map(d=>button(`draft-source-${d.id}`,sourceLabel(d),(_e,cx)=>choose(d.comparisonId,cx),{active:source===d.comparisonId,tooltip:`${d.baseOid||'empty'} → ${d.targetOid||'working tree'}`})))),{tooltip:'Filter saved comments by source comparison; Submit review still includes all saved comments'})))
+  .child(v_flex().flex_1().min_h(0).min_w(0).overflow_y_scrollbar()
+   .when(!visible.length,e=>e.child(text('No saved comments match these filters.',true).p(10)))
+   .children(visible.map(d=>h_flex().gap(6).px(8).py(4).items_center()
+    .child(v_flex().flex_1().min_w(0).tooltip(`${d.newPath||d.oldPath}\n${sourceLabel(d)}\n${d.body}`)
+     .child(text(`${d.status==='outdated'?'[OUTDATED] ':''}${d.newPath||d.oldPath} ${d.startLine??''}`,true).truncate())
+     .child(text(d.body).truncate()).child(text(sourceLabel(d),true).text_size(10)))
+    .child(button(`edit-${d.id}`,'Edit',(_e,cx)=>view.editDraft(d,cx))).child(button(`delete-${d.id}`,'Delete',(_e,cx)=>{view.controller.removeComment(d.id);cx.notify();})))));
+}
 export function graphCell(row){
  const t=theme(),colors=[t.ansi4,t.ansi2,t.ansi5,t.ansi3,t.ansi6];const x=lane=>8+lane*11;const paths=[];
  for(let i=0;i<row.before.length;i++)if(row.before[i]&&i!==row.lane){const to=row.after.indexOf(row.before[i]);if(to>=0)paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(i),0).line_to(x(to),26).build(),colors[i%colors.length]).absolute().inset_0());}
@@ -52,7 +72,7 @@ export function historyPane(view,cx){
   .child(div().w(60).flex_none().text_size(10).text_color(t.dim).child(c.oid.slice(0,8)));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().gap(4)
-  .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())
+  .child(section(s.historyBaseLoading?'History · resolving base…':view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())
   .child(popover('history-options',svg('mods/juhas/icons/more.svg').size(14),view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
    .child(button('history-feature','Feature branch commits',(_e,cx)=>view.setHistoryView('feature',cx)))
    .child(button('history-full','Show full history',(_e,cx)=>view.setHistoryView('full',cx)))

@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import * as comments from '../mods/juhas/comments.js';
-import {splitRows,changeGroups} from '../mods/juhas/review-ui.js';
+import {splitRows,changeGroups,filterDrafts} from '../mods/juhas/review-ui.js';
 function controls(){
  let layout=false;
  const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
- const names=['Button','Checkbox','Toggle','Popover'],deps={...comments,splitRows,changeGroups,div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
- let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {button,checkbox,toggle,popover,buttonGroup,commitId,diffPane};')(...Object.values(deps));
+ const names=['Button','Checkbox','Toggle','Popover'],deps={...comments,splitRows,changeGroups,filterDrafts,div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
+ let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {button,checkbox,toggle,popover,buttonGroup,commitId,diffPane,draftsPane};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
 function diffView(patch,target){return {id:'fixture',width:360,inlineEditor:{retained:true},target,diffMode:'unified',diffChangeKey:()=> 'c',controller:{state:{comparison:{id:'c'},file:{newPath:'a'},patch},session:()=>({drafts:[]})}};}
@@ -45,4 +45,13 @@ test('commit ID has a compact native copy button that copies the complete SHA on
  const copied=[],oid='1234567890abcdef1234567890abcdef12345678',row=controls().commitId(oid),button=row.nodes[1];
  assert.deepEqual(copied,[]);assert.equal(button.kind,'Button');assert.equal(button.values.tooltip,'Copy full commit ID');assert.equal(button.values.h,22);
  button.handlers.on_click({}, {write_to_clipboard:value=>copied.push(value)});assert.deepEqual(copied,[oid]);
+});
+
+
+test('native comment filters narrow the list while Clear all stays repository-scoped',()=>{
+ let session={drafts:[{id:'one',repoKey:'r',comparisonId:'a',targetOid:'a'.repeat(40),newPath:'a.js',body:'current'},{id:'two',repoKey:'r',comparisonId:'b',targetOid:'b'.repeat(40),newPath:'b.js',status:'outdated',body:'older'},{id:'foreign',repoKey:'elsewhere',comparisonId:'a',newPath:'c.js',body:'keep'}]};
+ const view={draftStatus:'outdated',draftSource:'all',draftSourcePicker:true,controller:{state:{repo:{key:'r'}},session:()=>session,mutate:fn=>session=fn(session)},editDraft(){}};const cx={notify(){}};
+ const panel=controls().draftsPane(view,cx),nodes=descendants(panel);assert.ok(nodes.some(x=>x.identity==='edit-two'));assert.ok(!nodes.some(x=>x.identity==='edit-one'));assert.ok(!nodes.some(x=>x.identity==='edit-foreign'));
+ nodes.find(x=>x.identity==='draft-status-current').handlers.on_click({},cx);assert.equal(view.draftStatus,'current');descendants(nodes.find(x=>x.identity==='draft-source').values.content).find(x=>x.identity==='draft-source-one').handlers.on_click({},cx);assert.equal(view.draftSource,'a');assert.equal(view.draftSourcePicker,false);assert.equal(session.drafts.length,3);
+ nodes.find(x=>x.identity==='clear-comments').handlers.on_click({},cx);assert.deepEqual(session.drafts.map(d=>d.id),['foreign']);
 });

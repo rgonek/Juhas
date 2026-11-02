@@ -29,10 +29,19 @@ test('outdated comments and renamed paths keep precise context in compact text',
 test('overlapping feedback from different commits has distinct source revisions and bounded automatic excerpts',()=>{
  const first={...comments[0],id:'first',quote:'first version\n'+'long '.repeat(100)},second={...comments[0],id:'second',comparisonId:'next',targetOid:'c'.repeat(40),quote:'second version'};
  const batch=submission.buildBatch({id:'s',drafts:[first,second]},[],{repoKey:'repo'});assert.match(batch.text,/bbbbbbbbbbbb/);assert.match(batch.text,/cccccccccccc/);assert.match(batch.text,/> first version/);assert.match(batch.text,/> second version/);assert.ok(!batch.text.includes(first.quote));assert.equal(batch.includeQuotes,false);assert.equal(batch.includeGitContext,false);assert.equal(batch.draftSnapshots.first,JSON.stringify(first));
- const sparse=submission.buildBatch({id:'s',drafts:[first,{...second,startLine:90,endLine:90}]},[],{repoKey:'repo'});assert.ok(!sparse.text.includes('first version'));assert.match(sparse.text,/bbbbbbbbbbbb/);
+ const sparse=submission.buildBatch({id:'s',drafts:[first,{...second,startLine:90,endLine:90}]},[],{repoKey:'repo'});assert.ok(!sparse.text.includes('first version'));assert.ok(!sparse.text.includes(' @ '));
 });
-test('a single current comment retains a compact source ID even if the agent later advances HEAD',()=>{
- const draft=comments[0],batch=submission.buildBatch({id:'s',drafts:[draft]},[{id:draft.comparisonId,repoKey:'repo'}],{repoKey:'repo'});assert.match(batch.text,/@ bbbbbbbbbbbb/);assert.ok(!batch.text.includes(draft.targetOid));assert.ok(!batch.text.includes(draft.quote));
+test('distinct locations across three commits omit source IDs while retaining original snapshots',()=>{
+ const drafts=[comments[0],{...comments[1],comparisonId:'next',targetOid:'c'.repeat(40)},{...comments[0],id:'third',comparisonId:'third',targetOid:'d'.repeat(40),newPath:'other.ts',oldPath:'other.ts'}];
+ const batch=submission.buildBatch({id:'s',drafts},[],{repoKey:'repo'});assert.ok(!batch.text.includes(' @ '));assert.ok(!batch.text.includes('> '));for(const draft of drafts)assert.equal(batch.draftSnapshots[draft.id],JSON.stringify(draft));
+ const full=submission.buildBatch({id:'s',drafts},[],{repoKey:'repo',includeGitContext:true});for(const draft of drafts)assert.ok(full.text.includes(draft.targetOid));assert.ok(!full.text.includes(' @ '));
+});
+test('a single current comment omits optional source and code context',()=>{
+ const draft=comments[0],batch=submission.buildBatch({id:'s',drafts:[draft]},[{id:draft.comparisonId,repoKey:'repo'}],{repoKey:'repo'});assert.ok(!batch.text.includes(' @ '));assert.ok(!batch.text.includes(draft.targetOid));assert.ok(!batch.text.includes(draft.quote));
+});
+test('file-level feedback from different revisions is disambiguated',()=>{
+ const drafts=[{...comments[0],startLine:null,endLine:null},{...comments[0],id:'next',comparisonId:'next',targetOid:'c'.repeat(40),startLine:null,endLine:null}];
+ const batch=submission.buildBatch({id:'s',drafts},[]);assert.match(batch.text,/@ bbbbbbbbbbbb/);assert.match(batch.text,/@ cccccccccccc/);
 });
 const context={spaceId:'s',tabId:'tab',machine:null};
 const terminal=(address,extra={})=>({address,state:'live',program:{agent:true},...extra});

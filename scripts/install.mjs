@@ -3,6 +3,10 @@ import {resolve,join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 import {execFileSync} from 'node:child_process';
+export function assertHerdrVersion(output){
+ const match=String(output).match(/\b(\d+)\.(\d+)\.(\d+)\b/);if(!match)throw new Error('Cannot determine the Herdr App version; Juhas requires 0.1.11 or later');
+ const [major,minor,patch]=match.slice(1).map(Number);if(!(major>0||minor>1||minor===1&&patch>=11))throw new Error(`Juhas requires Herdr App 0.1.11 or later; found ${match[0]}`);return match[0];
+}
 export function buildLayout(original){
  const tree=structuredClone(original);let terminal=null,panelBody=null,tabs=null;
  function inspect(node){if(/^git-review-/.test(node.id||''))throw new Error('Layout already contains Juhas');if(node.content?.tab==='active'&&!terminal)terminal=node;if(node.id==='panel-body')panelBody=node;if(node.id==='tabs')tabs=node;for(const child of node.children||[])inspect(child);}
@@ -33,6 +37,7 @@ export function install({appHome,layoutName='main',source=resolve(dirname(fileUR
  writeFileSync(layout,JSON.stringify(built,null,2)+'\n');return {mod,tabsMod,layout,backup:existsSync(backup)?backup:null};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ assertHerdrVersion(execFileSync('herdr-app',['--version'],{encoding:'utf8'}));
  const args=process.argv.slice(2);const option=(key,fallback)=>{const i=args.indexOf(key);return i<0?fallback:args[i+1];};const appHome=option('--app-home',process.env.HERDR_APP_HOME||join(homedir(),'.config','herdr-app'));
  const result=install({appHome,layoutName:option('--layout','main')});console.log(JSON.stringify(result,null,2));
  execFileSync('herdr-app',['check',result.mod],{stdio:'inherit',env:{...process.env,HERDR_APP_HOME:appHome}});

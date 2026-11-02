@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {Script} from 'node:vm';
-import {install,buildLayout} from '../scripts/install.mjs';
+import {install,buildLayout,assertHerdrVersion} from '../scripts/install.mjs';
 test('installer creates independent sidebar/full layout without touching shipped layout',t=>{
  const home=mkdtempSync(join(tmpdir(),'juhas-install-'));t.after(()=>rmSync(home,{recursive:true,force:true}));mkdirSync(join(home,'layouts'));
  const original={id:'root',type:'column',children:[{id:'terminal',type:'block',content:{tab:'active'}}]};writeFileSync(join(home,'layouts','main.json'),JSON.stringify(original));
@@ -19,4 +19,9 @@ test('installer creates independent sidebar/full layout without touching shipped
 test('layout builder refuses layouts without a terminal area and duplicate review identities',()=>{
  assert.throws(()=>buildLayout({id:'root',type:'column',children:[]}),/terminal/i);
  const already={id:'git-review-work',type:'block',content:{tab:'active'}};assert.throws(()=>buildLayout(already),/already/i);
+});
+test('installer rejects unsupported or unknown Herdr versions',()=>{
+ for(const version of ['0.1.11','0.1.12','0.2.0','1.0.0'])assert.equal(assertHerdrVersion('herdr-app '+version),version);
+ for(const version of ['0.1.10','0.0.99'])assert.throws(()=>assertHerdrVersion('herdr-app '+version),/requires Herdr App 0.1.11/);
+ assert.throws(()=>assertHerdrVersion('unknown'),/Cannot determine/);
 });

@@ -1,6 +1,6 @@
 # Installing or adapting Juhas
 
-This is a native JavaScript Herdr mod, not a webview. Read your installation's `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts`; those files are authoritative for the installed version.
+This is a native JavaScript Herdr mod, not a webview. It requires Herdr App 0.1.11 or later with the documented JavaScript APIs. Read your installation's `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts`; those files are authoritative for the installed version.
 
 Copy only `mods/juhas` into the user's Herdr mods directory. Generated type files, private sessions, test scratch data and `docs/superpowers` are not distribution files. Run `herdr-app check` and inspect the live rendered view, including populated virtual rows and asynchronous errors.
 

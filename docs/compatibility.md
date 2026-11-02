@@ -1,6 +1,6 @@
 # Compatibility
 
-Baseline: Herdr App 0.1.10 on Windows; runtime JavaScript with gpui-kit, gpui-base and herdr APIs. No Node or browser runtime is needed by the mod. Node >=22 and Git are used by the test suite.
+Supported minimum: Herdr App 0.1.11; native verification is on Windows; runtime JavaScript with gpui-kit, gpui-base and herdr APIs. No Node or browser runtime is needed by the mod. Node >=22 and Git are used by the test suite.
 
 The isolated native spike rendered two copies of a 3,000-row virtual list and a shared selection in a sidebar and full work-area stack. `layout.select {stack,child}` selects the review card or terminal without ending the terminal. This meets the full-card requirement without a Herdr source change. A custom mod draws the card tabs: the installed documentation's shorthand `header: "tabs"` is rejected by this version's parser and is not used.
 

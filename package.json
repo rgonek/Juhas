@@ -1,1 +1,19 @@
-{"name":"juhas","version":"0.1.0","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.mjs","check":"herdr-app check mods/juhas"},"engines":{"node":">=22"}}
+{
+  "name": "juhas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "herdr-app check mods/juhas"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "description": "Review coding-agent changes inside Herdr, leave inline comments and send one clear round of feedback.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rgonek/juhas.git"
+  }
+}

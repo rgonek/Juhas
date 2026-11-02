@@ -1,0 +1,12 @@
+Juhas
+Copyright 2026 Robert Gonek
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+Bundled Lucide SVG icons retain their ISC and, where applicable, MIT
+licenses. Full notices are in mods/juhas/icons/LICENSE-Lucide.txt.
+
+Herdr, gpui-kit and gpui-base are supplied by the user's installation.
+The installer generates a personal tabs clone locally from the installed
+Herdr tabs mod; that generated source is not bundled in this distribution.
+See THIRD_PARTY_NOTICES.md for sources and attribution.

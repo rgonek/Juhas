@@ -65,10 +65,12 @@ Diff controls and annotations: all toolbar mode/filter/side selectors now use gr
 
 ## Release acceptance still requiring separate evidence
 
-- Native UI verification on macOS/Linux; remote CI must run after a repository is published.
+- Native UI verification on macOS/Linux. Core CI is passing on Windows, Linux and macOS; that does not verify native UI.
 - Exact warm input-to-frame p95 and cold full-view performance budgets; current measurements are separated Git/cache timings.
 - Large real-world graph scrolling and all themes at multiple display scales on each supported platform.
-- Author's public license choice. No community source was copied; see THIRD_PARTY_NOTICES.md.
+- The full clean-profile install/restart/review/send smoke test is deferred by the owner. It is not part of the completed acceptance evidence.
+
+The project license is Apache-2.0, matching the owner’s Kolczyk mod. Herdr 0.1.11 is the supported minimum. See THIRD_PARTY_NOTICES.md for bundled icon licenses.
 
 Do not describe declared CI coverage, source inspection, or a mod check as completed cross-platform native testing. A core send acknowledgement means delivery to a terminal, not completion by an agent.
 

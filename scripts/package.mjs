@@ -2,7 +2,7 @@ import {existsSync,readFileSync,readdirSync,mkdirSync,copyFileSync} from 'node:f
 import {join,resolve,dirname,relative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const publicFiles=['README.md','RECIPE.md','preview.png','LICENSE','NOTICE','THIRD_PARTY_NOTICES.md','scripts/install.mjs','scripts/install.ps1','scripts/install.sh','docs/images/review.png','docs/usage.md','docs/publishing.md','docs/compatibility.md','docs/design-brief.md','docs/performance.md','docs/acceptance.md'];
-const modules=['cache','comments','comparisons','config','context','controller','diff','git','graph','history','inline-editor','main','model','platform','presentation','repositories','review','review-ui','storage','submit','ui','working-observation','refresh','progress','reading','snapshots','guided','review-tab','pane-presentation','file-header'];
+const modules=['cache','comments','comparisons','config','context','controller','diff','git','graph','history','inline-editor','main','model','platform','presentation','repositories','review','review-ui','storage','submit','ui','working-observation','refresh','progress','reading','snapshots','guided','review-tab','pane-presentation','file-header','commit-time'];
 export function releaseFiles(source){
  const files=publicFiles.filter(f=>existsSync(join(source,f)));const mod=join(source,'mods','juhas');if(!existsSync(mod))return files;
  for(const name of [...modules.map(m=>m+'.js'),'mod.json','helpers/list-directories.ps1','icons/LICENSE-Lucide.txt',...['juhas','expand','collapse','fetch','refresh','comment','copy','arrow-up','arrow-down','more','chevron-right','chevron-down','check','loader-circle'].map(name=>'icons/'+name+'.svg')])if(existsSync(join(mod,name)))files.push(`mods/juhas/${name}`);

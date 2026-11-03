@@ -39,12 +39,12 @@ function nativeBranchView(saved=''){
  view.config={baseRules:rules};view.inputs={base:{value:()=>base,set_value:v=>base=v},target:{value:()=> 'HEAD'}};view.controller={state:{refs,branch:'feature/project-42/task-9'},base:()=>saved,setBase:v=>{saved=v;calls.push(['save',v]);},selectScope:async scope=>calls.push(['scope',scope])};view.publish=()=>{};view.work=(_cx,action)=>view.pending=action();return {view,calls};
 }
 test('native Branch automatically applies a rule without pinning it as a manual override',async()=>{
- const {view,calls}=nativeBranchView();view.restoreBase();assert.equal(view.inputs.base.value(),'refs/heads/integration/project-42');assert.equal(view.baseSource,'auto');view.applyScope('branch',{});await view.pending;
+ const {view,calls}=nativeBranchView();view.restoreBase();assert.equal(view.inputs.base.value(),'refs/heads/integration/project-42');assert.equal(view.baseSource,'auto');view.applyScope('branch',{notify(){}});await view.pending;
  assert.deepEqual(calls,[['scope',{kind:'branch',baseRef:'refs/heads/integration/project-42',targetRef:'HEAD'}]]);
 });
 test('native Branch preserves a manual choice and missing rule candidates open the chooser',async()=>{
- const {view,calls}=nativeBranchView('refs/heads/trunk');view.restoreBase();view.applyScope('branch',{});await view.pending;assert.equal(view.baseSource,'manual');assert.equal(calls[0][1].baseRef,'refs/heads/trunk');
- const other=nativeBranchView();other.view.controller.state.refs=[];other.view.applyScope('branch',{});await other.view.pending;assert.equal(other.view.panel,'refs');assert.deepEqual(other.calls,[]);
+ const {view,calls}=nativeBranchView('refs/heads/trunk');view.restoreBase();view.applyScope('branch',{notify(){}});await view.pending;assert.equal(view.baseSource,'manual');assert.equal(calls[0][1].baseRef,'refs/heads/trunk');
+ const other=nativeBranchView();other.view.controller.state.refs=[];other.view.applyScope('branch',{notify(){}});await other.view.pending;assert.equal(other.view.panel,'refs');assert.deepEqual(other.calls,[]);
 });
 
 import {fixture,run} from './helpers/repos.mjs';

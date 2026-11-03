@@ -28,3 +28,11 @@ test('creating a new review tab retains the source pane until its tab registers'
  const {v,data,commands,live}=setup();v.role='pane';v.displayTabId='terminal-y';live.panes=[{pane:'source-review',tab:'terminal-y',mod:'juhas'}];v.openReviewTab();
  assert.equal(commands.length,1);assert.equal(commands[0][0],'tab.new');assert.deepEqual(data.get(reviewTabKey(v.controller.state.repo,v.activeContext.spaceId)).origin,{paneId:'source-review',tabId:'terminal-y'});
 });
+test('legacy sidebar hides on Expand even if new-tab registration has not completed',()=>{
+ const {v,commands}=setup();v.role='sidebar';v.openReviewTab();assert.deepEqual(commands.slice(1),[['layout.hide',{id:'git-review-sidebar'}],['layout.hide',{id:'panel'}]]);
+});
+test('a review tab registers its new pane even when init still reports the source tab',()=>{
+ const {v,data,commands,live,source}=setup(),key=reviewTabKey(v.controller.state.repo,source.spaceId);v.contextProps={isReviewTab:true,reviewTabKey:key,folder:'D:/y',reviewContext:source};v.displayTabId='terminal-y';
+ live.spaces=[{id:source.spaceId,tabs:[{id:'terminal-y'},{id:'new-review',name:'Review · y'}]}];live.panes=[{pane:'source-review',tab:'terminal-y',mod:'juhas'},{pane:'new-pane',tab:'new-review',mod:'juhas'}];data.set(key,{opening:Date.now(),previousTabIds:['terminal-y'],origin:{paneId:'source-review',tabId:'terminal-y'}});
+ assert.equal(v.registerReviewTab(),true);assert.equal(v.displayTabId,'new-review');assert.equal(data.get(key).paneId,'new-pane');assert.deepEqual(commands,[['pane.close',{pane:'source-review'}]]);
+});

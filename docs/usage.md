@@ -14,7 +14,7 @@ Start with the [quick introduction](../README.md) or use this guide for the full
    | All changes | Final tree difference against HEAD. Compare from Base branch (merge-base), Last review checkpoint, or Choose commit (changes after that commit, excluding the commit itself). |
    | Uncommitted | HEAD versus current files, including new files; also available before the first commit. |
 
-All changes remembers its baseline when you visit individual commits. **Include uncommitted** adds later working-file changes to that aggregate diff. **Base branch** reuses local configuration and manual override; **Change…** opens a searchable branch list and allows returning to automatic selection. Typing filters loaded refs without querying Git. Missing or ambiguous bases never block Commit review. No branch naming convention is built in. More review options holds Fetch, baseline management, resetting Viewed and explicitly requested guided reading. Inclusive ranges remain advanced. Working-tree safeguards still apply; Shift/drag range gestures are not emulated.
+All changes remembers its baseline when you visit individual commits. **Include uncommitted** adds later working-file changes to that aggregate diff. **Base branch** reuses local configuration and manual override; **Change…** opens a searchable branch list and allows returning to automatic selection. Typing filters loaded refs without querying Git. The branch filter has a fixed single-row height and receives focus after the popover opens. Missing or ambiguous bases never block Commit review. No branch naming convention is built in. More review options holds Fetch, baseline management, resetting Viewed and explicitly requested guided reading. Inclusive ranges remain advanced. Working-tree safeguards still apply; Shift/drag range gestures are not emulated.
 
 Files can be shown as a flat list or collapsible tree. Tree view compacts single-child folders without direct files into paths such as `Client/Pages/Clients` and shows the number of changed files in each subtree, with status colors, added/deleted line counts and comment badges. **Details** shows the selected commit message, author, email, date and refs. The header fetch button runs `git fetch --all --prune` and refreshes the review.
 
@@ -131,6 +131,11 @@ in existing headers, preserve loaded rows and distinguish pagination from
 history refreshes.
 
 
-The compact comment editor shows two text lines. Enter saves through the native textarea submit event; Shift+Enter inserts a line break. Older hosts insert a line break before reporting Enter submission, so that inserted line break remains in the saved text. Newer hosts exposing submit-on-enter avoid that extra break. No ancestor keyboard override or host upgrade is used.
+The comment editor starts at two text lines, grows natively to five and then scrolls. Its diff row uses measured layout while open. Enter saves through the native textarea submit event; Shift+Enter inserts a line break. Older hosts insert a line break before reporting Enter submission, so that inserted line break remains in the saved text. Newer hosts exposing submit-on-enter avoid that extra break. No ancestor keyboard override or host upgrade is used.
 
-Expand hides the originating legacy sidebar or closes only its Juhas pane after a review tab is confirmed. If tab creation fails, the original view remains available.
+Expand immediately hides the originating legacy sidebar; a native Juhas pane is closed after the review tab is confirmed. Registration identifies the newly created tab instead of trusting the focused tab during init. If tab creation fails, the original view remains available.
+
+
+Dedicated review tabs omit the redundant Juhas/branch heading. Refresh is in the common review-mode toolbar in both sidebar and tab. History rows show local commit times: relative under three hours, then Today HH:mm or Yesterday HH:mm, otherwise YYYY-MM-DD HH:mm. The original exact timestamp stays available in the tooltip.
+
+History rows omit the redundant `HEAD -> branch` decoration; other refs/tags remain visible and full refs stay in the tooltip and details.

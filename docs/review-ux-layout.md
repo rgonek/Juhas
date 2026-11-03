@@ -13,3 +13,11 @@ Implementation stays on the current branch, uses targeted regressions and final 
 Independent review found a delayed file-header comment race; controller/comparison/file checks and comparison-bound queue actions now reject superseded clicks. Header controls are retained entities created outside render/layout, dispatched through the parent async context. Unchanged header signatures avoid redundant child notifications.
 
 Native Windows screenshots confirmed the single-file toolbar, hidden search row, Comments split and All files headers with per-file Viewed/Comment. A long unwrapped line initially pushed header controls offscreen; explicit viewport width corrected it and has a regression. Automated tests cover native submit routing, branch filtering without Git, source-specific progress, queued actions and delayed file-comment selection. Physical keyboard/IME and dragging were not automated in the user's window. The installed older Textarea API adds a newline before submit; newer submit-on-enter is feature-detected, without upgrading Herdr.
+
+## Follow-up fixes
+
+The legacy sidebar no longer waits for review-tab registration before hiding. Registration uses the tab IDs existing before creation and retries for a bounded three seconds, avoiding the source-tab focus reported during initial creation. The redundant heading is hidden in dedicated tabs; Refresh moved into the common review toolbar.
+
+The branch field cannot grow vertically into the popover, and deferred focus is canceled when its picker closes. Native textarea growth is two to five rows; any diff with an open editor uses measured rows instead of a fixed composer extent. History displays bounded relative times followed by local Today/Yesterday or full dates.
+
+Native Windows acceptance confirmed the repeated heading is absent, Refresh remains reachable, bounded date labels render in history, and a live Expand from the legacy sidebar creates the review tab with the sidebar hidden. The test-created tab was closed afterward. Full refs remain in tooltips/details while the HEAD branch prefix is omitted from history rows. No pointer/key automation or Herdr restart was used.

@@ -3,7 +3,8 @@ import {h_flex,v_flex,v_virtual_list,Scrollbar,Input,Button,Checkbox,Toggle,Popo
 import {theme,settings} from 'herdr';
 import {layoutGraph} from './graph.js';
 import {fileRows,splitRows,changeGroups,filterDrafts} from './review-ui.js';
-import {annotatePatch,composerRows,commentHeight,INLINE_EDITOR_HEIGHT} from './comments.js';
+import {annotatePatch,composerRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
+import {formatCommitTime} from './commit-time.js';
 import {decorateLine,intraline,multiFileRows} from './reading.js';
 export function nativeFrame(id){const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13);}
 function control(element,{active=false,primary=false,segment=false}={}){const t=theme();return element.h(28).flex_none().px(8).flex().gap(6).items_center().justify_center().rounded(6).text_size(12).cursor_pointer()
@@ -70,10 +71,11 @@ export function historyPane(view,cx){
  const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows;
  const first=s.history.findIndex(c=>c.oid===(view.commitAnchor||s.comparison?.scope.base)),last=s.history.findIndex(c=>c.oid===s.comparison?.targetOid);
  const selected=(c,i)=>view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
- const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c);return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
-  .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}`)
-  .child(graphCell(rows[i])).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(`${c.refs?.length?'['+c.refs.join(', ')+'] ':''}${c.subject}`))
-  .child(div().w(95).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author))
+ const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD'&&!ref.startsWith('HEAD -> '));return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
+  .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
+  .child(graphCell(rows[i])).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(`${refs.length?'['+refs.join(', ')+'] ':''}${c.subject}`))
+  .child(div().w(112).flex_none().truncate().text_size(11).text_color(t.muted).child(formatCommitTime(c.timestamp)))
+  .child(div().w(75).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author))
   .child(div().w(60).flex_none().text_size(10).text_color(t.dim).child(c.oid.slice(0,8)));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().gap(4)
@@ -87,7 +89,7 @@ export function historyPane(view,cx){
    .when(Boolean(view.historyAdvanced),e=>e.child(button('history-full','Show full history',(_e,cx)=>view.setHistoryView('full',cx)))
     .child(button('history-all','All branches',(_e,cx)=>view.setHistoryView('all',cx)))
     .child(checkbox('graph-remotes','Include remotes',view.remotes,(checked,cx)=>{view.remotes=checked;view.work(cx,()=>view.controller.loadHistory(view.filters()));}))
-    .child(button('history-branch-picker','Browse branches…',(_e,cx)=>{view.panel='historyRefs';cx.notify();}))),{tooltip:'History options'})))
+    .child(button('history-branch-picker','Browse branches…',(_e,cx)=>view.setReferencePicker(true,true,cx)))),{tooltip:'History options'})))
   .child(list).when(Boolean(view.detailsOpen&&commit),e=>e.child(v_flex().flex_none().max_h(130).overflow_y_scrollbar().p(10).gap(5).border_t(1).border_color(t.border)
     .child(text(s.details?.subject||commit.subject).font_semibold()).child(text(s.details?.author||`${commit.author} · ${new Date(commit.timestamp*1000).toLocaleString()}`,true)).child(commitId(commit.oid)).child(text(s.details?.body||'',true)).child(text(commit.refs.join(', '),true))))
   .when(s.hasMore,e=>e.child(button('history-more',s.historyLoadingMore?'Loading...':'Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true))).disabled(Boolean(s.historyLoading||s.historyBaseLoading))));
@@ -147,9 +149,9 @@ export function diffPane(view){
   if(row.kind==='file-header')return h_flex().h(30).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(46).p(12);
   if(row.kind==='comment'||row.kind==='editor'){
-   const height=row.kind==='editor'?INLINE_EDITOR_HEIGHT:commentHeight(row.text),content=()=>row.kind==='editor'?div().h(height).w_full().max_w(view.width||'100%').child(view.inlineEditor):commentCard(row,view.id,view.width);
+   const height=row.kind==='editor'?INLINE_EDITOR_HEIGHT:commentHeight(row.text),content=()=>row.kind==='editor'?div().min_h(height).max_h(INLINE_EDITOR_MAX_HEIGHT).w_full().max_w(view.width||'100%').child(view.inlineEditor):commentCard(row,view.id,view.width);
    if(!split||!row.draft?.side)return content();
-   return h_flex().h(height).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0));
+   return h_flex().when(row.kind==='editor',e=>e.min_h(height).max_h(INLINE_EDITOR_MAX_HEIGHT)).when(row.kind!=='editor',e=>e.h(height)).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0));
   }
   if(row.kind==='hunk')return div().h(22).px(10).bg(t.raised).text_color(t.accent).font_family(settings().font_family).text_size(11).child(row.text);
   if(row.kind==='pair'){const old=row.old?{...row.old,fileId:row.fileId}:null,next=row.next?{...row.next,fileId:row.fileId}:null;return h_flex().when(wrap,e=>e.min_h(22).items_stretch()).when(!wrap,e=>e.h(22)).font_family(settings().font_family).text_size(12).child(codeCell(old,'old',t,wrap,row.filePath||s.file?.newPath,fragments(old),ranges(old,'old'))).child(div().w(1).bg(t.border)).child(codeCell(next,'new',t,wrap,row.filePath||s.file?.newPath,fragments(next),ranges(next,'new')));}
@@ -162,7 +164,7 @@ export function diffPane(view){
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
  const id=`${view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}`;
- body=wrap?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(view.diffScroll),e=>e.track_scroll(view.diffScroll)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?INLINE_EDITOR_HEIGHT:r.kind==='comment'?commentHeight(r.text):r.kind==='notice'?46:r.kind==='file-header'?34:22),renderRow,click,view.diffScroll);}
+ body=(wrap||rows.some(row=>row.kind==='editor'))?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(view.diffScroll),e=>e.track_scroll(view.diffScroll)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?INLINE_EDITOR_HEIGHT:r.kind==='comment'?commentHeight(r.text):r.kind==='notice'?46:r.kind==='file-header'?34:22),renderRow,click,view.diffScroll);}
  const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
   .child(h_flex().min_h(36).flex_none().px(8).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)

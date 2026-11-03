@@ -16,3 +16,16 @@ test('range comments refuse mixed sides or files and retain exact code',()=>{
  assert.equal(target.startLine,2);assert.equal(target.endLine,3);assert.equal(target.quote,'hello\nworld');
  assert.throws(()=>commentTarget(c,f,{side:'old',oldLine:2,text:'a'},{side:'new',newLine:2,text:'b'}),/side/i);
 });
+
+test('opening a repository resolves HEAD only once',async t=>{
+ const f=fixture(t);f.commit('initial');const calls=[],data=new Map();const c=new Controller({run:async(repo,args)=>{calls.push(args);return run(repo,args);},store:{get:k=>data.get(k),set:(k,v)=>data.set(k,v)}});
+ await c.openRepo(null,f.root);assert.equal(calls.filter(args=>args[0]==='rev-parse'&&args.some(a=>a==='HEAD'||a==='HEAD^{commit}')).length,1);
+});
+
+test('freshly validated working comments reuse their snapshot without Git; normal refresh still checks changes',async t=>{
+ const f=fixture(t);f.commit('base\n');f.commit('next\n');const calls=[],data=new Map();const c=new Controller({run:async(repo,args)=>{calls.push(args);return run(repo,args);},store:{get:k=>data.get(k),set:(k,v)=>data.set(k,structuredClone(v))}});
+ await c.openRepo(null,f.root);await c.selectScope({kind:'working-tree',baseRef:'HEAD'});
+ const comparison=c.state.comparison;c.addComment(commentTarget(comparison,{oldPath:'file.txt',newPath:'file.txt'}),'note');calls.length=0;
+ await c.reconcileComments(comparison,{validatedWorking:comparison});assert.equal(calls.length,0);assert.equal(c.session().drafts[0].status,'current');
+ f.commit('changed\n');await c.reconcileComments(comparison);assert.ok(calls.length>0);assert.equal(c.session().drafts[0].status,'outdated');
+});

@@ -51,3 +51,17 @@ test('body-only outdated edits preserve all source fields and status without Git
  const {v,saved}=fixture(),target={id:'old',repoKey:'r',comparisonId:'gone',baseOid:'a',targetOid:'b',side:'old',newPath:'a',startLine:2,endLine:3,quote:'original',body:'before',status:'outdated'};saved.drafts.push(target);
  v.controller.updateCommentBody(target,'after','old');assert.deepEqual(saved.drafts[0],{...target,body:'after'});assert.throws(()=>v.controller.updateCommentBody({...target,endLine:99},'wrong','old'),/source changed/);assert.equal(saved.drafts[0].body,'after');
 });
+
+test('saving closes the composer before slow reconciliation and does not publish unchanged selection',async()=>{
+ const {v,cx,saved}=fixture();v.selectLine('h0l1',cx);v.inputs.comment.set_value('feedback');let release,publishes=0;
+ v.publish=()=>publishes++;v.controller.reconcileComments=()=>new Promise(resolve=>release=resolve);
+ v.saveComment(cx);await Promise.resolve();assert.equal(saved.drafts.length,1);assert.equal(v.target,null);assert.equal(publishes,0);release();await v.pending;
+});
+
+test('inline editor binds Shift+Enter to saving and ignores repeat submissions while busy',()=>{
+ const source=readFileSync(new URL('../mods/juhas/inline-editor.js',import.meta.url),'utf8').split('export default class InlineEditor extends View')[1];
+ const Native=new Function('View','class InlineEditor extends View'+source+'\nreturn InlineEditor;')(class{}),editor=new Native(),bindings=[];let saves=0,stops=0;
+ editor.init({owner:{busy:false},save:()=>saves++},{focus_handle:()=>({}),bind_keys:items=>bindings.push(...items)});
+ assert.deepEqual(bindings,[{keystroke:'shift-enter',action:'juhas-save-comment',context:'JuhasComment'}]);
+ const cx={stop_propagation:()=>stops++};editor.submit(cx);editor.p.owner.busy=true;editor.submit(cx);assert.equal(saves,1);assert.equal(stops,2);
+});

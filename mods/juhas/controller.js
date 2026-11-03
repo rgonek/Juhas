@@ -16,12 +16,12 @@ export class Controller {
   const [refs,branch]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD'])]);if(!this.gate.isCurrent(token))return;
   this.state={...this.state,repo,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false};
   const head=await this.run(repo,['rev-parse','--verify','HEAD']);if(head.code!==0){this.state.empty=true;return;}
-  this.state.empty=false;await this.loadHistory();
+  this.state.empty=false;await this.loadHistory({},false,head.stdout.trim());
  }
- async loadHistory(filters={},more=false){
+ async loadHistory(filters={},more=false,resolvedHead=null){
   const repo=this.state.repo;if(!repo)return;const filtersKey=JSON.stringify(filters);const skip=more?this.state.history.length:0;
   const token=this.historyGate.begin(JSON.stringify([repo.key,filters,skip]));const ref=more?this.state.historyRef:filters.ref||'HEAD',exclude=more?this.state.historyExclude:filters.exclude;this.state.historyLoading=true;this.state.historyLoadingMore=more;this.onChange();
-  try{const result=await listHistory(this.run,repo,{...filters,ref,exclude,skip});if(!this.historyGate.isCurrent(token)||repo.key!==this.state.repo?.key)return;
+  try{const result=await listHistory(this.run,repo,{...filters,ref,exclude,skip,resolvedHead});if(!this.historyGate.isCurrent(token)||repo.key!==this.state.repo?.key)return;
    this.state.history=more?[...this.state.history,...result.commits]:result.commits;this.state.historyRef=result.ref;this.state.historyExclude=result.exclude;this.state.hasMore=result.hasMore;this.state.filtersKey=filtersKey;
   }finally{if(this.historyGate.isCurrent(token)&&repo.key===this.state.repo?.key){this.state.historyLoading=false;this.state.historyLoadingMore=false;this.onChange();}}
  }
@@ -39,15 +39,15 @@ export class Controller {
   catch(error){return {...comparison,commitCount:null,summaryError:error.message};}
   return {...comparison,commitCount:count,summaryError:null};
  }
- async reconcileComments(comparison){
+ async reconcileComments(comparison,{validatedWorking=null}={}){
   const repo=this.state.repo;if(!repo)return;
   const drafts=this.session().drafts.filter(d=>d.repoKey===repo.key);if(!drafts.length)return;
-  const head=await oid(this.run,repo,'HEAD'),valid=new Map(),statuses=new Map();
+  const head=drafts.some(d=>d.targetOid)?await oid(this.run,repo,'HEAD'):null,valid=new Map(),statuses=new Map();
   const source=d=>JSON.stringify([d.comparisonId,d.targetOid,d.baseOid]);
   for(const draft of drafts){const key=source(draft);if(!valid.has(key)){
    let current=false;
    if(draft.targetOid){const cacheKey=JSON.stringify([repo.key,head,draft.targetOid,draft.baseOid,'draft-valid']),cached=this.cache.get(cacheKey);if(cached!=null)current=cached.valid;else{if(/^[a-f0-9]{40,64}$/.test(draft.targetOid)){current=await isAncestor(this.run,repo,draft.targetOid,head);if(current&&draft.baseOid)await oid(this.run,repo,draft.baseOid);}this.cache.set(cacheKey,{valid:current});}}
-   else if(draft.mutableTarget&&draft.baseOid){const mutable=await resolveComparison(this.run,repo,{kind:'working-tree',baseRef:draft.baseOid});current=mutable.id===draft.comparisonId;}
+   else if(draft.mutableTarget&&draft.baseOid){const mutable=validatedWorking===comparison&&comparison.mutableTarget&&draft.baseOid===comparison.baseOid?comparison:await resolveComparison(this.run,repo,{kind:'working-tree',baseRef:draft.baseOid});current=mutable.id===draft.comparisonId;}
    else current=draft.comparisonId===comparison.id;
    valid.set(key,current);
   }statuses.set(draft.id,{key,status:valid.get(key)?'current':'outdated'});}
@@ -90,7 +90,7 @@ export class Controller {
  }
  async validateComment(target){
   const c=this.state.comparison;if(!c?.mutableTarget||c.repoKey!==target.repoKey)return;
-  const current=await resolveComparison(this.run,this.state.repo,c.scope,this.session().checkpoints);if(current.id!==c.id){await this.selectScope(c.scope);throw new Error('Working tree changed; unsaved comment retained. Refresh its context before saving');}
+  const current=await resolveComparison(this.run,this.state.repo,c.scope,this.session().checkpoints);if(current.id!==c.id){await this.selectScope(c.scope);throw new Error('Working tree changed; unsaved comment retained. Refresh its context before saving');}return c;
  }
  addComment(target,body,id=uid()){const c=this.state.comparison;const status=c?.repoKey===target.repoKey&&c.id===target.comparisonId?'current':target.status||(!c||target.targetOid?'current':'outdated');return this.mutate(s=>addDraft(s,{...target,id,body,status,sessionId:s.id}));}
  updateCommentBody(target,body,id){

@@ -204,12 +204,13 @@ export default class Juhas extends View {
  syncComposer(cx){const value=shared(this.composerKey||`git-review.v1.composer.${this.sessionId}`)||null;const serialised=JSON.stringify(value);if(this.seenComposer===serialised)return;this.seenComposer=serialised;
   cx.spawn(async cx=>{this.restoringComposer=true;try{if(value?.target){this.target=value.target;this.composerComparison=value.comparison||null;this.editId=value.id;this.inputs.comment.set_value(value.body||'');if(this.panel!=='submit'&&this.panel!=='unsaved-submit')this.panel='comment';}else{if(this.panel==='comment')this.panel=null;this.target=null;this.composerComparison=null;this.editId=null;this.selectedStart=null;this.inputs.comment.set_value('');}}finally{this.restoringComposer=false;this.notifyEditor(cx);}});
  }
- saveComment(cx,thenPreview=false){const target=this.target,body=this.inputs.comment.value(),editId=this.editId,id=editId||uid();this.work(cx,async()=>{
-  if(!target)throw new Error('Choose a code line or file');const existing=editId?this.controller.session().drafts.find(d=>d.id===editId):null;
+ saveComment(cx,thenPreview=false){if(this.busy)return;const target=this.target,body=this.inputs.comment.value(),editId=this.editId,id=editId||uid();this.work(cx,async()=>{
+  if(!target)throw new Error('Choose a code line or file');let validatedWorking=null;const existing=editId?this.controller.session().drafts.find(d=>d.id===editId):null;
   if(existing?.status==='outdated'&&target.status==='outdated')this.controller.updateCommentBody(target,body,id);
-  else{try{await this.controller.validateComment(target);}finally{this.publish();}this.controller.addComment(target,body,id);await this.controller.reconcileComments(this.controller.state.comparison);}
+  else{try{validatedWorking=await this.controller.validateComment(target);}catch(error){this.publish();throw error;}this.controller.addComment(target,body,id);}
   if(this.target===target&&this.inputs.comment.value()===body&&this.editId===editId)this.cancelComment(cx);
   else {if(this.target===target&&this.editId===editId)this.editId=id;this.persistComposer();this.message='Comment saved; newer unsaved edits retained';this.notifyEditor(cx);}
+  if(!(existing?.status==='outdated'&&target.status==='outdated'))await this.controller.reconcileComments(this.controller.state.comparison,{validatedWorking});
   if(thenPreview)this.preview(cx);
  });}
  fetch(cx){if(this.busy)return;this.work(cx,async()=>{await this.controller.fetch();this.publish();this.message='Fetch completed';});}

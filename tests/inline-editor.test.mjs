@@ -58,10 +58,20 @@ test('saving closes the composer before slow reconciliation and does not publish
  v.saveComment(cx);await Promise.resolve();assert.equal(saved.drafts.length,1);assert.equal(v.target,null);assert.equal(publishes,0);release();await v.pending;
 });
 
-test('inline editor binds Shift+Enter to saving and ignores repeat submissions while busy',()=>{
+function nativeEditorFixture({modern=true}={}){
  const source=readFileSync(new URL('../mods/juhas/inline-editor.js',import.meta.url),'utf8').split('export default class InlineEditor extends View')[1];
- const Native=new Function('View','class InlineEditor extends View'+source+'\nreturn InlineEditor;')(class{}),editor=new Native(),bindings=[];let saves=0,stops=0;
- editor.init({owner:{busy:false},save:()=>saves++},{focus_handle:()=>({}),bind_keys:items=>bindings.push(...items)});
- assert.deepEqual(bindings,[{keystroke:'shift-enter',action:'juhas-save-comment',context:'JuhasComment'}]);
- const cx={stop_propagation:()=>stops++};editor.submit(cx);editor.p.owner.busy=true;editor.submit(cx);assert.equal(saves,1);assert.equal(stops,2);
+ const Native=new Function('View','class InlineEditor extends View'+source+'\nreturn InlineEditor;')(class{}),editor=new Native(),events=new Map(),input={set_rows:rows=>input.rows=rows,on:(event,fn)=>events.set(event,fn)};
+ if(modern)input.set_submit_on_enter=value=>input.submitOnEnter=value;
+ let saves=0,stops=0;const owner={busy:false},cx={focus_handle:()=>({}),bind_keys:()=>assert.fail('native textarea owns keyboard dispatch'),stop_propagation:()=>stops++};
+ editor.init({owner,input,save:()=>saves++},cx);return {editor,input,owner,cx,events,saves:()=>saves,stops:()=>stops};
+}
+
+test('native textarea submit saves on Enter, leaves Shift+Enter to native editing, and guards busy saves',()=>{
+ const f=nativeEditorFixture();assert.equal(f.input.rows,2);assert.equal(f.input.submitOnEnter,true);assert.equal(typeof f.events.get('submit'),'function');
+ const submit=f.events.get('submit');submit({shift:true},f.cx);assert.equal(f.saves(),0);assert.equal(f.stops(),0);
+ submit({shift:false},f.cx);assert.equal(f.saves(),1);f.owner.busy=true;submit({shift:false},f.cx);assert.equal(f.saves(),1);assert.equal(f.stops(),2);
+});
+
+test('older textarea hosts still register native submission without an unsupported API call',()=>{
+ const f=nativeEditorFixture({modern:false});f.events.get('submit')({shift:false},f.cx);assert.equal(f.saves(),1);
 });

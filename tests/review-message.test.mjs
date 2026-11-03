@@ -4,7 +4,7 @@ import {buildBatch} from '../mods/juhas/submit.js';
 test('cross-project feedback names its reviewed checkout without forcing verbose Git headers',()=>{
  const c={id:'c',repoKey:'y',root:'D:/work/project-Y',baseOid:'a',targetOid:'b'},draft={id:'d',repoKey:'y',root:c.root,comparisonId:'c',newPath:'src/a.ts',side:'new',startLine:4,endLine:4,body:'Fix the API contract'};
  const batch=buildBatch({id:'session',drafts:[draft]},[c],{agentAddress:'agent-X',includeRepository:true});
- assert.match(batch.text,/D:\/work\/project-Y/);assert.match(batch.text,/src\/a.ts/);assert.match(batch.text,/new 4/);assert.ok(!batch.text.includes('a → b'));
+ assert.match(batch.text,/D:\/work\/project-Y/);assert.match(batch.text,/src\/a.ts/);assert.match(batch.text,/- 4: Fix the API contract/);assert.ok(!batch.text.includes('a → b'));
 });
 
 import {readFileSync} from 'node:fs';

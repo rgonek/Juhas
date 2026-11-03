@@ -18,3 +18,13 @@ test('an existing per-worktree review is reused and receives the explicit source
  const {v,data,commands,live}=setup(),context={...v.activeContext,key:'review-y'};live.spaces=[{tabs:[{id:'review-tab'}]}];live.panes=[{pane:'review-pane',tab:'review-tab',mod:'juhas'}];data.set(reviewTabKey(v.controller.state.repo,v.activeContext.spaceId),{tabId:'review-tab',paneId:'review-pane',context,sessionId:'session'});
  v.openReviewTab();assert.deepEqual(commands,[['tab.select',{id:'review-tab'}]]);assert.equal(data.get(contextStorageKey('selection','session',context)).fileId,'file');
 });
+test('expand closes only its originating Juhas pane after an existing tab is confirmed',()=>{
+ const {v,data,commands,live}=setup(),context={...v.activeContext,key:'review-y'};v.role='pane';v.displayTabId='terminal-y';
+ live.spaces=[{tabs:[{id:'review-tab'}]}];live.panes=[{pane:'source-review',tab:'terminal-y',mod:'juhas'},{pane:'agent',tab:'terminal-y',mod:'terminal'},{pane:'review-pane',tab:'review-tab',mod:'juhas'}];
+ data.set(reviewTabKey(v.controller.state.repo,v.activeContext.spaceId),{tabId:'review-tab',paneId:'review-pane',context,sessionId:'session'});v.openReviewTab();
+ assert.deepEqual(commands,[['tab.select',{id:'review-tab'}],['pane.close',{pane:'source-review'}]]);
+});
+test('creating a new review tab retains the source pane until its tab registers',()=>{
+ const {v,data,commands,live}=setup();v.role='pane';v.displayTabId='terminal-y';live.panes=[{pane:'source-review',tab:'terminal-y',mod:'juhas'}];v.openReviewTab();
+ assert.equal(commands.length,1);assert.equal(commands[0][0],'tab.new');assert.deepEqual(data.get(reviewTabKey(v.controller.state.repo,v.activeContext.spaceId)).origin,{paneId:'source-review',tabId:'terminal-y'});
+});

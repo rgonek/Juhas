@@ -39,8 +39,9 @@ export function draftsPane(view,cx){
  const repoKey=view.controller.state.repo?.key,drafts=filterDrafts(view.controller.session().drafts,{repoKey}),status=view.draftStatus||'all',source=view.draftSource||'all',visible=filterDrafts(drafts,{status,source}),sources=[...new Map(drafts.map(d=>[d.comparisonId,d])).values()];
  const sourceLabel=d=>d.targetOid?`${d.baseOid?.slice(0,8)||'empty'} → ${d.targetOid.slice(0,8)}`:'Working tree';
  const choose=(value,cx)=>{view.draftSource=value;view.draftSourcePicker=false;cx.notify();};
- return v_flex().h(300).min_h(0).min_w(0)
+ return v_flex().size_full().min_h(0).min_w(0)
   .child(h_flex().items_center().child(section(`Saved comments · ${visible.length}/${drafts.length}`).flex_1())
+   .when(Boolean(view.navigateComment),e=>e.child(button('comment-previous','↑',(_e,cx)=>view.navigateComment(-1,cx),{tooltip:'Previous comment'})).child(button('comment-next','↓',(_e,cx)=>view.navigateComment(1,cx),{tooltip:'Next comment'})))
    .child(button('clear-comments','Clear all',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},{tooltip:'Delete all saved comments in this repository, including comments hidden by filters'}).disabled(!drafts.length)))
   .child(h_flex().min_h(36).flex_none().px(8).py(4).gap(6).flex_wrap().items_center()
    .child(buttonGroup('draft-status',[{value:'all',label:'All'},{value:'current',label:'Current'},{value:'outdated',label:'Outdated'}],status,(value,cx)=>{view.draftStatus=value;cx.notify();}))
@@ -94,7 +95,8 @@ export function historyPane(view,cx){
 export function filesPane(view){
  const s=view.controller.state,t=theme(),drafts=view.controller.session().drafts,rows=fileRows(s.files,view.fileTree,view.collapsedDirs||new Set());
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
- return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${s.files.length}`).flex_1())
+ return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${s.files.filter(f=>view.isFileReviewed?.(f)).length}/${s.files.length} viewed`).flex_1())
+  .when(Boolean(view.moveUnreviewed),e=>e.child(button('next-unreviewed','Next unreviewed',(_e,cx)=>view.moveUnreviewed(1,cx))))
   .child(toggle('file-tree','Tree',view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
  .child(virtualList(`${view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,Boolean(view.isFileReviewed?.(f)),s.file?.id===f.id])})),LIST_ROW_HEIGHT,f=>{
   if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
@@ -138,9 +140,10 @@ export function diffPane(view){
  const fragments=row=>emphasis.get((row?.fileId||'')+':'+(row?.sourceId||row?.id))||[];
  view.patchRows=annotated;view.diffRows=rows;view.diffRowsKey=view.diffChangeKey();const activeChange=view.changeCursor?.source===view.diffRowsKey?changes.findIndex(change=>change.id===view.changeCursor.id):-1;
  let body;
- if(!s.file)body=text('Select a file to review').p(20);
- else if(!s.patch)body=text(view.busy?'Reading diff…':'No diff loaded').p(20);
+ if(!s.file&&!view.allFiles)body=text('Select a file to review').p(20);
+ else if(!s.patch&&!view.allFiles)body=text(view.busy?'Reading diff…':'No diff loaded').p(20);
  else {const renderRow=row=>{
+  if(row.kind==='file-header'&&view.fileHeaderViews?.has(row.fileId))return div().h(34).w_full().child(view.fileHeaderViews.get(row.fileId));
   if(row.kind==='file-header')return h_flex().h(30).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(46).p(12);
   if(row.kind==='comment'||row.kind==='editor'){
@@ -155,33 +158,35 @@ export function diffPane(view){
   return h_flex().when(wrap,e=>e.min_h(22).items_start()).when(!wrap,e=>e.h(22).items_center()).px(8).gap(8).font_family(settings().font_family).text_size(12).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
    .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.oldLine??''))).child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.newLine??'')))
    .child(sourceText(row,row.filePath||s.file?.newPath,t,wrap,fragments(row),ranges(row,row.side==='old'?'old':'new'),`${mark} `));
- };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rows.find(r=>r.id===id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
+ };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rows.find(r=>r.id===id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
  const id=`${view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}`;
- body=wrap?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(view.diffScroll),e=>e.track_scroll(view.diffScroll)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?INLINE_EDITOR_HEIGHT:r.kind==='comment'?commentHeight(r.text):r.kind==='notice'?46:r.kind==='file-header'?30:22),renderRow,click,view.diffScroll);}
+ body=wrap?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(view.diffScroll),e=>e.track_scroll(view.diffScroll)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?INLINE_EDITOR_HEIGHT:r.kind==='comment'?commentHeight(r.text):r.kind==='notice'?46:r.kind==='file-header'?34:22),renderRow,click,view.diffScroll);}
  const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
-  .child(h_flex().min_h(36).flex_none().px(10).gap(4).flex_wrap().justify_end().items_center().border_b(1).border_color(t.border)
-   .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).text_size(12).child(s.file?.newPath||'Diff'))
-   .when(Boolean(view.generalComment),e=>e.child(button('general-comment','General comment',(_e,cx)=>view.generalComment(cx),{tooltip:'Comment on this review without a file or line anchor'})))
-   .when(Boolean(s.file),e=>e.child(buttonGroup('diff-mode',[{value:'unified',label:'Unified'},{value:'split',label:'Split',tooltip:'Side by side'}],view.diffMode||'unified',(mode,cx)=>view.setDiffMode(mode,cx)))
-    .child(toggle('diff-wrap','Wrap',wrap,(pressed,cx)=>view.toggleWrap?.(pressed,cx),{tooltip:'Wrap long lines using native measured rows'}).disabled(!view.toggleWrap))
-    .when(Boolean(view.toggleAllFiles),e=>e.child(toggle('diff-all-files','All files',view.allFiles,(pressed,cx)=>view.toggleAllFiles(pressed,cx))))
-    .when(Boolean(view.markFileReviewed),e=>e.child(checkbox('file-reviewed','Viewed',view.isFileReviewed?.(s.file),(checked,cx)=>view.markFileReviewed(checked,cx))))
-    .when(Boolean(view.moveUnreviewed),e=>e.child(button('next-unreviewed','Next unreviewed',(_e,cx)=>view.moveUnreviewed(1,cx))))
-    .child(buttonGroup('change-navigation',[{value:-1,label:svg('mods/juhas/icons/arrow-up.svg').size(14),tooltip:'Previous change; continues to the previous file',disabled:!changes.length||Boolean(view.busy)},{value:1,label:svg('mods/juhas/icons/arrow-down.svg').size(14),tooltip:'Next change; continues to the next file',disabled:!changes.length||Boolean(view.busy)}],null,(direction,cx)=>view.navigateChange(direction,cx))).child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true).tooltip('Current change / total change groups in this file'))
-    .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
-    .child(button('comment-file',h_flex().gap(5).items_center().child(svg('mods/juhas/icons/comment.svg').size(14)).child('Comment'),(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on the whole file'}))
-    .child(popover('diff-more',svg('mods/juhas/icons/more.svg').size(14),view.panel==='diffMore',(open,cx)=>{if(open||view.panel==='diffMore')view.panel=open?'diffMore':null;cx.notify();},()=>v_flex().size_full()
-     .child(button('expand-context','Whole file',(_e,cx)=>{view.panel=null;view.work(cx,()=>view.controller.expandFile());},{tooltip:'Load unchanged lines between and around hunks'}))
-     .child(button('select-code','Select / copy',(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy loaded code in a native read-only editor'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))),{tooltip:'More diff options'}))))
-  .when(Boolean(view.inputs?.find),e=>e.child(h_flex().min_h(36).flex_none().px(8).gap(6).items_center()
+  .child(h_flex().min_h(36).flex_none().px(8).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)
+   .child(buttonGroup('diff-files-mode',[{value:false,label:'Single file'},{value:true,label:`All files${s.files?.length?' · '+s.files.length:''}`}],Boolean(view.allFiles),(all,cx)=>view.toggleAllFiles?.(all,cx)))
+   .child(buttonGroup('diff-mode',[{value:'unified',label:'Unified'},{value:'split',label:'Split',tooltip:'Side by side'}],view.diffMode||'unified',(mode,cx)=>view.setDiffMode(mode,cx)))
+   .child(toggle('diff-wrap','Wrap',wrap,(pressed,cx)=>view.toggleWrap?.(pressed,cx),{tooltip:'Wrap long lines using native measured rows'}).disabled(!view.toggleWrap))
+   .child(toggle('diff-search','Search',Boolean(view.searchOpen),(pressed,cx)=>view.toggleSearch?.(pressed,cx)))
+   .child(div().flex_1())
+   .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
+   .child(popover('diff-more',svg('mods/juhas/icons/more.svg').size(14),view.panel==='diffMore',(open,cx)=>{if(open||view.panel==='diffMore')view.panel=open?'diffMore':null;cx.notify();},()=>v_flex().size_full()
+    .child(button('select-code','Select / copy selected file',(_e,cx)=>view.openCodeCopy('new',cx)).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))),{tooltip:'More diff options'})))
+  .when(!view.allFiles&&Boolean(s.file),e=>e.child(h_flex().id('diff-file-header').min_h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
+   .child(text(s.file.newPath).flex_1().min_w(0).truncate())
+   .when(Boolean(view.markFileReviewed),e=>e.child(checkbox('file-reviewed','Viewed',view.isFileReviewed?.(s.file),(checked,cx)=>view.markFileReviewed(checked,cx))))
+   .child(buttonGroup('change-navigation',[{value:-1,label:'↑',tooltip:'Previous change; continues to the previous file',disabled:!changes.length||Boolean(view.busy)},{value:1,label:'↓',tooltip:'Next change; continues to the next file',disabled:!changes.length||Boolean(view.busy)}],null,(direction,cx)=>view.navigateChange(direction,cx)))
+   .child(text(changes.length?`${activeChange<0?'–':activeChange+1}/${changes.length}`:'',true))
+   .child(button('comment-file','Comment',(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on this file'}))
+   .child(button('expand-context','Whole file',(_e,cx)=>view.work(cx,()=>view.controller.expandFile()),{tooltip:'Load unchanged context for this file'}))))
+  .when(Boolean(view.searchOpen&&view.inputs?.find),e=>e.child(h_flex().min_h(36).flex_none().px(8).gap(6).items_center()
    .child(field(view.inputs.find,'Find in loaded diff',180))
    .child(button('find-previous','↑',(_e,cx)=>view.moveFind?.(-1,cx),{tooltip:'Previous match in loaded source'}).disabled(!(view.findMatches||[]).length))
    .child(button('find-next','↓',(_e,cx)=>view.moveFind?.(1,cx),{tooltip:'Next match in loaded source'}).disabled(!(view.findMatches||[]).length))
    .child(text(`${(view.findMatches||[]).length?Math.max(0,(view.findIndex??-1)+1):0}/${(view.findMatches||[]).length}${view.findMatches?.limited?'+ (limit)':''} · loaded context only`,true))
-   .when(Boolean(view.navigateComment),e=>e.child(button('comment-previous','Previous comment',(_e,cx)=>view.navigateComment(-1,cx))).child(button('comment-next','Next comment',(_e,cx)=>view.navigateComment(1,cx))))))
+   .child(button('close-search','×',(_e,cx)=>view.toggleSearch?.(false,cx),{tooltip:'Close search (Escape)'}))))
   .when(Boolean(s.patch&&!s.patch.complete),e=>e.child(text(`Incomplete: ${s.patch.reason}`).p(8).text_color(t.ansi1)))
   .child(div().flex_1().min_h(0).min_w(0).w_full().overflow_hidden().child(div().id(`${view.id}-diff-horizontal`).size_full().min_w(0).overflow_x_scrollbar().child(div().min_w(minWidth).w_full().h_full().child(body))));
 }

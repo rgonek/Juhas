@@ -16,7 +16,7 @@ test('general-only feedback is durable, source-bound and delivered through exist
 });
 test('mixed feedback separates general remarks from real file anchors',()=>{
  const s={id:'s',drafts:[{...review.generalTarget(c),id:'g',body:'General'},{repoKey:'repo',comparisonId:c.id,id:'f',newPath:'file.js',body:'Specific',startLine:3,side:'new'}]};
- const batch=buildBatch(s,[c]);assert.match(batch.text,/### General feedback/);assert.match(batch.text,/### file.js/);assert.match(batch.text,/new 3: Specific/);assert.ok(!batch.text.includes('file: General'));
+ const batch=buildBatch(s,[c]);assert.match(batch.text,/### General feedback/);assert.match(batch.text,/### file.js/);assert.match(batch.text,/- 3: Specific/);assert.ok(!batch.text.includes('file: General'));
 });
 test('progress is pure, content/mode/path sensitive and bounded navigation stops at edges',()=>{
  const f={id:'f',oldPath:'a',newPath:'b',status:'R',oldOid:'old',newOid:'new',oldMode:'100644',newMode:'100755'},g={...f,id:'g',newPath:'c'};

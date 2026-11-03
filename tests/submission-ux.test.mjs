@@ -7,10 +7,16 @@ const comments=[
  {id:'2',repoKey:'repo',root:'/workspace/project',comparisonId:'c',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40),newPath:'src/view.ts',oldPath:'src/view.ts',side:'new',startLine:20,endLine:22,quote:'line 20\nline 21\nline 22',body:'Handle cancellation'},
  {id:'3',repoKey:'other',root:'/workspace/other',comparisonId:'d',newPath:'other.ts',body:'Other project'}];
 const session={id:'session',drafts:comments};
+test('compact feedback uses bare new-side lines and explicit old-side anchors without a legend',()=>{
+ const drafts=[{...comments[0],startLine:42,endLine:42,body:'Current line'}, {...comments[0],id:'range',side:undefined,startLine:43,endLine:45,body:'Current range'}, {...comments[0],id:'old',side:'old',startLine:19,endLine:22,body:'Previous range'}, {...comments[0],id:'old-single',side:'old',startLine:23,endLine:23,body:'Previous line'}, {...comments[0],id:'file',startLine:null,endLine:null,body:'File feedback'}, {...comments[0],id:'general',scope:'general',body:'General feedback'}];
+ const batch=submission.buildBatch({id:'s',drafts},[]);
+ assert.equal(batch.text,'# Code review\n\n### General feedback\n- General feedback\n\n### src/view.ts\n- file: File feedback\n- old:19-22: Previous range\n- old:23: Previous line\n- 42: Current line\n- 43-45: Current range');
+ for(const draft of drafts)assert.equal(batch.draftSnapshots[draft.id],JSON.stringify(draft));
+});
 test('single repo review groups Git context when enabled; code quotes are optional',()=>{
  const batch=submission.buildBatch(session,[],{agentAddress:'t1',repoKey:'repo',includeGitContext:true});
  assert.deepEqual(batch.draftIds,['1','2']);assert.equal(batch.text.split('/workspace/project').length-1,1);assert.equal(batch.text.split('src/view.ts').length-1,1);assert.equal(batch.text.split('a'.repeat(40)).length-1,1);
- assert.match(batch.text,/new.*8/);assert.match(batch.text,/20-22/);assert.match(batch.text,/Fix the empty state/);assert.ok(!batch.text.includes('Other project'));assert.ok(!batch.text.includes('some long quoted source code'));
+ assert.match(batch.text,/- 8: Fix the empty state/);assert.match(batch.text,/20-22/);assert.match(batch.text,/Fix the empty state/);assert.ok(!batch.text.includes('Other project'));assert.ok(!batch.text.includes('some long quoted source code'));
  const withCode=submission.buildBatch(session,[],{agentAddress:'t1',repoKey:'repo',includeQuotes:true,includeGitContext:true});assert.match(withCode.text,/some long quoted source code/);assert.ok(batch.utf8Bytes<withCode.utf8Bytes);
 });
 test('ambiguous recipient does not prevent editing or copying, but prevents sending',async()=>{
@@ -88,7 +94,7 @@ test('native Send does not send an empty edit or a preview from another project 
 
 test('Git context is omitted by default and enabling it restores one repository and revision header',()=>{
  const compact=submission.buildBatch(session,[],{repoKey:'repo'}),full=submission.buildBatch(session,[],{repoKey:'repo',includeGitContext:true});
- assert.ok(!compact.text.includes('/workspace/project'));assert.ok(!compact.text.includes(comments[0].baseOid));assert.ok(!compact.text.includes(comments[0].targetOid));assert.match(compact.text,/src\/view.ts/);assert.match(compact.text,/new 8/);assert.match(compact.text,/Fix the empty state/);
+ assert.ok(!compact.text.includes('/workspace/project'));assert.ok(!compact.text.includes(comments[0].baseOid));assert.ok(!compact.text.includes(comments[0].targetOid));assert.match(compact.text,/src\/view.ts/);assert.match(compact.text,/- 8: Fix the empty state/);assert.match(compact.text,/Fix the empty state/);
  assert.equal(full.text.split('/workspace/project').length-1,1);assert.equal(full.text.split(comments[0].targetOid).length-1,1);assert.ok(compact.utf8Bytes<full.utf8Bytes);assert.deepEqual(compact.draftSnapshots,full.draftSnapshots);assert.notEqual(compact.id,full.id);
 });
 test('outdated comments retain the original revision for the commented side without Git headers',()=>{

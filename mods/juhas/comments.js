@@ -26,5 +26,5 @@ export function composerRows(rows,target,editId=null){
  const field=target.side==='old'?'oldLine':'newLine',index=rows.findIndex(row=>row.kind==='line'&&row[field]===target.endLine);
  return index<0?rows:[...rows.slice(0,index+1),editor,...rows.slice(index+1)];
 }
-export const INLINE_EDITOR_HEIGHT=184;
+export const INLINE_EDITOR_HEIGHT=140;
 export function commentHeight(value){return 68+18*(Math.min(6,Math.max(1,String(value||'').split(/\r?\n/).length))-1);}

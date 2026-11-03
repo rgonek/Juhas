@@ -21,6 +21,12 @@ test('saved-comment list offers code navigation separately from editing',()=>{
  const draft={id:'d',repoKey:'r',comparisonId:'c',newPath:'a',body:'fix'},calls=[],view={id:'v',controller:{state:{repo:{key:'r'}},session:()=>({drafts:[draft]})},openComment:(d)=>calls.push(d.id)};
  const root=controls().draftsPane(view,{}),open=descendants(root).find(n=>n.identity==='open-code-d');assert.ok(open);open.handlers.on_click({},{});assert.deepEqual(calls,['d']);
 });
+test('diff controls separate view options from the selected file and hide search by default',()=>{
+ const view=diffView({hunks:[]},null);view.inputs={find:{}};view.toggleAllFiles=()=>{};view.markFileReviewed=()=>{};view.generalComment=()=>{};
+ const nodes=descendants(controls().diffPane(view));assert.ok(nodes.some(n=>n.identity==='diff-search'));assert.ok(nodes.some(n=>n.values?.id==='diff-file-header'));assert.ok(!nodes.some(n=>n.identity==='find-next'));assert.ok(!nodes.some(n=>n.identity==='general-comment'));
+ view.searchOpen=true;assert.ok(descendants(controls().diffPane(view)).some(n=>n.identity==='find-next'));
+ view.allFiles=true;view.allFileSections=[];const all=descendants(controls().diffPane(view));assert.ok(!all.some(n=>n.identity==='file-reviewed'));assert.ok(!all.some(n=>n.values?.id==='diff-file-header'));
+});
 function diffView(patch,target){return {id:'fixture',width:360,inlineEditor:{retained:true},target,diffMode:'unified',diffChangeKey:()=> 'c',controller:{state:{comparison:{id:'c'},file:{newPath:'a'},patch},session:()=>({drafts:[]})}};}
 test('wrapping uses native measured rows and retains pure exact source snapshots',()=>{
  const source='const x = "😀 long line";',view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:source}]}]},null);view.readingOptions={wrap:true};view.controller.state.file.newPath='a.ts';
@@ -32,6 +38,14 @@ test('all-files native clicks carry exact section provenance and headers never b
  const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='virtual');list.renderRows();list.handlers.on_item_click('file:other',{});list.handlers.on_item_click('file:other:h0l0',{});
  assert.deepEqual(calls,[['header','other'],['source','code','other','exact']]);
 });
+test('All files displays its section headers before an individual file is selected',()=>{
+ const view=diffView(null,null);view.controller.state.file=null;view.allFiles=true;view.allFileSections=[{file:{id:'other',newPath:'other.ts'},comparison:{id:'c'},collapsed:true}];
+ const list=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');assert.ok(list);assert.equal(list.renderRows().length,1);
+});
+test('retained file-header controls do not also toggle the enclosing virtual row',()=>{
+ const view=diffView({hunks:[]},null),calls=[];view.allFiles=true;view.allFileSections=[{file:{id:'other',newPath:'other'},comparison:{id:'c'},collapsed:true}];view.fileHeaderViews=new Map([['other',{retained:true}]]);view.requestAllFiles=id=>calls.push(id);
+ const list=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');list.handlers.on_item_click('file:other',{});assert.deepEqual(calls,[]);
+});
 test('a selected line in one all-files section never highlights another comparison or path',()=>{
  const view=diffView({hunks:[]},{comparisonId:'c',newPath:'a',side:'new',startLine:1,endLine:1});view.allFiles=true;view.allFileSections=[{file:{id:'other',newPath:'other'},comparison:{id:'other-comparison'},patch:{hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]}}];
  const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='virtual');assert.equal(list.renderRows()[2].values.bg,'undefined18');
@@ -41,9 +55,9 @@ test('split wrapping measures one aligned native pair and keeps source syntax/ma
  const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='measured'),rows=list.renderRows(),pair=rows[1];assert.equal(rows.length,2);assert.equal(pair.values.min_h,22);assert.ok(Object.hasOwn(pair.values,'items_stretch'));assert.equal(Object.hasOwn(pair.values,'h'),false);assert.ok(descendants(pair).some(n=>n?.nodes?.includes('new')));assert.ok(descendants(pair).some(n=>n&&Object.hasOwn(n.values||{},'underline')));
 });
 test('loaded-source find and comment navigation use guarded existing callbacks outside layout',()=>{
- const view=diffView({hunks:[]},null),calls=[];view.inputs={find:{retained:true}};view.findMatches=[{side:'new',line:1,start:0,end:1}];view.findIndex=0;view.moveFind=(direction)=>calls.push(['find',direction]);view.navigateComment=direction=>calls.push(['comment',direction]);
- const root=controls().diffPane(view);for(const id of ['find-previous','find-next','comment-previous','comment-next'])descendants(root).find(n=>n?.identity===id).handlers.on_click({},{});
- assert.deepEqual(calls,[['find',-1],['find',1],['comment',-1],['comment',1]]);assert.ok(descendants(root).some(n=>n?.nodes?.includes('1/1 · loaded context only')));
+ const view=diffView({hunks:[]},null),calls=[];view.inputs={find:{retained:true}};view.searchOpen=true;view.findMatches=[{side:'new',line:1,start:0,end:1}];view.findIndex=0;view.moveFind=(direction)=>calls.push(['find',direction]);view.navigateComment=direction=>calls.push(['comment',direction]);
+ const root=controls().diffPane(view);for(const id of ['find-previous','find-next'])descendants(root).find(n=>n?.identity===id).handlers.on_click({},{});
+ view.controller.state.repo={key:'r'};for(const id of ['comment-previous','comment-next'])descendants(controls().draftsPane(view,{})).find(n=>n?.identity===id).handlers.on_click({},{});assert.deepEqual(calls,[['find',-1],['find',1],['comment',-1],['comment',1]]);assert.ok(descendants(root).some(n=>n?.nodes?.includes('1/1 · loaded context only')));
 });
 test('wrapped source rows route measured-list clicks to the displayed code',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'wrapped code'}]}]},null),calls=[];view.readingOptions={wrap:true};view.selectLine=(...args)=>calls.push(args);

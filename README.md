@@ -73,7 +73,7 @@ An optional personal toolbar button can invoke the same pane.split command.
    for the final result. Choose a base branch if one has not been configured.
 3. Choose **Uncommitted** for working files, or enable **Include uncommitted**
    in All changes to review commits and later fixes together. Click the code,
-   write feedback and save with **Shift+Enter**. Comments can come from
+   write feedback and save with **Enter** (**Shift+Enter** adds a new line). Comments can come from
    several commits and still go into one review.
 4. Choose **Submit review**. Check the recipient and message, then **Send review**
    or **Copy**. Unsaved comments offer an explicit Save / Skip / Back choice.

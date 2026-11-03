@@ -1,6 +1,6 @@
 # Agent review, Git efficiency and background refresh
 
-Status: concrete design for review; product implementation has not started. The user confirmed preserving the old comparison after amend/rebase and offering an explicit transition to the current version. Independent builder review completed; its branch-checkout question is resolved below as a stated proposal.
+Status: user-approved design direction, extended with the accepted community-comparison suggestions. Product implementation of this design has not started. The user confirmed preserving the old comparison after amend/rebase and offering an explicit transition to the current version, and explicitly rejected two-way agent threads. Independent builder review of the initial design completed; its branch-checkout question is resolved below as a stated proposal.
 
 Repository convention: this document lives directly under `docs/`, alongside the audit and other design documents, because this repository explicitly ignores `docs/superpowers/`.
 
@@ -10,7 +10,7 @@ Juhas is a native Herdr review tool for work produced by an agent on a feature b
 
 The user accepted the audit's optimization, interface simplification and feature recommendations, and additionally requires automatic refresh every 15 seconds while Juhas is open/visible. Refresh must keep the interface usable, preserve the chosen commit and selected file, and retain the visible diff while fetching. When the displayed source itself changes, update the file list and diff while keeping that file selected whenever possible.
 
-Work remains on `feature/native-pane-integration`, preserving the existing uncommitted fixes. No merge, push, install into the user's live configuration or network fetch is implied. The current 159-test baseline and the audit are evidence, not proof that these new behaviors already exist.
+Work remains on `feature/native-pane-integration`. The earlier comment-saving/Git-read fixes and research were committed as `597f87c`; preserve that baseline. No merge, push, install into the user's live configuration or network fetch is implied. The current 159-test baseline and the audit are evidence, not proof that these new behaviors already exist.
 
 ## Approach
 
@@ -78,7 +78,53 @@ Primary UI: Commit, All changes and Uncommitted; aggregate review has an explici
 
 Retain manual commit baselines and review checkpoints for subsequent agent rounds. Explain Mark seen as establishing a baseline and never silently mark it on Send. Preserve saved comments and provenance across modes; do not migrate or delete review state because a control moved.
 
+Two-way threads, agent reply ingestion, agent-driven resolve/reopen, a thread CLI and notifications about agent replies are explicitly excluded by the user. Navigation between the user's saved comments is included; it does not introduce a thread protocol. Delivery remains an explicit human-authored feedback message, with the current preview/Copy/Send safeguards.
+
 Add per-file reviewed state and next-unreviewed navigation. Key progress by repository, comparison source and per-file content identity, not filename alone. New file contents become unreviewed; unchanged contents may retain reviewed state under an explicitly equivalent source. Review progress is separate from comment presence, checkpoints and delivery success. Keep clear, bounded persistent state and a reset action.
+
+## Accepted reading and feedback additions
+
+### Syntax rendering and intra-line emphasis
+
+Assess supported native GPUI syntax/source rendering before choosing an implementation. Current Juhas colors whole added/deleted lines in a custom virtual-list diff and separately uses native Editor in Select / copy; the request does not authorize a needless replacement of native capabilities with a second tokenizer. Provide syntax-aware reading in both Unified and Split while retaining inline comments, original source coordinates and selection/copy behavior. Prefer native capabilities when they can meet that contract; otherwise use a small bounded fallback with plain-text rendering for unsupported languages, oversized/minified lines or unavailable highlighting.
+
+Keep parsed/tokenized source independent of theme colors, cache by content/language/parser version, prioritize visible rows, and avoid retokenizing unchanged content on refresh. Token spans must concatenate exactly to original text; display decoration must never enter comments, hashes, copied source or transport payloads. Highlight changed fragments within paired old/new lines locally, without a second Git process. Bound comparison work for very long lines, keep Unicode intact, and fall back to whole-line emphasis when the budget is exceeded. Highlighting is visual evidence of edits, not language-semantic analysis.
+
+### Find in diff, comment navigation and wrapping
+
+Provide find-in-loaded-diff with previous/next match and a result count, independent of history filters. Search actual source text on both sides, excluding gutters, hunk headers and saved-comment bodies; mark which side a match belongs to. Show that search covers loaded context only when the patch is partial or whole-file context has not been requested. Searching and changing matches does not execute Git. Keep query and cursor through unchanged refresh; invalidate obsolete matches when source changes. A matched source range can be revealed without changing the selected commit.
+
+Provide previous/next saved-comment navigation. Resolve the comment's exact comparison/path/side first, retaining the user's unsaved composer through the existing guard. A historical or unavailable source stays explicitly labeled; do not move a comment to a similar current line. Navigation is bounded and does not cycle indefinitely at the ends.
+
+Provide an optional long-line wrapping control, off by default, without altering copied text or code coordinates. Establish native supported row sizing in a focused rendering spike before implementing wrapping in the virtual list. Unified rows and Split pairs must use consistent variable heights so old/new line alignment, inline comment placement, click targets and scroll anchors remain correct. No character-count approximation of painted height may be used as proof of correct wrapped hit targets. Preserve the current horizontal-scroll mode as the default.
+
+### General review comments
+
+Add durable review-level comments with no artificial file/line anchor. Scope them to the repository and review context/source, and preserve their text through project switches, background refresh and preview edits. General-only reviews must be valid and make Submit review available; existing empty-body validation and UTF-8 message limits still apply. Preview clearly separates general feedback from file/line remarks. Include general comments in existing edit/delete/clear and successful-delivery retention rules, and migrate existing drafts without reinterpreting file comments as general comments. Do not create another outbound transport or auto-send on save.
+
+## Accepted broader review options
+
+### Explicit checkpoint of uncommitted work
+
+Extend checkpoints so a human can explicitly capture the currently reviewed working contents and later compare the next round against them, even when the agent commits nothing. Capture staged, unstaged and untracked changes; respect ignored files and current size/snapshot limits. A snapshot represents review content, not a claim that one selected agent authored every change in a shared checkout.
+
+This is an explicit action, never a side effect of opening review, a timer tick, saving a comment or sending feedback. The UI states that it stores a local snapshot. It may write Git objects and a private `refs/git-review/snapshots/<id>` reference, while leaving the real index, HEAD, branches and working files untouched. Use a portable alternate-index capture with cleanup on success/failure; verify source coherence before declaring capture successful. If capture is unavailable, fails or exceeds limits, retain the previous baseline, display and unsaved input and expose an actionable error.
+
+Introduce a distinct working-snapshot checkpoint kind, with captured tree/ref identity and branch/worktree provenance, alongside the existing committed checkpoint kind. Do not pass a tree OID through commit-only ancestry checks or silently reinterpret old checkpoint records. A missing or invalid snapshot is unavailable, not an empty tree. Provide bounded history, explicit deletion and cleanup of owned temporary resources/private snapshot refs; never run automatic `git gc` or delete refs outside the validated owned namespace. Keep explicit snapshots alive while referenced by a review. Any agent-turn integration is optional and uses this same explicit checkpoint contract; installing background hooks is not implied.
+
+### Optional all-files diff and adaptive loading
+
+Add an opt-in all-files view to the existing selected-file view, with file headers, collapse/expand, status and reviewed markers. Each visible source row and inline composer retains its originating file and exact comparison/side/range; header rows cannot be mistaken for code lines. File/comment navigation reveals the appropriate section. Preserve the selected-file view and its current position when returning from the all-files view.
+
+Keep the first selected file on the critical path. Load remaining expanded/near-viewport files incrementally rather than fetching all contents without limits. Adaptive whole-range batching is permitted only when metadata/output budgets make it appropriate and the result preserves rename, binary, mode-only and untracked semantics; reuse batch results for per-file caches. Remove redundant queued requests already satisfied by a batch. Bound loaded rows and bytes using the existing patch/cache limits and show unloaded/limited sections explicitly, never as unchanged files.
+
+Allow bounded neighboring-file prefetch after the selected patch is available: at most one prefetch process at a time and at most two neighboring files for a selection generation. Navigation requests outrank prefetch; stale or oversized prefetch cannot block a selected patch or publish a selection change. Measure representative multi-file review before enabling batching/prefetch by default. These are implementation stages with independent query/memory evidence, not a promise that eager loading is always faster.
+
+### Optional guided reading
+
+Retain guided reading / requirement mapping as an accepted low-priority optional integration, after the deterministic review features. It may group related changed fragments into reading steps and show which changes a task concerns. It must preserve a complete ungrouped diff and list omitted/unsupported sections; generated explanations never mark code reviewed or comments addressed automatically.
+
+Use an explicitly selected existing agent/integration only on human request, with a visible source/task scope and model invocation. No automatic second model call, transcript scraping, new mandatory Claude dependency or hidden generation on open/refresh is part of ordinary review. Tie explanations to source content, visibly mark stale explanations after edits, retain applicable read progress by content, and bound persisted generated data. The provider contract can be designed separately before this optional stage; core review must work without it.
 
 ## Limits and portability
 
@@ -88,9 +134,9 @@ Keep explicit patch truncation/limit states, no silent truncation in review mess
 
 ## Delivery boundaries
 
-Implement in separately testable stages on the current branch: Git query/cache boundaries; stable refresh and lifecycle; focused modes/menus; aggregate working-file and empty-repository review; file review progress; supported resource budgets and performance evidence. Exact task plans follow approval of this design. Existing fixes are part of the starting working tree and must not be overwritten or inadvertently represented as newly implemented work.
+Implement in separately testable stages on the current branch: (1) Git query/cache boundaries and resource-budget evidence, (2) stable refresh and visibility lifecycle, (3) focused modes plus aggregate working-file/empty-repository review, (4) reviewed progress and general comments, (5) native syntax assessment, intra-line emphasis, find/comment navigation and wrapping, (6) explicit working-snapshot checkpoints, (7) optional all-files view and measured bounded batching/prefetch, (8) optional guided-reading integration. Each later stage remains usable independently of optional integrations. Write executor-ready task plans before product implementation; the user has approved the feature scope, so do not repeat the scope approval question merely because tasks are split into stages.
 
-The subsequent [community catalog comparison](community-review-mods-comparison.md) records additional candidates and pinned source references, including hq-deck's background reconciliation, Spend's partial visibility gating, native syntax-rendering assessment, general comments, find-in-diff, intra-line emphasis and optional agent threads. They remain separately labeled research candidates until selected; this design's implementation scope is not automatically expanded by another mod's feature list. The syntax assessment explicitly distinguishes Juhas's current whole-line diff colors and native Select / copy editor from syntax-aware rendering in the main inline-comment diff.
+The [community catalog comparison](community-review-mods-comparison.md) records the source evidence and the user's subsequent decision: include the useful reading/performance/checkpoint additions and exclude two-way threads. hq-deck and Spend remain partial architecture references, not code to transplant or proof that all native visibility cases work. Repository-administration, PR-host dashboards, multi-agent management and document approval remain outside this focused review design.
 
 ## Acceptance evidence
 
@@ -100,5 +146,9 @@ The subsequent [community catalog comparison](community-review-mods-comparison.m
 - Working tests: staged, unstaged and untracked changes, combined committed/dirty changes, empty repositories, binary/mode-only/rename cases, dirty-to-dirty edits, identical-size edits, edits during capture, source edits while composing and read errors preserve correct provenance and unsaved text.
 - Presentation tests: unchanged refresh preserves scroll, focus, caret, filters, loaded history pages, whole-file expansion, split mode, pending composer and edited review preview. Updated content uses the defined anchor fallback.
 - Progress tests invalidate reviewed state by actual source/content changes and preserve it through unchanged refresh; next-unreviewed skips reviewed files and stops at boundaries.
+- Reading tests preserve raw text/anchors through syntax and intra-line decoration, unknown-language/oversized-line fallback, theme changes and Unicode. Search checks both sides, match navigation and incomplete-context labeling without Git; comment navigation checks unavailable sources and an existing composer. Native wrapping verification checks actual variable row geometry, Split alignment and click-to-source coordinates.
+- General-comment tests cover a general-only review, restart/context persistence, mixed general/file/line feedback, edited preview retention and deletion/clear/delivery identity rules. Confirm that no agent reply/resolve interface was introduced.
+- Snapshot tests prove staged/unstaged/untracked coverage, ignored-file exclusion, same-size edits during capture, portable cleanup on errors, a byte-identical real index and unchanged HEAD/branches/worktree, correct checkpoint kinds, private-ref ownership and unavailable/deleted snapshot behavior. Snapshot writes must be absent from automatic refresh.
+- All-files/prefetch tests cover cross-file anchors, collapsed/unloaded/limited sections, cached return to selected-file view, batch de-duplication, query concurrency and selected-file priority. Optional generated reading stays off until explicitly requested and retains the raw diff when unavailable, stale or over budget.
 - Run `npm test`, `npm run check` and `git diff --check`; inspect native Windows behavior separately for timer lifecycle, visible/hidden views, focus, scrolling and responsiveness while Git is deliberately delayed. A module check does not establish these interactive properties.
 - Report Windows native verification and any other platform tests separately; do not claim a measured 100-ms UI guarantee from process counts or screenshots.

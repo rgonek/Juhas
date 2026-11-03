@@ -6,6 +6,8 @@ This report starts with the three closest additional review tools discovered thr
 
 ## Catalog coverage and evidence boundary
 
+**Subsequent user decision:** include the remaining useful proposals in the [design](agent-review-refresh-design.md), but **exclude two-way threads and agent reply/resolve ingestion**. The source comparisons below retain those capabilities as competitor facts; they do not authorize implementing them in Juhas. Checkpoints of uncommitted work, optional multibuffer, bounded prefetch, reading improvements and optional guided reading are now staged design scope rather than merely unselected candidates. Implementation has not started.
+
 The [Herdr Mods page](https://herdr.dev/mods/) loads community items from its public [catalog index](https://assets.herdr.dev/mods/index.json). The index checked on 2026-11-03 contained **258 entries**, with `generatedAt` of `2026-11-03T12:30:16` (rendered as a date by PowerShell). The initial HTML's Community 0 is a pre-fetch placeholder, not evidence of an empty catalog. Names and descriptions were screened across the index; selected implementations were then read at pinned revisions. This is not an audit of every mod's code.
 
 Core comparisons below cover Commit review, reviewer, Agent review, Tabbed Changes, Git Changes, Better Changes and WASM diff. Additional source readings cover Walkthrough, Plannotator, Diff (session-diff), Spend and the entry point of Reviews / Herdr Ranch. The previous comparison covers Branch Review and Herdr Annotator. VCS and Changes Plus were screened at README/recipe depth, clearly marked below. PR listings, GitHub/GitLab/Jira hubs, Git Graph/Flow/Dash, worktree launchers, Ship it and agent dashboards are adjacent tools; their catalog presence is not evidence that Juhas needs their repository-management controls.
@@ -22,7 +24,7 @@ The user's installed mod and checkout have identical `ui.js` content (SHA-256 `C
 
 ## Commit review: the most relevant additional comparison
 
-**Confirmed functional gap: two-way review threads.** The panel stores human comments as pending, supports replies, resolve/reopen and notifications for new published agent comments. Its `herdr-review` CLI lets an agent list/show threads, reply, resolve and create findings. The generated review message includes explicit instructions for replying to a thread by its ID. This is actual code, not just a README promise. Juhas currently delivers one message and keeps delivery history, but it has no corresponding reply/resolve ingestion channel. Sources: [store API](https://github.com/Mantiq-com/herdr-commit-review/blob/9c62ecb73b75d6651806f7c3168e63fba3adcece/mods/commit-review/store.js#L41-L74), [agent feedback protocol](https://github.com/Mantiq-com/herdr-commit-review/blob/9c62ecb73b75d6651806f7c3168e63fba3adcece/mods/commit-review/agent.js#L22-L39), [CLI reply/resolve/publish](https://github.com/Mantiq-com/herdr-commit-review/blob/9c62ecb73b75d6651806f7c3168e63fba3adcece/herdr-review/herdr-review.py#L329-L414).
+**Confirmed competitor capability, explicitly excluded from Juhas: two-way review threads.** The panel stores human comments as pending, supports replies, resolve/reopen and notifications for new published agent comments. Its `herdr-review` CLI lets an agent list/show threads, reply, resolve and create findings. The generated review message includes explicit instructions for replying to a thread by its ID. This is actual code, not just a README promise. Juhas currently delivers one message and keeps delivery history, but it has no corresponding reply/resolve ingestion channel. Sources: [store API](https://github.com/Mantiq-com/herdr-commit-review/blob/9c62ecb73b75d6651806f7c3168e63fba3adcece/mods/commit-review/store.js#L41-L74), [agent feedback protocol](https://github.com/Mantiq-com/herdr-commit-review/blob/9c62ecb73b75d6651806f7c3168e63fba3adcece/mods/commit-review/agent.js#L22-L39), [CLI reply/resolve/publish](https://github.com/Mantiq-com/herdr-commit-review/blob/9c62ecb73b75d6651806f7c3168e63fba3adcece/herdr-review/herdr-review.py#L329-L414).
 
 This would help a multi-round human/agent workflow: the person can see which remark the agent says it addressed and what changed, instead of finding the answer in a terminal transcript. It is a separate subsystem, not a small UI checkbox. If added to Juhas, keep agent-reported resolution distinct from human verification, validate repository/source/thread identities on ingestion and preserve uncertain-delivery behavior. Do not silently infer that a successful Send means the issue was fixed.
 
@@ -65,7 +67,7 @@ The panel warns when multiple agents share a repository and does not attribute t
 | Cached syntax coloring in both diff layouts | High-value addition | New concrete gap; preserve plain-text fallback, text/anchor identity and rendering limits |
 | Viewed / changed since viewed / next unviewed | Keep planned work | Strong source-backed validation; include full content and change semantics |
 | Skip reparsing/tokenization/notify for unchanged source | Include with performance work | Already consistent with stable incremental publication |
-| Two-way threads, agent replies and reopen/resolve | Separate later feature | New substantial option; needs a portable agent interface and explicit verification semantics |
+| Two-way threads, agent replies and reopen/resolve | Excluded by the user | Competitor capability only; do not add a reply/resolve interface to Juhas |
 | Baseline from an uncommitted snapshot | Later candidate | Extends checkpoints for pre-commit iteration; requires explicit storage/write/GC design |
 | Refresh on agent finishing | Optional extra trigger | Coalesce with the required 15-second visible-only loop |
 | Show original-source comments in aggregate views | Optional, correctness-sensitive | Never silently move feedback based on nearest matching text |
@@ -190,7 +192,7 @@ Pinned [jslowack/herdr-ranch](https://github.com/jslowack/herdr-ranch/tree/07b19
 
 ## Consolidated recommendations after the catalog pass
 
-The existing stable-refresh/Git-efficiency design remains the main work. The catalog pass supports it; it does not justify replacing it with periodic full refresh or broad Git administration. Below are research candidates for choosing later scope, not claims that functionality was implemented or silently added to the accepted design.
+The existing stable-refresh/Git-efficiency design remains the main work. The catalog pass supports it; it does not justify replacing it with periodic full refresh or broad Git administration. The table records the research priorities; the user's subsequent decision accepts the useful candidates as staged design scope except for two-way threads. These are not claims that the functionality was implemented.
 
 | Candidate | Priority | Proposed treatment |
 |---|---|---|
@@ -202,11 +204,11 @@ The existing stable-refresh/Git-efficiency design remains the main work. The cat
 | Viewed / changed since viewed / next unviewed | Already planned | Validate content/mode/rename semantics; use content equivalence for progress without weakening comment provenance |
 | Next/previous comment navigation | Small later usability candidate | Jump to the exact saved source or report outdated/unavailable; do not guess line relocation |
 | Optional long-line wrapping | Usability candidate requiring layout spike | Current virtual rows have fixed heights; wrapping must use supported native/variable-row behavior without breaking click anchors, split alignment or scroll |
-| Two-way threads and agent replies | Substantial separate feature | Portable explicit agent protocol, stable IDs, validated writes; agent-resolved is not human-verified |
+| Two-way threads and agent replies | Excluded by the user | Retain only as a source comparison; no agent reply/resolve protocol in Juhas |
 | Uncommitted checkpoint / last-turn baseline | Separate later feature | Explicit capture only, documented Git-object/private-ref writes, ownership and cleanup; never a polling side effect |
 | Adaptive batching / bounded next-file prefetch | Performance experiment | Measure representative multi-file review; preserve lazy first useful diff and output/cache limits |
 | All-files multibuffer | Optional later review mode | Adds navigation/render/anchor complexity; evaluate after faster one-file review, not as a replacement |
 | Guided model-generated reading / requirement mapping | Optional integration, low priority for core | Adds model invocation and transcript/task inputs; no automatic extra agent call in ordinary review |
 | PR platform hubs, source-control writes, multi-agent dashboard, document approval | Keep out of the focused core | Existing adjacent mods already serve these workflows |
 
-Suggested near-term scope decision: finish the accepted Git/refresh/modes/progress changes first; consider general comments, find-in-diff and intra-line emphasis alongside rendering work. Treat syntax as a native-component assessment before implementation. Keep threads and uncommitted snapshots as separately designed follow-ups. No benchmark ranking is claimed, no remote code was executed, and no user's installed mod/configuration was changed during this research.
+The user's selected scope is now recorded in the linked design: finish Git/refresh/modes/progress first, then stage general comments and reading improvements, explicit uncommitted snapshots and optional multibuffer/prefetch/guided reading. Treat syntax as a native-component assessment before implementation. Two-way threads are explicitly excluded. No benchmark ranking is claimed, no remote code was executed, and no user's installed mod/configuration was changed during this research.

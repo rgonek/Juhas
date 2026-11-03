@@ -50,41 +50,20 @@ and macOS.
 Clone or download this repository, then run from its root:
 
 ```sh
-node scripts/install.mjs --layout main
+node scripts/install.mjs
 ```
 
-The installer checks the Herdr version, copies the mod and creates a personal
-layout named **juhas** from the selected layout. It also generates a personal
-copy of the installed tabs mod to add **Juhas** beside **Files / Changes**.
-Existing Juhas files are backed up; your active layout is not switched.
-
-Select the new layout in Herdr, or activate it explicitly:
+The installer copies the mod and backs up an existing installation without
+changing layouts, toolbar mods or review data. Open a native pane:
 
 ```sh
-herdr-app do layout.switch --name juhas
+herdr-app do pane.split --direction right --mod juhas
 ```
 
-Use `--layout <name>` for a different starting layout, `--app-home <directory>`
-for a nondefault Herdr home, or `--activate` to switch after installation.
-Layouts already containing Juhas are refused rather than integrated twice.
-The tabs integration targets Herdr 0.1.11’s stock tabs structure; incompatible
-versions are rejected explicitly.
-
-If you prefer to ask your coding agent:
-
-```text
-Read ~/.config/herdr-app/AGENTS.md and this repository’s RECIPE.md.
-Install mods/juhas and integrate its sidebar and expanded review views into
-my Herdr layout. Back up the existing installation and personal layout.
-Preserve my terminals, other mods, local settings and review data. Use the
-installer when the layout is compatible; follow the recipe for custom layouts.
-Run herdr-app check on the installed mods. Do not switch layouts, fetch Git
-remotes, create review checkpoints or send feedback unless I ask.
-```
-
-See the **[usage guide](docs/usage.md)** for base-branch configuration, shortcuts,
-comment filters, backups and removal. Custom layouts can follow the
-**[installation recipe](RECIPE.md)**.
+Juhas belongs to the current tab. Its expand button uses Herdr pane zoom.
+Escape restores a zoomed panel or returns focus toward the terminal. Close it
+with normal pane controls. Existing sidebar/full integrations remain supported.
+An optional personal toolbar button can invoke the same pane.split command.
 
 ## Your first review
 
@@ -138,3 +117,5 @@ Juhas is licensed under [Apache 2.0](LICENSE). See [NOTICE](NOTICE) and
 
 Maintainers: see the [publication guide](docs/publishing.md),
 [verification record](docs/acceptance.md) and [design brief](docs/design-brief.md).
+
+To add the toggle button to an existing personal tabs mod, run node scripts/install.mjs --tabs <personal-tabs-mod>. The button stays active while Juhas exists in the current tab, including when zoomed; clicking again closes that pane. This backs up the tabs mod and leaves layout files untouched. Use an unmodified personal tabs copy without the older sidebar integration.

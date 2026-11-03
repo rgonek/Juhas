@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {Script} from 'node:vm';
-import {install,buildLayout,assertHerdrVersion} from '../scripts/install.mjs';
+import {installLegacy as install,buildLayout,assertHerdrVersion} from '../scripts/install.mjs';
 test('installer creates independent sidebar/full layout without touching shipped layout',t=>{
  const home=mkdtempSync(join(tmpdir(),'juhas-install-'));t.after(()=>rmSync(home,{recursive:true,force:true}));mkdirSync(join(home,'layouts'));
  const original={id:'root',type:'column',children:[{id:'terminal',type:'block',content:{tab:'active'}}]};writeFileSync(join(home,'layouts','main.json'),JSON.stringify(original));

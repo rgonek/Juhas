@@ -23,7 +23,7 @@ const scopeCache=new Map();
 export default class Juhas extends View {
  init(p,cx){
   p=props()||p||{};
-  this.id=`review-${uid()}`;this.role=p?.role||'full';this.compact=this.role==='sidebar';this.sessionId=p?.sessionId||focused()?.space||'default';
+  this.id=`review-${uid()}`;this.role=p?.role||'pane';this.compact=this.role==='sidebar';this.sessionId=p?.sessionId||focused()?.space||'default';
   this.selectionKey=`git-review.v1.selection.${this.sessionId}`;this.seenSelection=null;this.busy=false;this.message='';this.panel=null;this.target=null;this.selectedStart=null;this.filtersOpen=false;
   this.config=resolveConfig(shared('git-review.v1.config')||{},p.config||{});this.historyRef='HEAD';
   this.diffMode='unified';this.fileTree=false;this.detailsOpen=false;this.remotes=true;this.historyWidth=480;this.listHeight=230;this.contextProps=p;this.followContext=true;this.contextViews=new Map();this.runningActions=0;this.policy={repos:[],canSwitch:false,kind:'empty'};
@@ -213,8 +213,8 @@ export default class Juhas extends View {
   if(thenPreview)this.preview(cx);
  });}
  fetch(cx){if(this.busy)return;this.work(cx,async()=>{await this.controller.fetch();this.publish();this.message='Fetch completed';});}
- full(){this.publish();expandReview(run);}
- terminal(){this.publish();collapseReview(run);}
+ full(){this.publish();if(this.role==='pane'){const pane=panes().find(p=>p.mod==='juhas'&&p.focused);if(pane&&!pane.zoomed)run('pane.zoom',{pane:pane.pane});return;}expandReview(run);}
+ terminal(){this.publish();if(this.role==='pane'){const pane=panes().find(p=>p.mod==='juhas'&&p.focused);if(pane?.zoomed)run('pane.zoom',{pane:pane.pane});else run('pane.go',{direction:'left'});return;}collapseReview(run);}
  renderBar(){return h_flex().h(34).px(8).gap(6).items_center().bg(theme().chrome).child(button('review-terminal','Terminal',()=>this.terminal())).child(button('review-full','Juhas',()=>this.full())).child(button('review-sidebar','Sidebar',()=>run('layout.toggle',{id:'git-review-sidebar'})));}
  reviewStorageKey(){return this.reviewKey||`git-review.v1.review.${this.sessionId}`;}
  persistReview(){if(!this.batch)return;setShared(this.reviewStorageKey(),{repoKey:this.controller.state.repo?.key,batch:this.batch,includeQuotes:Boolean(this.includeQuotes),includeGitContext:Boolean(this.includeGitContext),recipientSource:this.recipientSource});}
@@ -306,7 +306,7 @@ export default class Juhas extends View {
   const header=h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child(this.compact?'Juhas':`Juhas${!switching&&s.branch?' · '+s.branch:''}`))
    .when(this.compact&&Boolean(s.historyLoading||s.historyBaseLoading),e=>e.child(historyLoadingIndicator(s)))
    .child(button('fetch-review',svg('mods/juhas/icons/fetch.svg').size(16),(_e,cx)=>this.fetch(cx),{tooltip:'Fetch all remotes'})).child(button('refresh-review',svg('mods/juhas/icons/refresh.svg').size(16),(_e,cx)=>this.refreshContext(cx),{tooltip:'Refresh review'}))
-   .child(button('open-full',svg(`mods/juhas/icons/${this.compact?'expand':'collapse'}.svg`).size(16),()=>this.compact?this.full():this.terminal(),{tooltip:this.compact?'Expand review':'Return to sidebar'}));
+   .child(button('open-full',svg(`mods/juhas/icons/${this.compact?'expand':'collapse'}.svg`).size(16),()=>this.role==='pane'?(panes().find(p=>p.mod==='juhas'&&p.focused)?.zoomed?this.terminal():this.full()):this.compact?this.full():this.terminal(),{tooltip:this.role==='pane'?'Toggle expanded review':this.compact?'Expand review':'Return to sidebar'}));
   const size=(size,cx)=>{if(this.height!==size.height||this.width!==size.width){this.height=size.height;this.width=size.width;cx.notify();}};
   if(switching)return nativeFrame(this.id).child(header).child(text('Reading active project…',true).p(14));
   if(this.panel==='submit')return nativeFrame(this.id).on_size_change(size).child(header).child(h_flex().min_h(42).flex_none().px(14).py(8).items_center().child(text(`Review · ${this.batch?.draftIds.length||0} comments`).font_semibold().text_size(15))).when(Boolean(this.message),e=>e.child(text(this.message,true).px(14).py(4))).when(Boolean(this.omittedComposer&&this.hasUnsavedComment()),e=>e.child(text('Unsaved comment omitted; its text is retained.',true).px(14).py(4))).child(this.footer(cx));

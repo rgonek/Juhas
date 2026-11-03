@@ -30,3 +30,12 @@ These results verify nonempty Git reads and the in-memory lookup path. They do n
 Navigation now also includes tree IDs in history metadata: selecting a nonroot commit whose parent is already loaded needs one Git read for the changed-file list rather than five metadata/file reads. Revisiting that comparison uses zero Git reads. A real-repository integration test verifies this query reduction. Repository identity metadata is read in one Git invocation. These changes reduce process-start overhead without changing Git configuration.
 
 Changed-file status and line counts now share one `git diff --raw --numstat -z` traversal. Cached revisits still need zero Git reads. Full-file context and full commit metadata are loaded only on request. Branch selection uses a virtual list, so repositories with many refs do not create one button handler per ref.
+
+
+## Agent-review refresh
+
+The earlier timings above are historical measurements, not measurements of the new review-tab workflow. An unchanged pinned source skips history/base/diff reads on a 15-second check; it still probes refs, branch, HEAD and source availability. Working comparisons use raw/numstat metadata and content identities instead of a full binary patch fingerprint. Untracked metadata is bounded; unusually large observations report a limit and retain the displayed source.
+
+Only visible reviews schedule checks. Refresh stages results before publishing and keeps the selected commit/path and existing patch while Git runs. Aggregate comparisons update the selected file when possible; committed sources stay pinned after amend/rebase until Open latest. Foreground scope and refresh operations have a shared 256-command/25-second budget; the host's individual child-process limit remains 30 seconds. Deadline rejection does not cancel a child already running.
+
+All-files reading is opt-in with a 20,000-line loaded-section limit. Find uses only loaded text and at most 10,000 matches across sections. Neighbor prefetch is off by default and reads at most two files sequentially. Syntax tokenization has bounded plain-text fallbacks. New native wrapping geometry, actual tab interaction and input-to-frame latency have not been accepted in a running app; automated callback/model checks do not establish those properties.

@@ -34,7 +34,7 @@ test('cold startup shows the persisted mode before Git restores the comparison; 
  const {v,sharedData}=view();v.controller.state.comparison=null;
  assert.equal(v.reviewMode(),'commit');
  sharedData.set('selection',JSON.parse(JSON.stringify({scope:{kind:'commit',commit:'chosen',parentIndex:1}})));assert.equal(v.reviewMode(),'commit');
- for(const scope of [{kind:'branch',baseRef:'trunk'},{kind:'since-review',checkpointId:'round'},{kind:'range',base:'chosen',includeBase:false},{kind:'working-tree'}]){sharedData.set('selection',{scope});assert.equal(v.reviewMode(),'all');}
+ for(const scope of [{kind:'branch',baseRef:'trunk'},{kind:'since-review',checkpointId:'round'},{kind:'range',base:'chosen',includeBase:false},{kind:'working-tree'}]){sharedData.set('selection',{scope});assert.equal(v.reviewMode(),scope.kind==='working-tree'?'uncommitted':'all');}
  v.controller.state.comparison={scope:{kind:'commit',commit:'current'}};assert.equal(v.reviewMode(),'commit');
 });
 

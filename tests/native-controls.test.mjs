@@ -3,15 +3,57 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {layoutGraph} from '../mods/juhas/graph.js';
 import * as comments from '../mods/juhas/comments.js';
+import * as reading from '../mods/juhas/reading.js';
 import {fileRows,splitRows,changeGroups,filterDrafts} from '../mods/juhas/review-ui.js';
 function controls(){
  let layout=false;
  const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
- const names=['Button','Checkbox','Toggle','Popover'],deps={...comments,fileRows,splitRows,changeGroups,filterDrafts,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
+ const names=['Button','Checkbox','Toggle','Popover','Input'],deps={...comments,...reading,fileRows,splitRows,changeGroups,filterDrafts,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
  let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {button,checkbox,toggle,popover,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
+test('file row cache identity changes when comments are deleted without changing files',()=>{
+ const file={id:'f',newPath:'a',status:'M'},saved={drafts:[{id:'d',repoKey:'r',newPath:'a'}]},view={id:'v',controller:{state:{repo:{key:'r'},files:[file]},session:()=>saved},selectFile(){}};
+ const ui=controls(),first=descendants(ui.filesPane(view)).find(n=>n.kind==='virtual'),before=first.keyAt(0);
+ saved.drafts=[];const next=descendants(ui.filesPane(view)).find(n=>n.kind==='virtual');assert.notEqual(next.keyAt(0),before);
+});
+test('saved-comment list offers code navigation separately from editing',()=>{
+ const draft={id:'d',repoKey:'r',comparisonId:'c',newPath:'a',body:'fix'},calls=[],view={id:'v',controller:{state:{repo:{key:'r'}},session:()=>({drafts:[draft]})},openComment:(d)=>calls.push(d.id)};
+ const root=controls().draftsPane(view,{}),open=descendants(root).find(n=>n.identity==='open-code-d');assert.ok(open);open.handlers.on_click({},{});assert.deepEqual(calls,['d']);
+});
 function diffView(patch,target){return {id:'fixture',width:360,inlineEditor:{retained:true},target,diffMode:'unified',diffChangeKey:()=> 'c',controller:{state:{comparison:{id:'c'},file:{newPath:'a'},patch},session:()=>({drafts:[]})}};}
+test('wrapping uses native measured rows and retains pure exact source snapshots',()=>{
+ const source='const x = "😀 long line";',view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:source}]}]},null);view.readingOptions={wrap:true};view.controller.state.file.newPath='a.ts';
+ const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='measured');assert.ok(list);list.renderRows();assert.equal(view.patchRows[1].text,source);assert.equal(Object.hasOwn(list,'sizes'),false);
+ assert.ok(descendants(root).some(n=>n?.identity==='diff-wrap'));
+});
+test('all-files native clicks carry exact section provenance and headers never become comments',()=>{
+ const view=diffView({hunks:[]},null),calls=[];view.allFiles=true;view.requestAllFiles=(id)=>calls.push(['header',id]);view.selectFileLine=(row,id)=>calls.push(['source',row.text,id,row.comparisonId]);view.allFileSections=[{file:{id:'other',newPath:'other.ts'},comparison:{id:'exact'},patch:{hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]}}];
+ const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='virtual');list.renderRows();list.handlers.on_item_click('file:other',{});list.handlers.on_item_click('file:other:h0l0',{});
+ assert.deepEqual(calls,[['header','other'],['source','code','other','exact']]);
+});
+test('a selected line in one all-files section never highlights another comparison or path',()=>{
+ const view=diffView({hunks:[]},{comparisonId:'c',newPath:'a',side:'new',startLine:1,endLine:1});view.allFiles=true;view.allFileSections=[{file:{id:'other',newPath:'other'},comparison:{id:'other-comparison'},patch:{hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]}}];
+ const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='virtual');assert.equal(list.renderRows()[2].values.bg,'undefined18');
+});
+test('split wrapping measures one aligned native pair and keeps source syntax/match decorations',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'old',oldLine:1,text:'const x = "old😀";'},{side:'new',newLine:1,text:'const x = "new😀";'}]}]},null);view.diffMode='split';view.readingOptions={wrap:true};view.controller.state.file.newPath='a.ts';view.findMatches=[{side:'new',line:1,start:11,end:14}];
+ const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='measured'),rows=list.renderRows(),pair=rows[1];assert.equal(rows.length,2);assert.equal(pair.values.min_h,22);assert.ok(Object.hasOwn(pair.values,'items_stretch'));assert.equal(Object.hasOwn(pair.values,'h'),false);assert.ok(descendants(pair).some(n=>n?.nodes?.includes('new')));assert.ok(descendants(pair).some(n=>n&&Object.hasOwn(n.values||{},'underline')));
+});
+test('loaded-source find and comment navigation use guarded existing callbacks outside layout',()=>{
+ const view=diffView({hunks:[]},null),calls=[];view.inputs={find:{retained:true}};view.findMatches=[{side:'new',line:1,start:0,end:1}];view.findIndex=0;view.moveFind=(direction)=>calls.push(['find',direction]);view.navigateComment=direction=>calls.push(['comment',direction]);
+ const root=controls().diffPane(view);for(const id of ['find-previous','find-next','comment-previous','comment-next'])descendants(root).find(n=>n?.identity===id).handlers.on_click({},{});
+ assert.deepEqual(calls,[['find',-1],['find',1],['comment',-1],['comment',1]]);assert.ok(descendants(root).some(n=>n?.nodes?.includes('1/1 · loaded context only')));
+});
+test('wrapped source rows route measured-list clicks to the displayed code',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'wrapped code'}]}]},null),calls=[];view.readingOptions={wrap:true};view.selectLine=(...args)=>calls.push(args);
+ const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='measured');list.handlers.on_item_click('h0l0',{});
+ assert.equal(calls[0][3].newLine,9);assert.equal(calls[0][3].text,'wrapped code');
+});
+test('saved general feedback has a review label without a fabricated file anchor',()=>{
+ const view=diffView({hunks:[]},null);view.controller.state.repo={key:'repo'};view.controller.session=()=>({drafts:[{id:'general',scope:'general',repoKey:'repo',comparisonId:'c',body:'Review feedback'}]});
+ const root=controls().draftsPane(view,{});assert.ok(descendants(root).some(n=>n?.nodes?.includes('General review')));
+});
 test('virtual rows embed the retained editor without registering callbacks during layout',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,3);assert.ok(descendants(rows[2]).includes(view.inlineEditor));assert.equal(list.sizes[2],comments.INLINE_EDITOR_HEIGHT);assert.equal(root.nodes[0].nodes.at(-1).identity,'diff-more');
 });

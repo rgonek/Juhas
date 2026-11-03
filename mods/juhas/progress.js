@@ -1,0 +1,6 @@
+// Blob identities allow unchanged files to retain progress when another file changes.
+// Older metadata falls back to the complete comparison identity, never path alone.
+export function fileReviewKey(comparison,file){const precise='oldOid' in file&&'newOid' in file&&(file.oldOid!=null||file.newOid!=null);return JSON.stringify([comparison.repoKey,precise?null:comparison.id,file.oldPath??null,file.newPath??null,file.status??null,file.oldOid??null,file.newOid??null,file.oldMode??null,file.newMode??null]);}
+export function reviewedState(session,comparison,file){return Boolean(session.reviewedFiles?.[fileReviewKey(comparison,file)]);}
+export function setFileReviewed(session,comparison,file,checked){const key=fileReviewKey(comparison,file),entries=Object.entries(session.reviewedFiles||{}).filter(([k])=>k!==key);if(checked)entries.push([key,Date.now()]);return {...session,reviewedFiles:Object.fromEntries(entries.slice(-2000))};}
+export function nextUnreviewed(files,session,comparison,currentId,direction=1){const step=direction<0?-1:1,index=files.findIndex(file=>file.id===currentId);for(let i=index<0?(step>0?0:files.length-1):index+step;i>=0&&i<files.length;i+=step)if(!reviewedState(session,comparison,files[i]))return files[i];return null;}

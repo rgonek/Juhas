@@ -6,7 +6,7 @@ import {INLINE_EDITOR_HEIGHT} from './comments.js';
 export default class InlineEditor extends View {
  init(p,cx){this.p=p;this.handle=cx.focus_handle();cx.bind_keys([{keystroke:'shift-enter',action:'juhas-save-comment',context:'JuhasComment'}]);}
  submit(cx){cx.stop_propagation();if(!this.p.owner.busy)this.p.save();}
- render(){const p=this.p,t=theme(),target=p.owner.target,location=target?.side?`${target.side==='old'?'Original':'Modified'} · ${target.startLine}${target.endLine!==target.startLine?'–'+target.endLine:''}`:'File comment';
+ render(){const p=this.p,t=theme(),target=p.owner.target,location=target?.scope==='general'?'General review':target?.side?`${target.side==='old'?'Original':'Modified'} · ${target.startLine}${target.endLine!==target.startLine?'–'+target.endLine:''}`:'File comment';
   return v_flex().track_focus(this.handle).key_context('JuhasComment').on_action('juhas-save-comment',(_e,cx)=>this.submit(cx)).h(INLINE_EDITOR_HEIGHT).w_full().min_w(0).p(8)
    .child(v_flex().flex_1().min_h(0).min_w(0).rounded(8).border_1().border_color(t.border).bg(t.raised).p(8).gap(6)
     .child(h_flex().h(20).flex_none().gap(6).items_center().child(svg('mods/juhas/icons/comment.svg').size(13)).child(text(`${p.owner.editId?'Edit comment':'New comment'} · ${location}`).font_semibold()))

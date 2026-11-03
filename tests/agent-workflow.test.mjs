@@ -33,7 +33,7 @@ test('comments across commit and branch views retain revisions and batch togethe
 test('automatic checkpoints are scoped to worktree, branch and ancestry; mark seen pins the selected commit',async t=>{
  const {c,f,first,head}=await setup(t);await c.selectScope({kind:'commit',commit:first});const cp=await c.markSeen();assert.equal(cp.targetOid,first);assert.equal(cp.branch,'feature/topic');assert.equal((await c.lastCheckpoint()).id,cp.id);
  await c.selectScope({kind:'since-review',checkpointId:cp.id,targetRef:'HEAD'});assert.equal(c.state.comparison.baseOid,first);assert.equal(c.state.comparison.targetOid,head);
- f.git('checkout','-b','other');await assert.rejects(()=>c.lastCheckpoint(),/Branch context changed/);await c.refresh();assert.equal(await c.lastCheckpoint(),null);
+ f.git('checkout','-b','other');await assert.rejects(()=>c.lastCheckpoint(),/Branch context changed/);await c.refresh();assert.equal(c.state.branchChanged.current,'other');await c.openRepo(null,f.root);assert.equal(await c.lastCheckpoint(),null);
  c.mutate(s=>({...s,checkpoints:[...s.checkpoints,{...cp,id:'foreign',repoKey:'other',branch:'other'},{...cp,id:'legacy',branch:undefined}]}));assert.equal(await c.lastCheckpoint(),null);
 });
 test('history falls back to HEAD without a usable base and advanced full/all browsing remains available',async t=>{

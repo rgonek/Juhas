@@ -22,6 +22,8 @@ This extends the previously accepted recommendation to optimize work/cache bound
 
 ## Review modes and source identities
 
+User follow-up approved a dedicated review tab: Expand creates/reuses one for the exact machine/repository/worktree within a space, preserving source selection independently of the active terminal. Source-agent context remains separate from the reviewed repository. A terminal in project Y can review Y while the person explicitly selects a live agent from X for delivery; cross-project generated feedback names Y. Saved-comment entries support direct code navigation, and deleted-comment file badges must invalidate native row caches.
+
 - **Commit:** a pinned target SHA and selected parent. New HEAD commits update history without changing the displayed comparison. Even if the user originally entered through a `HEAD` action, the opened commit becomes pinned for refresh purposes. Selecting another history commit is an explicit navigation action.
 - **All changes:** a live aggregate comparison from the selected baseline to HEAD; the baseline is the base branch's merge-base, a chosen commit or a review checkpoint. When these live endpoints change, rebuild only the affected comparison and preserve the file selection.
 - **Uncommitted:** HEAD to working files, including untracked files. A change to HEAD or working content updates this comparison.
@@ -136,7 +138,7 @@ Keep explicit patch truncation/limit states, no silent truncation in review mess
 
 Implement in separately testable stages on the current branch: (1) Git query/cache boundaries and resource-budget evidence, (2) stable refresh and visibility lifecycle, (3) focused modes plus aggregate working-file/empty-repository review, (4) reviewed progress and general comments, (5) native syntax assessment, intra-line emphasis, find/comment navigation and wrapping, (6) explicit working-snapshot checkpoints, (7) optional all-files view and measured bounded batching/prefetch, (8) optional guided-reading integration. Each later stage remains usable independently of optional integrations. Write executor-ready task plans before product implementation; the user has approved the feature scope, so do not repeat the scope approval question merely because tasks are split into stages.
 
-The [community catalog comparison](community-review-mods-comparison.md) records the source evidence and the user's subsequent decision: include the useful reading/performance/checkpoint additions and exclude two-way threads. hq-deck and Spend remain partial architecture references, not code to transplant or proof that all native visibility cases work. Repository-administration, PR-host dashboards, multi-agent management and document approval remain outside this focused review design.
+The user selected the reading/performance/checkpoint additions and excluded two-way threads. Comparison reports were removed at the user's request. Repository-administration, PR-host dashboards, multi-agent management and document approval remain outside this focused review design.
 
 ## Acceptance evidence
 

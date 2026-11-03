@@ -25,7 +25,7 @@ Herdr or pasting snippets into a chat.
 - **Pick up the next round.** Mark a reviewed commit as seen, let the agent make
   changes, then compare from that checkpoint.
 
-Use the sidebar for a quick look, or expand into a full workspace with Git
+Use the sidebar for a quick look, or expand into a dedicated review tab with Git
 history, a file list or tree, and a full-width Unified or Split diff. Native
 resizable panels, loading indicators and change navigation keep the review in
 one place.
@@ -60,9 +60,10 @@ changing layouts, toolbar mods or review data. Open a native pane:
 herdr-app do pane.split --direction right --mod juhas
 ```
 
-Juhas belongs to the current tab. Its expand button uses Herdr pane zoom.
-Escape restores a zoomed panel or returns focus toward the terminal. Close it
-with normal pane controls. Existing sidebar/full integrations remain supported.
+Juhas follows the project where you open it. Expand opens or reuses a review
+tab for that exact repository/worktree within the space. The review tab keeps
+its source when you work in another terminal; Return goes to its source tab.
+Close it with normal tab/pane controls. Existing sidebar integrations remain supported.
 An optional personal toolbar button can invoke the same pane.split command.
 
 ## Your first review
@@ -70,7 +71,9 @@ An optional personal toolbar button can invoke the same pane.split command.
 1. Open **Juhas** in the project you want to review. Expand when you want more room.
 2. Stay in **Commit** to inspect individual commits, or choose **All changes**
    for the final result. Choose a base branch if one has not been configured.
-3. Click the code, write feedback and save your comments. They can come from
+3. Choose **Uncommitted** for working files, or enable **Include uncommitted**
+   in All changes to review commits and later fixes together. Click the code,
+   write feedback and save with **Shift+Enter**. Comments can come from
    several commits and still go into one review.
 4. Choose **Submit review**. Check the recipient and message, then **Send review**
    or **Copy**. Unsaved comments offer an explicit Save / Skip / Back choice.
@@ -89,6 +92,12 @@ Drafts and edited previews stay in your Herdr home. Checkpoints use private Git
 refs and do not change your branch, index or working tree. Comments keep their
 original revisions and line ranges; outdated feedback is marked rather than
 silently moved to another line. Full code quotes and Git headers are optional.
+
+Visible reviews check for changes every 15 seconds without jumping away from
+your selected commit/file. Unchanged sources reuse cached data. Viewed markers,
+find in loaded code, optional wrapping and All files support longer reviews.
+General feedback needs no file anchor. Save working snapshot explicitly records
+uncommitted contents as a local baseline; background checks never take snapshots.
 
 The author reports successful review delivery to a coding agent in real use.
 A send acknowledgement means the terminal accepted the message, not that the

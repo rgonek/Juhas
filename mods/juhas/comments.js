@@ -1,5 +1,5 @@
 export function commentTarget(c,file,start=null,end=null,lines=[]){
- const common={repoKey:c.repoKey,root:c.root,comparisonId:c.id,baseOid:c.baseOid,targetOid:c.targetOid,...(c.mutableTarget?{mutableTarget:true,targetTree:c.targetTree}:{}),oldPath:file.oldPath,newPath:file.newPath};
+ const common={repoKey:c.repoKey,root:c.root,comparisonId:c.id,baseOid:c.baseOid,targetOid:c.targetOid,...(c.mutableTarget?{mutableTarget:true,baseTree:c.baseTree,targetTree:c.targetTree}:{}),oldPath:file.oldPath,newPath:file.newPath};
  if(!start)return {...common,side:null,startLine:null,endLine:null,quote:''};
  const side=start.side==='context'?'new':start.side;const last=end||start;const lastSide=last.side==='context'?'new':last.side;
  if(side!==lastSide)throw new Error('Select lines on the same side of the diff');

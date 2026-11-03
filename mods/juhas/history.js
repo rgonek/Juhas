@@ -1,5 +1,6 @@
 import {git,oid,isAncestor} from './git.js';
 export async function listHistory(run,repo,{ref='HEAD',exclude=null,skip=0,limit=300,query='',author='',path='',remotes=true,resolvedHead=null}={}){
+ limit=Math.max(1,Math.min(limit,1000));
  const all=ref==='all',head=all?null:resolvedHead||await oid(run,repo,ref);let selected=head;
  const boundary=!all&&exclude?await oid(run,repo,exclude):null;
  if(/^[0-9a-f]{7,64}$/i.test(query)){const match=await oid(run,repo,query);if(!all&&!await isAncestor(run,repo,match,head))return {commits:[],hasMore:false,ref:head,exclude:boundary};selected=match;}

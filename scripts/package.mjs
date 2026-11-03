@@ -5,7 +5,7 @@ const publicFiles=['README.md','RECIPE.md','preview.png','LICENSE','NOTICE','THI
 const modules=['cache','comments','comparisons','config','context','controller','diff','git','graph','history','inline-editor','main','model','platform','presentation','repositories','review','review-ui','storage','submit','ui'];
 export function releaseFiles(source){
  const files=publicFiles.filter(f=>existsSync(join(source,f)));const mod=join(source,'mods','juhas');if(!existsSync(mod))return files;
- for(const name of [...modules.map(m=>m+'.js'),'mod.json','helpers/list-directories.ps1','icons/LICENSE-Lucide.txt',...['expand','collapse','fetch','refresh','comment','copy','arrow-up','arrow-down','more','chevron-right','chevron-down','check','loader-circle'].map(name=>'icons/'+name+'.svg')])if(existsSync(join(mod,name)))files.push(`mods/juhas/${name}`);
+ for(const name of [...modules.map(m=>m+'.js'),'mod.json','helpers/list-directories.ps1','icons/LICENSE-Lucide.txt',...['juhas','expand','collapse','fetch','refresh','comment','copy','arrow-up','arrow-down','more','chevron-right','chevron-down','check','loader-circle'].map(name=>'icons/'+name+'.svg')])if(existsSync(join(mod,name)))files.push(`mods/juhas/${name}`);
  return files.sort();
 }
 export function packageRelease({source,dest}){

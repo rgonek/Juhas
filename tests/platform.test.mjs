@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync,writeFileSync,symlinkSync} from 'node:fs';
+import {mkdirSync,writeFileSync,symlinkSync,realpathSync} from 'node:fs';
 import {basename,join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fixture} from './helpers/repos.mjs';
@@ -10,7 +10,8 @@ test('native directory discovery handles spaces and Unicode and lists only immed
  const f=fixture(t),child=join(f.root,"child [one] ' ż");mkdirSync(child);mkdirSync(join(child,'nested'));writeFileSync(join(f.root,'ordinary.txt'),'file');
  const exec=async(command,args)=>{const r=spawnSync(command,args,{encoding:'utf8'});return {code:r.status??1,stdout:r.stdout||'',stderr:r.stderr||r.error?.message||''};};
  const rows=await readDirectories(exec,resolve('.'),null,f.root);
- assert.ok(rows.some(row=>row.path.replace(/\\/g,'/')===child.replace(/\\/g,'/')));
+ const canonical=path=>{const resolved=realpathSync.native(path);return process.platform==='win32'?resolved.toLowerCase():resolved;};
+ assert.ok(rows.some(row=>canonical(row.path)===canonical(child)),JSON.stringify({child,rows}));
  assert.ok(!rows.some(row=>/nested|ordinary\.txt/.test(row.path)));
 });
 

@@ -1,4 +1,4 @@
-import {readFileSync,writeFileSync,mkdirSync,cpSync,existsSync,readdirSync,statSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,cpSync,copyFileSync,existsSync,readdirSync,statSync} from 'node:fs';
 import {resolve,join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
@@ -37,6 +37,12 @@ export function createPaneTabsSource(source){
  .child(svg("mods/juhas/icons/juhas.svg").size(14)).child("Juhas"))
  `+anchor);
 }
+// Ship the instruction skill inside the mod; agent discovery installation is opt-in.
+function copyBundledSkills(from,mod){
+ const relative=join('skills','juhas-review-response','SKILL.md'),source=join(from,relative);
+ if(!existsSync(source))return;
+ const target=join(mod,relative);mkdirSync(dirname(target),{recursive:true});copyFileSync(source,target);
+}
 export function installLegacy({appHome,layoutName='main',source=resolve(dirname(fileURLToPath(import.meta.url)),'..'),now=Date.now()}){
  if(!/^[\w-]+$/.test(layoutName))throw new Error('Invalid layout name');
  const home=resolve(appHome);const original=JSON.parse(readFileSync(join(home,'layouts',`${layoutName}.json`),'utf8'));const built=buildLayout(original);
@@ -46,6 +52,7 @@ export function installLegacy({appHome,layoutName='main',source=resolve(dirname(
  if(existsSync(mod)||existsSync(layout)||existsSync(tabsMod)){mkdirSync(backup,{recursive:true});if(existsSync(mod))cpSync(mod,join(backup,'juhas'),{recursive:true});if(existsSync(layout))cpSync(layout,join(backup,'juhas.json'));if(existsSync(tabsMod))cpSync(tabsMod,join(backup,'juhas-tabs'),{recursive:true});}
  mkdirSync(mod,{recursive:true});const from=join(source,'mods','juhas');
  for(const name of readdirSync(from)){if(name.endsWith('.js')||name==='mod.json'||name==='helpers'||name==='icons')cpSync(join(from,name),join(mod,name),{recursive:statSync(join(from,name)).isDirectory()});}
+ copyBundledSkills(from,mod);
  mkdirSync(tabsMod,{recursive:true});writeFileSync(join(tabsMod,'main.js'),tabsSource);cpSync(join(from,'presentation.js'),join(tabsMod,'presentation.js'));writeFileSync(join(tabsMod,'mod.json'),JSON.stringify({place:'none',title:'Juhas tabs'}));
  writeFileSync(layout,JSON.stringify(built,null,2)+'\n');return {mod,tabsMod,layout,backup:existsSync(backup)?backup:null};
 }
@@ -57,6 +64,7 @@ export function install({appHome,tabsName,source=resolve(dirname(fileURLToPath(i
  if(existsSync(mod)){mkdirSync(backup,{recursive:true});cpSync(mod,join(backup,'juhas'),{recursive:true});}
  mkdirSync(mod,{recursive:true});const from=join(source,'mods','juhas');
  for(const name of readdirSync(from)){if(name.endsWith('.js')||name==='mod.json'||name==='helpers'||name==='icons')cpSync(join(from,name),join(mod,name),{recursive:statSync(join(from,name)).isDirectory()});}
+ copyBundledSkills(from,mod);
  if(tabsMod){mkdirSync(backup,{recursive:true});cpSync(tabsMod,join(backup,tabsName),{recursive:true});cpSync(join(from,'pane-presentation.js'),join(tabsMod,'pane-presentation.js'));writeFileSync(join(tabsMod,'main.js'),tabsSource);}
  return {mod,tabsMod,backup:existsSync(backup)?backup:null};
 }

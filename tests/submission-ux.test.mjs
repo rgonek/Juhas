@@ -69,8 +69,8 @@ test('edited payload byte limits and empty messages are checked before transport
  assert.equal((await submit(submission.updateBatch(batch,{text:'żółć'}),transport)).state,'failed');assert.equal((await submit(submission.updateBatch(batch,{text:'  '}),transport)).state,'failed');assert.equal(sent,0);
 });
 import {readFileSync} from 'node:fs';
-function nativeSubmission(){
- const data=new Map();let selectedSession={...session,submittedBatches:[],drafts:comments.map(d=>({...d}))};let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
+function nativeSubmission(data=new Map()){
+ let selectedSession={...session,submittedBatches:[],drafts:comments.map(d=>({...d}))};let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const deliveries=[],deps={...submission,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,v),agents:()=>[agent('right')],terminals:()=>[terminal('right'),terminal('manual')],submit:submission.createSubmitter(),exec:async(_cmd,args)=>{deliveries.push(args);return {code:0};}};
  const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps)),view=Object.create(Native.prototype);
  view.controller={state:{repo:{key:'repo'},comparison:null},session:()=>selectedSession,mutate:fn=>selectedSession=fn(selectedSession)};view.currentContext=()=>({...context,key:'context'});view.activeContext=view.currentContext();view.reviewKey='review-key';view.inputs={note:{value:()=>''}};let text='';view.inputs.review={value:()=>text,set_value:value=>text=value};view.work=(_cx,fn)=>view.pending=fn();const cx={notify(){},write_to_clipboard:value=>data.set('clipboard',value)};return {view,data,deliveries,cx,getSession:()=>selectedSession};
@@ -116,3 +116,29 @@ test('dismissal of an old native picker does not close a different active panel'
 
 
 test('saved-comment browsing filters do not omit comments from the review batch',()=>{const {view,cx}=nativeSubmission();view.draftStatus='outdated';view.draftSource='another-comparison';view.preview(cx);assert.deepEqual(view.batch.draftIds,['1','2']);});
+
+test('response guidance is opt-in, preserves provenance and is part of the bounded message',()=>{
+ const base=submission.buildBatch(session,[],{repoKey:'repo'}),guided=submission.buildBatch(session,[],{repoKey:'repo',includeResponseGuidance:true});
+ assert.ok(!base.text.includes('symbol names'));assert.match(guided.text,/symbol names or short code excerpts/);assert.match(guided.text,/without looking up line numbers/);assert.equal(guided.text.split(submission.REVIEW_RESPONSE_GUIDANCE).length-1,1);assert.equal(guided.utf8Bytes,utf8Bytes(guided.text));assert.deepEqual(guided.draftSnapshots,base.draftSnapshots);assert.notEqual(guided.id,base.id);
+});
+
+test('new reviews remember generation preferences independently of the previous preview',()=>{
+ const {view,cx,data}=nativeSubmission();view.preview(cx);assert.equal(view.includeResponseGuidance,false);view.toggleReviewQuotes(cx,true);view.toggleGitContext(cx,true);view.toggleResponseGuidance(cx,true);
+ data.delete('review-key');const next=nativeSubmission(data);next.view.preview(next.cx);assert.equal(next.view.includeQuotes,true);assert.equal(next.view.includeGitContext,true);assert.equal(next.view.includeResponseGuidance,true);assert.match(next.view.batch.text,/some long quoted source code/);assert.match(next.view.batch.text,/symbol names or short code excerpts/);
+ assert.deepEqual(data.get('juhas.review-options.v1'),{includeQuotes:true,includeGitContext:true,includeResponseGuidance:true});
+});
+
+test('guidance preference preserves edited text until explicit regeneration and remembers disabling',()=>{
+ const {view,cx,data}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('My exact text');view.changeReview(cx);view.toggleResponseGuidance(cx,true);assert.equal(view.batch.text,'My exact text');assert.equal(data.get('review-key').includeResponseGuidance,true);
+ view.generatePreview(view.batch.agentAddress,cx);assert.match(view.batch.text,/symbol names or short code excerpts/);view.toggleResponseGuidance(cx,false);assert.ok(!view.batch.text.includes('symbol names'));data.delete('review-key');const next=nativeSubmission(data);next.view.preview(next.cx);assert.equal(next.view.includeResponseGuidance,false);
+});
+test('successful delivery clears the review preview but retains user generation preferences',async()=>{
+ const {view,cx,data}=nativeSubmission();view.preview(cx);view.toggleReviewQuotes(cx,true);view.toggleResponseGuidance(cx,true);view.send(cx);await view.pending;
+ assert.equal(data.get('review-key'),null);assert.equal(data.get('juhas.review-options.v1').includeQuotes,true);assert.equal(data.get('juhas.review-options.v1').includeResponseGuidance,true);
+ const next=nativeSubmission(data);next.view.preview(next.cx);assert.equal(next.view.includeQuotes,true);assert.equal(next.view.includeResponseGuidance,true);
+});
+test('a checkbox in an older preview preserves preferences changed in another view',()=>{
+ const data=new Map(),first=nativeSubmission(data),second=nativeSubmission(data);first.view.preview(first.cx);second.view.preview(second.cx);
+ first.view.toggleResponseGuidance(first.cx,true);second.view.toggleReviewQuotes(second.cx,true);data.delete('review-key');const next=nativeSubmission(data);next.view.preview(next.cx);
+ assert.equal(next.view.includeResponseGuidance,true);assert.equal(next.view.includeQuotes,true);
+});

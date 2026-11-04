@@ -6,16 +6,16 @@ Review your coding agent’s work without leaving Herdr. Browse commits or inspe
 
 ## What you see
 
-- A native panel matching Files/Changes: rounded 10px corners, theme background and borders, 13px body text and a 42px header. The header shows Juhas, the branch in expanded view, Fetch, Refresh and an expand/collapse action at the far right.
-- A small comparison toolbar: **Commit** and **All changes**. Aggregate review exposes **Compare from** and its resolved base. A compact summary shows commit/file counts. Advanced comparisons live under **⋯**.
+- A native panel matching Files/Changes: rounded 10px corners, theme background and borders, 13px body text and a 42px header. The sidebar has a Juhas header and Expand action; the dedicated review tab uses a flat surface without that extra header. Refresh lives in the comparison toolbar.
+- A small comparison toolbar: **Commit**, **All changes** and **Uncommitted**. Aggregate review exposes **Compare from** and its resolved base. A compact summary shows commit/file counts. Advanced comparisons live under **⋯**.
 - In expanded view, History and Files sit side by side above a full-width diff. Their horizontal divider starts at 480px; the upper area starts at 230px high. Native dividers resize both directions. The sidebar shows Files above the diff, starting at 170px high.
 - History has a colored Git graph, commit subjects, authors and short IDs. Files has status colors, added/deleted line counts and comment badges, with an optional compact directory tree. Both lists use 29px rows. Loading stays in existing headers without displacing the content.
 - The diff offers **Unified / Split**, previous/next change, **Comment**, and a rightmost menu for **Whole file** and **Select / copy**. Added/removed lines use theme green/red. Saved comments and the retained comment editor appear below their source lines, on the matching side in Split.
-- Comments opens a saved-comment panel with Current/Outdated and source-comparison filters. Submit opens an editable **Review · N comments** preview with the recipient, generation options and fixed bottom Send/Copy/Cancel actions.
+- Changes / Comments switches the upper section between History/Files and saved comments, with Current/Outdated and source-comparison filters; the diff stays below. Submit opens an editable **Review · N comments** preview with the recipient, generation options and fixed bottom Send/Copy/Cancel actions.
 
 ## How it behaves
 
-Open Juhas beside Files/Changes; expand for the main workspace and collapse to return to the terminal and sidebar. Terminals remain alive. The active project/tab directory determines the repository. Switching projects replaces the displayed review; returning restores that context. Sidebar and expanded share the selected comparison, drafts and loaded review data.
+Open Juhas beside Files/Changes; expand into a per-repository/worktree review tab, hiding the source sidebar; the terminal remains available in its original tab. Terminals remain alive. The active project/tab directory determines the repository. Switching projects replaces the displayed review; returning restores that context. Sidebar and expanded share the selected comparison, drafts and loaded review data.
 
 **Commit** is the default, initially HEAD against its parent. Clicking a history row selects that commit; merge commits offer a parent selector. **All changes** shows the final tree difference against HEAD from a base branch’s merge-base, the last eligible review checkpoint or an explicitly chosen commit. The chosen baseline survives visits to individual commits. Missing or ambiguous bases require a choice and do not block Commit review.
 
@@ -31,11 +31,9 @@ When the review area has keyboard focus, j/k move between files, brackets move b
 
 Use Herdr App 0.1.11+ with the installed `AGENTS.md`, `herdr.d.ts` and `gpui-kit.d.ts` as the API reference. The mod runs in Herdr’s JavaScript runtime using gpui-kit and gpui-base. Native Buttons, Popovers, Textareas, virtual lists, resizable panels and scroll handles supply interaction. Use semantic `theme()` colors; bundled Lucide SVGs provide icons and native `.spin(900)` animates history loading.
 
-Embed two copies of `mods/juhas`: `props.role: "sidebar"` and `props.role: "full"`. Optional `props.sessionId` shares a review session explicitly; `props.folder` fixes a custom context. Without those overrides, follow active spaces/tabs/panes and their terminal directories.
+The default installer copies the mod without changing the current layout or toolbar. Open it with `herdr-app do pane.split --direction right --mod juhas`. A native Juhas pane can be closed with the normal pane controls; Expand opens a dedicated review tab. Optional `--tabs <personal-tabs-mod>` adds a toggle to an existing personal tabs mod; preserve the current layout and shipped mods.
 
-The installer clones the chosen layout locally. Add `git-review-sidebar` under the existing `panel-body` stack. Wrap the existing terminal content in `git-review-work`, a stack with `git-review-terminal` and `git-review-full`. Preserve existing Files/Changes and terminal content. Generate a personal `juhas-tabs` copy from the installed stock tabs mod; add Juhas beside Files/Changes and copy `presentation.js` into that mod. Do not distribute a replacement root layout or overwrite shipped mods.
-
-Presentation calls `layout.show`, `layout.hide` and `layout.select`. The tabs copy handles `juhas-tabs.open`, `.review` and `.full`, including space-scoped expanded state. The review uses `focused`, `spaces`, `panes`, `shared`/`setShared`, `agents`, `terminals`, `nextCommand`, `exec` and local configuration reads. Shown copies expose `juhas.refresh`, navigation, comparison, tree, details, comments and preview commands.
+After installing Juhas, ask the user whether to install the bundled `mods/juhas/skills/juhas-review-response/SKILL.md` for their coding agent. Explain that it guides responses to review feedback using real code symbols and short snippets. If they opt in, ask which agent and whether the skill should apply to this project or their user account; determine the destination from that agent's documented skill discovery directories. Copy the bundled skill directory only after that choice, preserving existing custom files and asking before replacing a conflicting skill. This installs on the machine where the agent runs; a remote agent needs the skill on its remote machine. Declining leaves the skill bundled inside the Herdr mod only. The independent Reply with code context checkbox adds a short response instruction to a review without requiring skill installation; generation options are remembered for future reviews.
 
 Keep Git access in the controller/domain modules and slow work in native async tasks. Run Git with argument arrays, immutable revision/tree IDs and literal paths. Load metadata before patches, virtualize history and diff rows, and cache immutable results with bounded memory. Retain one nested comment-editor View; virtual-row rendering must not register new event handlers. Submission uses `hc send` with the exact edited preview.
 
@@ -43,7 +41,7 @@ Personal base rules belong in the Herdr-home `juhas.json`. Support prefix/captur
 
 ## Watch out
 
-- The tabs generator targets the supported stock source structure and rejects incompatible versions. Back up existing personal files; preserve unrelated layout nodes. Updating an integrated personal layout should update mod files without regenerating that layout.
+- The optional tabs generator targets supported personal tabs source and rejects incompatible versions. Back up existing personal files; preserve unrelated layout nodes. Updating an integrated personal layout should update mod files without regenerating that layout.
 - Native UI verification covers Windows; Linux/macOS core CI does not establish native interaction support. Remote SSH is outside initial acceptance. Node.js 22+ is needed for installation/tests, not runtime. Windows directory discovery uses PowerShell; Unix discovery uses find.
 - JavaScript virtual rows do not expose Shift/drag selection or a complete independent Split-scroll API. Use explicit inclusive-range endpoints in advanced review and a shared diff scroll surface. The Split side selector resolves ambiguous shared-row clicks. Do not emulate pointer or wheel gestures.
 - Preserve unsaved text, original revisions, side/ranges and source snapshots. Amend/rebase and mutable-tree changes can invalidate comments. Missing source must remain explicit rather than attaching feedback to another line.

@@ -139,3 +139,8 @@ Expand immediately hides the originating legacy sidebar; a native Juhas pane is 
 Dedicated review tabs omit the redundant Juhas/branch heading. Refresh is in the common review-mode toolbar in both sidebar and tab. History rows show local commit times: relative under three hours, then Today HH:mm or Yesterday HH:mm, otherwise YYYY-MM-DD HH:mm. The original exact timestamp stays available in the tooltip.
 
 History rows omit the redundant `HEAD -> branch` decoration; other refs/tags remain visible and full refs stay in the tooltip and details.
+
+
+**Reply with code context** optionally asks the agent to identify each concern and fix using relevant symbol names or short code excerpts, so the reply makes sense without looking up line numbers. It is off on first use. Include code, Include Git context and Reply with code context are saved as user preferences across projects and Herdr restarts, including after a review is sent. An existing saved preview retains its own choices; a new review uses the remembered defaults. Manual message edits remain exact until explicit Regenerate. These options are separate from guided-reading requests.
+
+The release also bundles `mods/juhas/skills/juhas-review-response/SKILL.md`. RECIPE asks the user whether to install it for their agent, and where. Installing Juhas only copies the skill inside the mod; it does not add agent-wide or repository skill configuration. Skill installation and the response-instruction checkbox are independent.

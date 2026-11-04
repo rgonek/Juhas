@@ -1,5 +1,6 @@
 import {utf8Bytes} from './git.js';
 export const MAX_REVIEW_BYTES=16000;
+export const REVIEW_RESPONSE_GUIDANCE='Address each comment using relevant symbol names or short code excerpts. State the concern and outcome so replies make sense without looking up line numbers.';
 export function isLiveTerminal(terminal){return Boolean(terminal&&!terminal.finished&&(terminal.state==null||terminal.state==='live'||terminal.state==='running'));}
 export function agentRecipients(terminals,agents=[]){
  const byAddress=new Map(agents.map(agent=>[agent.address,agent]));
@@ -16,12 +17,12 @@ function sourceRevision(draft){return draft.side==='old'?(draft.baseOid||'empty'
 function shortRevision(value,all){if(!/^[a-f0-9]{40,64}$/.test(value))return value;let length=12;while(length<value.length&&all.some(other=>other!==value&&other.startsWith(value.slice(0,length))))length+=4;return value.slice(0,length);}
 function excerpt(value){const lines=value.split('\n'),head=lines.slice(0,3).join('\n'),short=head.slice(0,240);return short+(lines.length>3||head.length>240?'\n…':'');}
 function overlaps(a,b){const path=d=>d.side==='old'?(d.oldPath||d.newPath):d.newPath;return a.scope!=='general'&&b.scope!=='general'&&a!==b&&a.side===b.side&&path(a)===path(b)&&sourceRevision(a)!==sourceRevision(b)&&(a.startLine==null||b.startLine==null||a.startLine<=(b.endLine??b.startLine)&&b.startLine<=(a.endLine??a.startLine));}
-export function buildBatch(session,comparisons,{agentAddress=null,note='',repoKey=null,includeQuotes=false,includeGitContext=false,includeRepository=false}={}){
+export function buildBatch(session,comparisons,{agentAddress=null,note='',repoKey=null,includeQuotes=false,includeGitContext=false,includeRepository=false,includeResponseGuidance=false}={}){
  const drafts=session.drafts.filter(draft=>repoKey==null||draft.repoKey===repoKey).slice().sort((a,b)=>a.repoKey.localeCompare(b.repoKey)||(a.newPath||a.oldPath||'').localeCompare(b.newPath||b.oldPath||'')||(a.startLine??0)-(b.startLine??0)||a.id.localeCompare(b.id));
  if(!drafts.length)throw new Error('No comments to submit for this repository');
  if(drafts.some(d=>!d.body?.trim()))throw new Error('Comment cannot be empty');
  const repositories=new Map();for(const draft of drafts){if(!repositories.has(draft.repoKey))repositories.set(draft.repoKey,new Map());const groups=repositories.get(draft.repoKey);if(!groups.has(draft.comparisonId))groups.set(draft.comparisonId,[]);groups.get(draft.comparisonId).push(draft);}
- const chunks=['# Code review',note];
+ const chunks=['# Code review',includeResponseGuidance?REVIEW_RESPONSE_GUIDANCE:'',note];
  for(const [key,groups] of repositories){const repositoryDrafts=[...groups.values()].flat(),sources=[...new Set(repositoryDrafts.map(sourceRevision))],first=repositoryDrafts[0],comparison=comparisons.find(c=>c.id===first.comparisonId);if(includeGitContext||includeRepository)chunks.push('\n## '+(comparison?.root||first.root||key));
   for(const [id,group] of groups){const first=group[0];if(includeGitContext)chunks.push(`${first.baseOid||'empty'} → ${first.targetOid||'working tree'}`);const general=group.filter(d=>d.scope==='general');if(general.length){chunks.push('\n### General feedback');for(const draft of general)chunks.push(`- ${draft.status==='outdated'?'[OUTDATED @ '+sourceRevision(draft)+'] ':''}${draft.body}`);}const files=new Map();for(const draft of group.filter(d=>d.scope!=='general')){const file=JSON.stringify([draft.oldPath,draft.newPath]);if(!files.has(file))files.set(file,[]);files.get(file).push(draft);}
    for(const file of files.values()){const first=file[0],renamed=first.oldPath&&first.newPath&&first.oldPath!==first.newPath;chunks.push('\n### '+(renamed?first.oldPath+' → ':'')+(first.newPath||first.oldPath));
@@ -37,7 +38,7 @@ export function buildBatch(session,comparisons,{agentAddress=null,note='',repoKe
   }
  }
  const text=chunks.filter(Boolean).join('\n'),draftIds=drafts.map(d=>d.id),draftSnapshots=Object.fromEntries(drafts.map(d=>[d.id,JSON.stringify(d)]));
- const sourceId=JSON.stringify([session.id,draftSnapshots]);return {sourceId,id:JSON.stringify([sourceId,agentAddress,text]),agentAddress,text,generatedText:text,draftIds,draftSnapshots,utf8Bytes:utf8Bytes(text),edited:false,includeQuotes,includeGitContext,repoKey};
+ const sourceId=JSON.stringify([session.id,draftSnapshots]);return {sourceId,id:JSON.stringify([sourceId,agentAddress,text]),agentAddress,text,generatedText:text,draftIds,draftSnapshots,utf8Bytes:utf8Bytes(text),edited:false,includeQuotes,includeGitContext,includeResponseGuidance,repoKey};
 }
 export function updateBatch(batch,{text=batch.text,agentAddress=batch.agentAddress}={}){
  const sourceId=batch.sourceId||batch.id;return {...batch,sourceId,id:JSON.stringify([sourceId,agentAddress,text]),agentAddress,text,utf8Bytes:utf8Bytes(text),edited:text!==(batch.generatedText??batch.text)};

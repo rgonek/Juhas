@@ -30,7 +30,7 @@ test('all-files search retains one global 10000-match bound',()=>{
  assert.equal(v.findMatches.length,10000);assert.equal(v.findMatches.limited,true);
 });
 test('saved-comment navigation reveals a previously collapsed all-files section',async()=>{
- const {v,cx}=fixture();v.allFiles=true;v.allFilesKey='c';v.allFileSections=[{file:v.controller.state.file,collapsed:true}];v.controller.selectFile=async()=>{};v.work=(_cx,action)=>v.pending=action();v.publish=()=>{};cx.timer={after(){}};
+ const {v,cx}=fixture();v.upperView='comments';v.allFiles=true;v.allFilesKey='c';v.allFileSections=[{file:v.controller.state.file,collapsed:true}];v.controller.selectFile=async()=>{};v.work=(_cx,action)=>v.pending=action();v.publish=()=>{};cx.timer={after(){}};
  v.openComment({id:'comment',comparisonId:'c',newPath:'f',oldPath:'f',side:'new',endLine:2},cx);await v.pending;
- assert.equal(v.allFileSections[0].collapsed,false);assert.equal(v.allFileSections[0].patch,v.controller.state.patch);
+ assert.equal(v.upperView,'comments');assert.equal(v.allFileSections[0].collapsed,false);assert.equal(v.allFileSections[0].patch,v.controller.state.patch);
 });

@@ -21,3 +21,9 @@ The legacy sidebar no longer waits for review-tab registration before hiding. Re
 The branch field cannot grow vertically into the popover, and deferred focus is canceled when its picker closes. Native textarea growth is two to five rows; any diff with an open editor uses measured rows instead of a fixed composer extent. History displays bounded relative times followed by local Today/Yesterday or full dates.
 
 Native Windows acceptance confirmed the repeated heading is absent, Refresh remains reachable, bounded date labels render in history, and a live Expand from the legacy sidebar creates the review tab with the sidebar hidden. The test-created tab was closed afterward. Full refs remain in tooltips/details while the HEAD branch prefix is omitted from history rows. No pointer/key automation or Herdr restart was used.
+
+## Comments in the upper section
+
+Approved option 2 replaces the bottom comments panel with a Changes / Comments switch above the upper section. Changes shows History/Files (Files only in the sidebar); Comments shows the existing repository-scoped saved-comment list. The diff stays underneath in the same native resizable group. There is no third comments split or duplicated Comments action in the main toolbar.
+
+Upper-section selection is separate from modal/editor state, retained per context and transferred with loaded view snapshots. Clicking Code may change the exact source below without closing Comments. Switching sections performs no Git reads and retains unsaved input, selection and the shared divider size. History search controls are hidden while Comments is selected, without clearing their values.

@@ -32,6 +32,10 @@ test('loaded view transfer retains the include-uncommitted control with its comp
  const h=harness();h.sidebar.includeWorking=true;h.sidebar.publish();const full=h.view();full.activateContext(h.context,h.cx);
  assert.equal(full.includeWorking,true);assert.equal(h.calls.length,0);
 });
+test('loaded view transfer retains the chosen upper Comments section without Git',()=>{
+ const h=harness();h.sidebar.upperView='comments';h.sidebar.publish();const full=h.view();full.activateContext(h.context,h.cx);
+ assert.equal(full.upperView,'comments');assert.equal(h.calls.length,0);
+});
 test('cached presentation is rejected after Refresh or a different context/configuration',()=>{
  const h=harness();h.sidebar.publish();const full=h.view();full.activeContext={...h.context,key:'other'};full.selectionKey=contextStorageKey('selection','space',full.activeContext);assert.equal(full.restoreLoadedView(h.data.get(h.sidebar.selectionKey),h.cx),false);
  full.activeContext=h.context;full.selectionKey=h.sidebar.selectionKey;full.contextProps.config={maxDepth:1};assert.equal(full.restoreLoadedView(h.data.get(h.sidebar.selectionKey),h.cx),false);

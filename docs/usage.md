@@ -5,7 +5,7 @@ Start with the [quick introduction](../README.md) or use this guide for the full
 ## Review workflow
 
 1. Click **Juhas** beside **Files / Changes**. It follows the active project/tab directory. A direct Git context selects its repository automatically. With `showAdvanced: true`, parent contexts can choose only repositories below the current directory.
-2. Expand opens or reuses a dedicated review tab for this repository/worktree in the current space: History + Files above the diff, with native resizable panels. It keeps the source repository when another terminal changes directory. The sidebar-return icon or Juhas toolbar button in the review tab transfers the review back to its source sidebar and closes the expanded review pane. History defaults to commits after the configured branch's merge-base, falling back to HEAD history if no base is resolved. Details and search stay available; full/all-branch browsing belongs to `showAdvanced` controls.
+2. The sidebar provides **Open beside**, **Open below**, and **Open in new tab**. The first two split the source tab at its focused terminal (or first terminal), retaining the review session, selected comparison, loaded diff and unsaved comments, then hide the sidebar. A pane uses Herdr native split, resize, move, zoom and close controls; placement and sidebar-return buttons are omitted inside panes. **Open in new tab** opens or reuses a dedicated review tab for this repository/worktree in the current space: History + Files above the diff, with native resizable panels. It keeps the source repository when another terminal changes directory. The Juhas toolbar button in the review tab transfers the review back to its source sidebar and closes the expanded review pane. History defaults to commits after the configured branch's merge-base, falling back to HEAD history if no base is resolved. Details and search stay available; full/all-branch browsing belongs to `showAdvanced` controls.
 3. Choose between three modes:
 
    | Mode | Meaning |
@@ -133,7 +133,7 @@ history refreshes.
 
 The comment editor starts at two text lines, grows natively to five and then scrolls. Its diff row uses measured layout while open. Enter saves through the native textarea submit event; Shift+Enter inserts a line break. Older hosts insert a line break before reporting Enter submission, so that inserted line break remains in the saved text. Newer hosts exposing submit-on-enter avoid that extra break. No ancestor keyboard override or host upgrade is used.
 
-Expand immediately hides the originating legacy sidebar; a native Juhas pane is closed after the review tab is confirmed. Registration identifies the newly created tab instead of trusting the focused tab during init. If tab creation fails, the original view remains available.
+Opening in a new tab immediately hides the originating legacy sidebar; a native Juhas pane is closed after the review tab is confirmed. Registration identifies the newly created tab instead of trusting the focused tab during init. If tab creation fails, the original view remains available.
 
 
 Dedicated review tabs omit the redundant Juhas/branch heading. Refresh is in the common review-mode toolbar in both sidebar and tab. History rows show graph, title, author and date, with the hash available in the tooltip. Local commit times are relative under three hours, then Today HH:mm or Yesterday HH:mm, otherwise YYYY-MM-DD HH:mm. The original exact timestamp stays available in the tooltip.

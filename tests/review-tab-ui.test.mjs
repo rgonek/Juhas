@@ -36,3 +36,17 @@ test('a review tab registers its new pane even when init still reports the sourc
  live.spaces=[{id:source.spaceId,tabs:[{id:'terminal-y'},{id:'new-review',name:'Review · y'}]}];live.panes=[{pane:'source-review',tab:'terminal-y',mod:'juhas'},{pane:'new-pane',tab:'new-review',mod:'juhas'}];data.set(key,{opening:Date.now(),previousTabIds:['terminal-y'],origin:{paneId:'source-review',tabId:'terminal-y'}});
  assert.equal(v.registerReviewTab(),true);assert.equal(v.displayTabId,'new-review');assert.equal(data.get(key).paneId,'new-pane');assert.deepEqual(commands,[['pane.close',{pane:'source-review'}]]);
 });
+
+for(const direction of ['right','down'])test(`sidebar opens ${direction} at the focused source pane and retains review context`,()=>{
+ const {v,commands,live,source}=setup();v.role='sidebar';v.persistComposer=()=>{};v.persistReview=()=>{};
+ live.panes=[{pane:'first',tab:source.tabId,terminal:'t1'},{pane:'chosen',tab:source.tabId,terminal:'t2',focused:true},{pane:'foreign',tab:'other',terminal:'t3',focused:true}];
+ v.openReviewPane(direction);const [name,args]=commands[0];assert.equal(name,'pane.split');assert.equal(args.direction,direction);assert.equal(args.pane,'chosen');assert.equal(args.mod,'juhas');assert.equal(args.props.role,'pane');assert.equal(args.props.sessionId,v.sessionId);assert.deepEqual(args.props.reviewContext,source);
+ assert.deepEqual(commands.slice(1),[['layout.hide',{id:'git-review-sidebar'}],['layout.hide',{id:'panel'}]]);
+});
+test('missing source terminal leaves sidebar and selection intact',()=>{
+ const {v,commands}=setup();v.role='sidebar';v.openReviewPane('right');assert.deepEqual(commands,[]);
+});
+test('pane placement actions are unavailable outside the sidebar or while busy',()=>{
+ const {v,commands,live,source}=setup();live.panes=[{pane:'agent',tab:source.tabId,terminal:'t1'}];
+ for(const role of ['pane','bar']){v.role=role;v.openReviewPane('down');}v.role='sidebar';v.busy=true;v.openReviewPane('right');assert.deepEqual(commands,[]);
+});

@@ -11,7 +11,9 @@ export default class FileHeader extends View {
   return h_flex().h(34).w(owner.width?Math.max(200,owner.width-18):'100%').min_w(0).px(8).gap(6).items_center().bg(t.raised).border_b(1).border_color(t.border)
    .on_mouse_down('left',(_e,cx)=>cx.stop_propagation())
    .child(button(`section-${fileId}`,section.collapsed?'▸':'▾',(_e,cx)=>owner.headerAction({kind:'toggle',fileId,comparisonId}),{tooltip:section.collapsed?'Expand file':'Collapse file'}).w(28))
-   .child(text(file.newPath).flex_1().min_w(0).truncate().tooltip(file.newPath))
+   .child(text(file.newPath).font_semibold().min_w(0).truncate().tooltip(file.newPath))
+   .when(file.additions!=null,e=>e.child(text('+'+file.additions).text_color(t.ansi2)).child(text('−'+file.deletions).text_color(t.ansi1)))
+   .child(div().flex_1())
    .when(Boolean(section.loading||section.limited),e=>e.child(text(section.loading?'Loading…':'Limited',true)))
    .child(checkbox(`viewed-${fileId}`,'Viewed',owner.isFileReviewed(file),(checked,cx)=>owner.headerAction({kind:'viewed',fileId,comparisonId,checked})))
    .child(button(`comment-${fileId}`,'Comment',(_e,cx)=>owner.headerAction({kind:'comment',fileId,comparisonId}),{tooltip:'Comment on this file'}).disabled(Boolean(owner.busy)));

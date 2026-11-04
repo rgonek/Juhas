@@ -22,7 +22,7 @@ coding agent in one review.
 - Mark a reviewed commit as seen. After the agent makes more changes, compare
   from that checkpoint to review the next round.
 
-Use the sidebar for a quick look, or expand into a dedicated review tab with Git
+Use the sidebar for a quick look, or open beside/below the agent or in a dedicated review tab with Git
 history, a file list or tree, and a full-width Unified or Split diff. Resize the
 panels to fit the code, and use change navigation to move through the diff.
 Loading indicators show when Git is still working.
@@ -57,16 +57,15 @@ changing layouts, toolbar mods or review data. Open a native pane:
 herdr-app do pane.split --direction right --mod juhas
 ```
 
-Juhas follows the project where you open it. Expand opens or reuses a review
+Juhas follows the project where you open it. The new-tab action opens or reuses a review
 tab for that exact repository/worktree within the space. The review tab keeps
-its source when you work in another terminal. The return icon moves the review
-back to the source sidebar, preserving the selected commit, file and unsaved
-comment. With the optional toolbar integration, clicking Juhas on the source tab
-focuses its existing review tab; clicking Juhas in that review returns to the sidebar.
+its source when you work in another terminal. With the optional toolbar integration, clicking Juhas on the source tab
+focuses its existing review tab; clicking Juhas in that review returns to the sidebar,
+preserving the selected commit, file and unsaved comment. Pane management uses Herdr controls.
 
 ## Your first review
 
-1. Open **Juhas** in the project you want to review. Expand when you want more room.
+1. Open **Juhas** in the project you want to review. Use the sidebar actions to open beside the agent, below it, or in a new tab.
 2. Stay in **Commit** to inspect individual commits, or choose **All changes**
    for the final result. Choose a base branch if one has not been configured.
 3. Choose **Uncommitted** for working files, or enable **Include uncommitted**

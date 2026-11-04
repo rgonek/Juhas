@@ -144,6 +144,14 @@ export default class Juhas extends View {
  }
 
 
+ openReviewPane(direction){
+  if(this.role!=='sidebar'||this.busy||!this.controller.state.repo||!['right','down'].includes(direction))return;
+  const context=this.activeContext,targets=panes().filter(p=>p.tab===context?.tabId&&p.terminal),target=targets.find(p=>p.focused)||targets[0];
+  if(!target)return;
+  this.persistComposer();this.persistReview();this.publish();
+  run('pane.split',{pane:target.pane,direction,mod:'juhas',props:{role:'pane',sessionId:this.sessionId,reviewContext:context,config:this.contextProps?.config}});
+  this.closeReviewOrigin({sidebar:true});
+ }
  openReviewTab(){
   const s=this.controller.state;if(!s.repo)return;this.publish();const key=reviewTabKey(s.repo,this.activeContext?.spaceId),record=shared(key),sourceContext=this.recipientContext(),origin=this.reviewOrigin();
   if(liveReviewTab(record,spaces(),panes())){setShared(key,{...record,sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':origin?.paneId?'pane':record.sourcePresentation||'sidebar'});setShared(contextStorageKey('selection',record.sessionId,record.context),shared(this.selectionKey));run('tab.select',{id:record.tabId});this.closeReviewOrigin(origin);return;}
@@ -417,16 +425,31 @@ export default class Juhas extends View {
   if(key==='['||key===']'){this.moveCommit(key===']'?1:-1,cx);cx.stop_propagation();}
   if(key==='c'&&s.file){this.fileComment(cx);cx.stop_propagation();}
  }
+ compactMessage(){
+  const message=this.message||'';
+  return ['No more unreviewed files','No more comments','Start of review','End of review','Fetch completed','Review copied','Comment saved; newer unsaved edits retained','Local working snapshot saved; index and files unchanged','Review regenerated from saved comments','Recipient selected; message edits retained'].includes(message)||/^(Checkpoint saved at [0-9a-f]+; comments retained|Review delivered; source comments retained because the message was edited|Review delivered to terminal; newer draft edits have been retained)$/.test(message)?message:null;
+ }
+ reviewNotices(){
+  const s=this.controller.state,notices=[];
+  if(s.newHead&&s.sourceUnavailable)notices.push({title:'Original source unavailable',detail:'Original commit unavailable; cached code retained'});
+  if(s.sourceStale)notices.push({title:'Newer source available',detail:'Newer source available · unsaved input retained; save or cancel before updating'});
+  if(s.missingFile)notices.push({title:'No diff for selected file',detail:`${s.missingFile} no longer has a diff in this source; choose another file`});
+  const message=this.compactMessage();if(message)notices.push({title:message,detail:message});
+  return notices;
+ }
  render(cx){
   if(this.role==='bar')return this.renderBar();this.deferSync(cx);const s=this.controller.state,t=theme();let session;
   try{session=this.controller.session();}catch(e){return text(e.message).p(20);}
   const switching=this.followContext&&this.currentContext().key!==this.activeContext?.key;
-  const header=h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child(this.compact?'Juhas':`Juhas${!switching&&s.branch?' · '+s.branch:''}`))
+  const header=h_flex().id('juhas-heading').h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).child(div().flex_1().min_w(0).truncate().font_semibold().text_color(t.foreground).child(this.compact?'Juhas':`Juhas${!switching&&s.branch?' · '+s.branch:''}`))
    .when(this.compact&&Boolean(s.historyLoading||s.historyBaseLoading),e=>e.child(historyLoadingIndicator(s)))
-   .child(button('open-full',svg(`mods/juhas/icons/${this.contextProps?.isReviewTab?'collapse':'expand'}.svg`).size(16),()=>this.contextProps?.isReviewTab?this.terminal():this.full(),{tooltip:this.contextProps?.isReviewTab?'Return to source agent tab':'Open review in its own tab'}));
+   .when(this.role==='sidebar',e=>e
+    .child(button('open-right',svg('mods/juhas/icons/split-right.svg').size(16),()=>this.openReviewPane('right'),{tooltip:'Open review beside the agent'}).disabled(Boolean(this.busy)||!s.repo))
+    .child(button('open-down',svg('mods/juhas/icons/split-down.svg').size(16),()=>this.openReviewPane('down'),{tooltip:'Open review below the agent'}).disabled(Boolean(this.busy)||!s.repo))
+    .child(button('open-tab',svg('mods/juhas/icons/new-tab.svg').size(16),()=>this.full(),{tooltip:'Open review in its own tab'}).disabled(Boolean(this.busy)||!s.repo)));
   const size=(size,cx)=>{if(this.height!==size.height||this.width!==size.width){this.height=size.height;this.width=size.width;this.prepareFileHeaders(cx);cx.notify();}};
-  if(switching)return nativeFrame(this.id,{framed:!this.contextProps?.isReviewTab}).when(!this.contextProps?.isReviewTab,e=>e.child(header)).child(text('Reading active project…',true).p(14));
-  if(this.panel==='submit')return nativeFrame(this.id,{framed:!this.contextProps?.isReviewTab}).on_size_change(size).when(!this.contextProps?.isReviewTab,e=>e.child(header)).child(h_flex().min_h(42).flex_none().px(14).py(8).items_center().child(text(this.batch?.kind==='guided'?'Guided reading request':`Review · ${this.batch?.draftIds.length||0} comments`).font_semibold().text_size(15))).when(Boolean(this.message),e=>e.child(text(this.message,true).px(14).py(4))).when(Boolean(this.omittedComposer&&this.hasUnsavedComment()),e=>e.child(text('Unsaved comment omitted; its text is retained.',true).px(14).py(4))).child(this.footer(cx));
+  if(switching)return nativeFrame(this.id,{framed:this.role==='sidebar'}).when(this.role==='sidebar',e=>e.child(header)).child(text('Reading active project…',true).p(14));
+  if(this.panel==='submit')return nativeFrame(this.id,{framed:this.role==='sidebar'}).on_size_change(size).when(this.role==='sidebar',e=>e.child(header)).child(h_flex().min_h(42).flex_none().px(14).py(8).items_center().child(text(this.batch?.kind==='guided'?'Guided reading request':`Review · ${this.batch?.draftIds.length||0} comments`).font_semibold().text_size(15))).when(Boolean(this.message),e=>e.child(text(this.message,true).px(14).py(4))).when(Boolean(this.omittedComposer&&this.hasUnsavedComment()),e=>e.child(text('Unsaved comment omitted; its text is retained.',true).px(14).py(4))).child(this.footer(cx));
   const location=h_flex().px(14).py(8).gap(8).items_center().child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.muted).child(s.repo?.root||this.activeContext?.folder||'No active directory'))
    .when(Boolean(this.policy?.canSwitch),e=>e.child(button('context-repos','Repositories',(_e,cx)=>{this.discovered=this.policy.repos;this.panel='repos';cx.notify();})));
   const mode=this.reviewMode(),from=this.allChangesFrom||'branch',comparison=s.comparison,advancedRange=comparison?.scope.kind==='range'&&comparison.scope.includeBase;
@@ -440,7 +463,6 @@ export default class Juhas extends View {
     .child(div().flex_1())
     .child(text(comparison?`${comparison.mutableTarget?'Uncommitted':comparison.commitCount!=null?comparison.commitCount+' '+(comparison.commitCount===1?'commit':'commits'):comparison.scope.kind==='commit'?'1 commit':comparison.summaryError?'Count unavailable':'... commits'} \u00b7 ${s.files.length} ${s.files.length===1?'file':'files'}`:'',true).tooltip(comparison?.summaryError||'Commits and changed files in the selected comparison; independent of history filters'))
     .when(Boolean(s.refreshing),e=>e.child(text('Refreshing…',true))).child(button('refresh-review',svg('mods/juhas/icons/refresh.svg').size(16),(_e,cx)=>this.refreshContext(cx),{tooltip:'Refresh review without changing selection'}))
-    .when(Boolean(this.contextProps?.isReviewTab),e=>e.child(button('review-sidebar',svg('mods/juhas/icons/collapse.svg').size(16),(_e,cx)=>this.returnToSidebar(cx),{tooltip:'Return review to the source sidebar'}).disabled(Boolean(this.busy))))
     .child(popover('review-more',svg('mods/juhas/icons/more.svg').size(14),this.panel==='reviewMore',(open,cx)=>{if(open||this.panel==='reviewMore')this.panel=open?'reviewMore':null;cx.notify();},()=>v_flex().size_full()
      .child(button('mark-seen',`Mark seen${comparison?.targetOid?' · '+comparison.targetOid.slice(0,12):''}`,(_e,cx)=>{this.panel=null;this.work(cx,async()=>{const cp=await this.controller.markSeen();this.message=`Checkpoint saved at ${cp.targetOid.slice(0,8)}; comments retained`;});},{tooltip:'Save a checkpoint at the displayed committed target'}).disabled(!comparison?.targetOid||Boolean(comparison?.mutableTarget)))
      .when(Boolean(comparison?.mutableTarget),e=>e.child(button('save-snapshot','Save working snapshot',(_e,cx)=>{this.panel=null;this.saveWorkingCheckpoint(cx);})))
@@ -453,24 +475,23 @@ export default class Juhas extends View {
     .child(button('submit-preview','Submit review',(_e,cx)=>this.preview(cx),{primary:true}).disabled((!session.drafts.some(d=>d.repoKey===s.repo?.key)&&!this.hasUnsavedComment()))))
    .when(this.panel==='refs'&&(mode!=='all'||from!=='branch'),e=>e.child(popover('configure-base','Choose base branch',true,(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false))))
    .when(this.panel==='historyRefs',e=>e.child(popover('browse-refs','Browse history',true,(open,cx)=>this.setReferencePicker(true,open,cx),()=>this.referencePicker(true))));
-  const root=nativeFrame(this.id,{framed:!this.contextProps?.isReviewTab}).on_size_change(size).track_focus(this.handle).on_key_down((e,cx)=>this.key(e,cx)).when(!this.contextProps?.isReviewTab,e=>e.child(header)).when(Boolean(this.config.showAdvanced),e=>e.child(location)).when(Boolean(s.repo),e=>e.child(scope))
+  const notices=this.reviewNotices();
+  const root=nativeFrame(this.id,{framed:this.role==='sidebar'}).on_size_change(size).track_focus(this.handle).on_key_down((e,cx)=>this.key(e,cx)).when(this.role==='sidebar',e=>e.child(header)).when(Boolean(this.config.showAdvanced),e=>e.child(location)).when(Boolean(s.repo),e=>e.child(scope))
    .when(!this.compact&&this.filtersOpen&&this.upperView!=='comments',e=>e.child(h_flex().px(8).pb(8).gap(5).child(field(this.inputs.query,'Text or hash')).child(field(this.inputs.author,'Author')).child(field(this.inputs.path,'Path')).child(button('apply-filters','Search',(_e,cx)=>this.work(cx,()=>this.controller.loadHistory(this.filters()))))))
    .when(this.hasUnsavedComment()&&!this.composerIsVisible(),e=>e.child(h_flex().px(10).py(4).gap(6).items_center().child(text('Unsaved comment · '+this.target.newPath,true).flex_1().min_w(0).truncate()).child(button('resume-comment','Resume',(_e,cx)=>this.resumeComment(cx)))))
-   .when(Boolean(this.message),e=>e.child(text(this.message).px(10).py(6).bg(t.raised)))
+   .when(Boolean(this.message&&!this.compactMessage()),e=>e.child(text(this.message).px(10).py(6).bg(t.raised)))
    .when(Boolean(s.refreshError),e=>e.child(text(`Refresh failed · ${s.refreshError} · previous view retained`,true).px(10).py(4)))
-   .when(Boolean(s.sourceStale),e=>e.child(text('Newer source available · unsaved input retained; save or cancel before updating',true).px(10).py(4)))
-   .when(Boolean(s.missingFile),e=>e.child(text(`${s.missingFile} no longer has a diff in this source; choose another file`,true).px(10).py(4)))
-   .when(Boolean(s.branchChanged),e=>e.child(h_flex().gap(6).px(10).py(4).child(text(`Checkout changed to ${s.branchChanged?.current}; original review retained`,true)).child(button('adopt-branch','Review current branch',(_e,cx)=>this.reviewCurrentBranch(cx)))))
-   .when(Boolean(s.newHead&&s.sourceUnavailable),e=>e.child(text('Original commit unavailable; cached code retained',true).px(10).py(4)))
    ;
   const workspace=v_flex().flex_1().min_h(0).min_w(0);
   if(!s.repo)workspace.child(text(this.busy?'Reading repositories in the active directory…':'No Git repositories found in the active directory.').p(14));
   else if(s.empty&&!s.comparison?.mutableTarget)workspace.child(text('This repository has no commits yet; choose Uncommitted.').p(16));
   else {
    const upper=v_flex().size_full().min_h(0).min_w(0)
-    .child(h_flex().min_h(34).flex_none().px(8).gap(6).items_center().border_b(1).border_color(t.border)
+    .child(h_flex().min_h(34).flex_none().px(8).pb(6).gap(6).items_center().border_b(1).border_color(t.border)
      .child(buttonGroup('review-navigation',[{value:'changes',label:'Changes'},{value:'comments',label:`Comments · ${session.drafts.filter(d=>d.repoKey===s.repo?.key).length}`}],this.upperView||'changes',(value,cx)=>this.setUpperView(value,cx)))
      .child(div().flex_1())
+     .when(Boolean(notices.length),e=>e.child(popover('review-status',`${notices[0].title.length>28?notices[0].title.slice(0,27)+'…':notices[0].title}${notices.length>1?' · +'+(notices.length-1):''}`,this.panel==='reviewStatus',(open,cx)=>{if(open||this.panel==='reviewStatus')this.panel=open?'reviewStatus':null;cx.notify();},()=>v_flex().size_full().min_h(0).overflow_y_scrollbar().p(10).gap(8).children(notices.map(n=>text(n.detail))),{tooltip:notices.map(n=>n.detail).join('\n')})))
+     .when(Boolean(s.branchChanged),e=>e.child(button('adopt-branch','Review current branch',(_e,cx)=>this.reviewCurrentBranch(cx),{tooltip:`Checkout changed to ${s.branchChanged?.current}; original review retained until you choose to switch` })))
      .when(Boolean(s.newHead),e=>e.child(button('review-latest','Newer version',(_e,cx)=>this.reviewLatest(cx),{tooltip:`Open latest HEAD ${s.newHead}; the selected source stays pinned until you choose to switch`}))));
    if(this.upperView==='comments')upper.child(draftsPane(this,cx));
    else upper.child(this.compact?filesPane(this):h_resizable(`${this.id}-history-files`).size_full()

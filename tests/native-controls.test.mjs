@@ -128,3 +128,14 @@ test('history loading uses native SVG animation and disables duplicate paginatio
  const ui=controls(),indicator=ui.historyLoadingIndicator({historyLoadingMore:true}),icon=descendants(indicator).find(x=>x.kind==='svg');assert.equal(icon.values.spin,900);assert.match(indicator.values.accessibility_label,/Loading more/);
  const view={id:'loading',controller:{state:{history:[],files:[],historyLoading:true,historyLoadingMore:true,hasMore:true}}};const nodes=descendants(ui.historyPane(view,{}));assert.equal(nodes.find(x=>x.identity==='history-more').values.disabled,true);assert.ok(nodes.some(x=>x.kind==='svg'&&x.values.spin===900));
 });
+
+test('diff file heading is bold and shows file-list totals, including zero and unknown counts',()=>{
+ const view=diffView({hunks:[]},null);Object.assign(view.controller.state.file,{newPath:'mods/juhas/main.js',additions:14,deletions:9});
+ const header=()=>descendants(controls().diffPane(view)).find(n=>n.values?.id==='diff-file-header');
+ let row=header(),name=row.nodes.find(n=>n.nodes?.includes('mods/juhas/main.js'));
+ assert.ok(name);assert.deepEqual(name.values.font_semibold,[]);
+ assert.equal(name.values.flex_1,undefined);const plus=row.nodes.findIndex(n=>n.nodes?.includes('+14')),minus=row.nodes.findIndex(n=>n.nodes?.includes('−9'));assert.equal(plus,row.nodes.indexOf(name)+1);assert.equal(minus,plus+1);assert.ok(row.nodes.slice(minus+1).some(n=>n.values?.flex_1));
+ assert.ok(row.nodes.some(n=>n.nodes?.includes('+14')));assert.ok(row.nodes.some(n=>n.nodes?.includes('−9')));
+ Object.assign(view.controller.state.file,{additions:0,deletions:0});row=header();assert.ok(row.nodes.some(n=>n.nodes?.includes('+0')));assert.ok(row.nodes.some(n=>n.nodes?.includes('−0')));
+ Object.assign(view.controller.state.file,{additions:null,deletions:null});row=header();assert.ok(!row.nodes.some(n=>n.nodes?.includes('+null')||n.nodes?.includes('−null')));
+});

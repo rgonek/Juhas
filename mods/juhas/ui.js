@@ -6,7 +6,7 @@ import {fileRows,splitRows,changeGroups,filterDrafts} from './review-ui.js';
 import {annotatePatch,composerRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 import {formatCommitTime} from './commit-time.js';
 import {decorateLine,intraline,multiFileRows} from './reading.js';
-export function nativeFrame(id){const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13);}
+export function nativeFrame(id){const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(13);}
 function control(element,{active=false,primary=false,segment=false}={}){const t=theme();return element.h(28).flex_none().px(8).flex().gap(6).items_center().justify_center().rounded(6).text_size(12).cursor_pointer()
  .text_color(primary?t.solid_foreground:t.foreground).bg(primary?t.solid:active?t.selected:segment?t.chrome:t.background)
  .hover(el=>el.bg(primary?t.accent:t.hover)).active(el=>el.bg(primary?t.accent:t.selected));}

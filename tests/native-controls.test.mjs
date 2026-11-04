@@ -6,13 +6,17 @@ import * as comments from '../mods/juhas/comments.js';
 import {formatCommitTime} from '../mods/juhas/commit-time.js';
 import * as reading from '../mods/juhas/reading.js';
 import {fileRows,splitRows,changeGroups,filterDrafts} from '../mods/juhas/review-ui.js';
-function controls(){
+function controls(overrides={}){
  let layout=false;
  const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
  const names=['Button','Checkbox','Toggle','Popover','Input'],deps={...comments,...reading,formatCommitTime,fileRows,splitRows,changeGroups,filterDrafts,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
- let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {button,checkbox,toggle,popover,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
+ Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {button,checkbox,toggle,popover,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
+test('intraline highlighting is calculated only when diff rows are rendered',()=>{
+ let calls=0;const ui=controls({intraline:(...args)=>{calls++;return reading.intraline(...args);}}),view=diffView({hunks:[{header:'@@',lines:[{side:'old',oldLine:1,text:'before'},{side:'new',newLine:1,text:'after'}]}]},null);
+ const list=descendants(ui.diffPane(view)).find(n=>n.kind==='virtual');assert.equal(calls,0);list.renderRows();assert.ok(calls>0);
+});
 test('file row cache identity changes when comments are deleted without changing files',()=>{
  const file={id:'f',newPath:'a',status:'M'},saved={drafts:[{id:'d',repoKey:'r',newPath:'a'}]},view={id:'v',controller:{state:{repo:{key:'r'},files:[file]},session:()=>saved},selectFile(){}};
  const ui=controls(),first=descendants(ui.filesPane(view)).find(n=>n.kind==='virtual'),before=first.keyAt(0);

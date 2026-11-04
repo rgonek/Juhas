@@ -136,10 +136,10 @@ export function diffPane(view){
  const clickSource=view.diffChangeKey();
  const present=(source,patch)=>{const display=split?splitRows(source):source;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
  const sections=view.allFiles?(view.allFileSections||[]).map(section=>{const source=section.patch?annotatePatch(section.patch,drafts,section.comparison?.id,section.file.newPath):null,target=view.target?.comparisonId===section.comparison?.id&&view.target?.newPath===section.file.newPath?view.target:null;return {...section,source,rows:source?present(composerRows(source,target,view.editId),section.patch):null};}):null;
- const rows=sections?multiFileRows(sections):present(composed,s.patch),changes=changeGroups(rows),emphasis=new Map();
- const paired=(source,fileId='')=>{for(const row of splitRows(source))if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const fragments=intraline(row.old.text,row.next.text);emphasis.set(fileId+':'+row.old.id,fragments.old);emphasis.set(fileId+':'+row.next.id,fragments.new);}};if(sections){for(const section of sections)if(section.source)paired(section.source,section.file.id);}else paired(annotated);
+ const rows=sections?multiFileRows(sections):present(composed,s.patch),changes=changeGroups(rows),emphasis=new Map(),pairs=new Map();
+ const paired=(source,fileId='')=>{for(const row of splitRows(source))if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const pair={old:row.old,next:row.next,fileId};pairs.set(fileId+':'+row.old.id,pair);pairs.set(fileId+':'+row.next.id,pair);}};if(sections){for(const section of sections)if(section.source&&!section.collapsed&&!section.limited)paired(section.source,section.file.id);}else paired(annotated);
  const ranges=(row,side)=>{const line=row?.[side==='old'?'oldLine':'newLine'];return (view.findMatches||[]).filter(m=>m.side===side&&m.line===line&&(!view.allFiles||m.fileId===row.fileId));};
- const fragments=row=>emphasis.get((row?.fileId||'')+':'+(row?.sourceId||row?.id))||[];
+ const fragments=row=>{const key=(row?.fileId||'')+':'+(row?.sourceId||row?.id),pair=pairs.get(key);if(pair&&!emphasis.has(key)){const result=intraline(pair.old.text,pair.next.text);emphasis.set(pair.fileId+':'+pair.old.id,result.old);emphasis.set(pair.fileId+':'+pair.next.id,result.new);}return emphasis.get(key)||[];};
  view.patchRows=annotated;view.diffRows=rows;view.diffRowsKey=view.diffChangeKey();const activeChange=view.changeCursor?.source===view.diffRowsKey?changes.findIndex(change=>change.id===view.changeCursor.id):-1;
  let body;
  if(!s.file&&!view.allFiles)body=text('Select a file to review').p(20);

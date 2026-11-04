@@ -11,7 +11,7 @@ import InlineEditor from './inline-editor.js';
 import FileHeader from './file-header.js';
 import {buildBatch,createSubmitter,updateBatch,detectRecipient,agentRecipients,isLiveTerminal,MAX_REVIEW_BYTES} from './submit.js';
 import {button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover,draftsPane,historyLoadingIndicator} from './ui.js';
-import {expandReview,collapseReview} from './presentation.js';
+import {expandReview,collapseReview,openReview} from './presentation.js';
 import {rangeSelection,changeGroups,stepChange,splitRows,patchCode} from './review-ui.js';
 import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from './context.js';
 import {listHistory} from './history.js';
@@ -48,7 +48,7 @@ export default class Juhas extends View {
   this.inputs.folder.on('submit',(_e,cx)=>this.openFolder(this.inputs.folder.value(),cx));
   this.headerQueue=[];cx.spawn(async cx=>{for(;;){const action=await this.nextHeaderAction();if(!action||this.closed)return;if(action.comparisonId!==this.controller.state.comparison?.id)continue;if(action.kind==='toggle')this.requestAllFiles(action.fileId,cx);if(action.kind==='viewed')this.markReviewedFile(action.fileId,action.checked,cx);if(action.kind==='comment')this.commentOnFile(action.fileId,cx);this.prepareFileHeaders(cx);cx.notify();}});
   if(this.role!=='bar'){this.activateContext(this.currentContext(),cx);this.setupRefresh(cx);if(p.isReviewTab){let attempts=0;this.tabRegistration=cx.timer.every(100,()=>{if(this.closed||this.registerReviewTab()||++attempts>=30){this.tabRegistration?.cancel();this.tabRegistration=null;}});}}
-  cx.spawn(async cx=>{for(;;){const command=await nextCommand();const name=typeof command==='string'?command:command.name;if(name==='preview')this.preview(cx);if(name==='branch'){this.allChangesFrom='branch';this.applyScope('branch',cx);}if(name==='branches')this.setReferencePicker(true,this.panel!=='historyRefs',cx);if(name==='details'){this.detailsOpen=!this.detailsOpen;if(this.detailsOpen)this.work(cx,()=>this.controller.loadDetails());cx.notify();}if(name==='all-files')this.toggleAllFiles(!this.allFiles,cx);if(name==='search')this.toggleSearch(!this.searchOpen,cx);if(name==='diff-mode')this.setDiffMode(this.diffMode==='split'?'unified':'split',cx);if(name==='next-change')this.navigateChange(1,cx);if(name==='previous-change')this.navigateChange(-1,cx);if(name==='tree'){this.fileTree=!this.fileTree;cx.notify();}if(name==='whole-file')this.work(cx,()=>this.controller.expandFile());if(name==='comments')this.setUpperView(this.upperView==='comments'?'changes':'comments',cx);if(name==='refresh')this.refreshContext(cx);if(name==='full')this.full();if(name==='terminal')this.terminal();if(name==='next-file')this.moveFile(1,cx);if(name==='previous-file')this.moveFile(-1,cx);if(name==='next-commit')this.moveCommit(1,cx);if(name==='previous-commit')this.moveCommit(-1,cx);}});
+  cx.spawn(async cx=>{for(;;){const command=await nextCommand();const name=typeof command==='string'?command:command.name;if(name==='preview')this.preview(cx);if(name==='branch'){this.allChangesFrom='branch';this.applyScope('branch',cx);}if(name==='branches')this.setReferencePicker(true,this.panel!=='historyRefs',cx);if(name==='details'){this.detailsOpen=!this.detailsOpen;if(this.detailsOpen)this.work(cx,()=>this.controller.loadDetails());cx.notify();}if(name==='all-files')this.toggleAllFiles(!this.allFiles,cx);if(name==='search')this.toggleSearch(!this.searchOpen,cx);if(name==='diff-mode')this.setDiffMode(this.diffMode==='split'?'unified':'split',cx);if(name==='next-change')this.navigateChange(1,cx);if(name==='previous-change')this.navigateChange(-1,cx);if(name==='tree'){this.fileTree=!this.fileTree;cx.notify();}if(name==='whole-file')this.work(cx,()=>this.controller.expandFile());if(name==='comments')this.setUpperView(this.upperView==='comments'?'changes':'comments',cx);if(name==='refresh')this.refreshContext(cx);if(name==='full')this.full();if(name==='terminal')this.terminal();if(name==='sidebar')this.returnToSidebar(cx);if(name==='next-file')this.moveFile(1,cx);if(name==='previous-file')this.moveFile(-1,cx);if(name==='next-commit')this.moveCommit(1,cx);if(name==='previous-commit')this.moveCommit(-1,cx);}});
  }
  close(){this.tabRegistration?.cancel();this.headerWake?.(null);for(const item of this.fileHeaderViews?.values()||[])item.release();this.closed=true;this.refreshScheduler?.close();this.diffScroll?.release();this.copyEditor?.release();this.inlineEditor?.release();}
  setupRefresh(cx){
@@ -140,18 +140,48 @@ export default class Juhas extends View {
   if(!this.contextProps?.isReviewTab)return false;const key=this.contextProps.reviewTabKey,record=shared(key),space=spaces().find(s=>s.id===this.contextProps.reviewContext?.spaceId||s.id===this.activeContext?.spaceId);if(!key||!space)return false;
   const live=panes().filter(p=>p.mod==='juhas'&&space.tabs.some(t=>t.id===p.tab));let pane=live.find(p=>p.pane===record?.paneId&&p.tab===record?.tabId);
   if(!pane){const candidates=record?.previousTabIds?live.filter(p=>!record.previousTabIds.includes(p.tab)):live.filter(p=>p.tab!==this.contextProps.reviewContext?.tabId&&space.tabs.some(t=>t.id===p.tab&&t.name===`Review · ${String(this.contextProps.folder||'').replace(/\\/g,'/').split('/').at(-1)}`));if(candidates.length===1)pane=candidates[0];}
-  if(!pane)return false;this.displayTabId=pane.tab;this.displaySpaceId=space.id;setShared(key,{...record,origin:null,previousTabIds:undefined,tabId:pane.tab,paneId:pane.pane,spaceId:space.id,context:this.activeContext,sessionId:this.sessionId});if(record?.origin)this.closeReviewOrigin(record.origin);return true;
+  if(!pane)return false;this.displayTabId=pane.tab;this.displaySpaceId=space.id;setShared(key,{...record,origin:null,previousTabIds:undefined,tabId:pane.tab,paneId:pane.pane,spaceId:space.id,context:this.activeContext,sessionId:this.sessionId});const index=shared('juhas.review-tabs.v1')||[],entry={key,root:this.contextProps.folder,machine:this.contextProps.machine??null,spaceId:space.id};if(!index.some(item=>item.key===key))setShared('juhas.review-tabs.v1',[...index,entry].slice(-100));if(record?.origin)this.closeReviewOrigin(record.origin);return true;
  }
 
 
  openReviewTab(){
   const s=this.controller.state;if(!s.repo)return;this.publish();const key=reviewTabKey(s.repo,this.activeContext?.spaceId),record=shared(key),sourceContext=this.recipientContext(),origin=this.reviewOrigin();
-  if(liveReviewTab(record,spaces(),panes())){setShared(key,{...record,sourceContext});setShared(contextStorageKey('selection',record.sessionId,record.context),shared(this.selectionKey));run('tab.select',{id:record.tabId});this.closeReviewOrigin(origin);return;}
+  if(liveReviewTab(record,spaces(),panes())){setShared(key,{...record,sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':origin?.paneId?'pane':record.sourcePresentation||'sidebar'});setShared(contextStorageKey('selection',record.sessionId,record.context),shared(this.selectionKey));run('tab.select',{id:record.tabId});this.closeReviewOrigin(origin);return;}
   if(record?.opening&&Date.now()-record.opening<5000)return;
   const p={...reviewTabProps(s.repo,this.activeContext,this.sessionId),config:this.contextProps?.config},selectionKey=contextStorageKey('selection',this.sessionId,p.reviewContext);
   setShared(selectionKey,shared(this.selectionKey));for(const kind of ['composer','review']){const previous=shared(contextStorageKey(kind,this.sessionId,this.activeContext));if(previous)setShared(contextStorageKey(kind,this.sessionId,p.reviewContext),previous);}
   const snapshot=this.viewSnapshots().get(this.selectionKey);if(snapshot)this.viewSnapshots().set(selectionKey,{...snapshot,policy:{...snapshot.policy,repos:[s.repo],kind:'single',canSwitch:false}});
-  setShared(key,{opening:Date.now(),sourceContext,origin,previousTabIds:spaces().find(space=>space.id===this.activeContext?.spaceId)?.tabs?.map(tab=>tab.id)||[]});run('tab.new',{name:`Review · ${s.repo.root.replace(/\\/g,'/').split('/').at(-1)}`,space:this.activeContext?.spaceId,folder:s.repo.root,mod:'juhas',props:p});if(origin?.sidebar)this.closeReviewOrigin(origin);
+  setShared(key,{opening:Date.now(),sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':'pane',origin,previousTabIds:spaces().find(space=>space.id===this.activeContext?.spaceId)?.tabs?.map(tab=>tab.id)||[]});run('tab.new',{name:`Review · ${s.repo.root.replace(/\\/g,'/').split('/').at(-1)}`,space:this.activeContext?.spaceId,folder:s.repo.root,mod:'juhas',props:p});if(origin?.sidebar)this.closeReviewOrigin(origin);
+ }
+ returnToSidebar(cx){
+  const fail=message=>{this.message=message;cx?.notify();return false;};
+  if(!this.contextProps?.isReviewTab)return false;if(this.busy)return fail('Wait for the current review action to finish before returning');
+  const repo=this.controller.state.repo;if(!repo)return fail('Review source is unavailable; the tab has been retained');const key=this.contextProps.reviewTabKey||reviewTabKey(repo,this.activeContext?.spaceId),record=shared(key),allSpaces=spaces(),allPanes=panes();
+  if(!repo||!liveReviewTab(record,allSpaces,allPanes))return fail('Review tab is still opening; try again shortly');
+  let source=record.sourceContext;const sourceSpace=allSpaces.find(space=>space.id===source?.spaceId);
+  if(!sourceSpace?.tabs.some(tab=>tab.id===source?.tabId)||source.tabId===record.tabId)return fail('The source tab is no longer open; the review has been retained');
+  const terminal=allPanes.find(p=>p.tab===source.tabId&&p.terminal&&p.focused)||allPanes.find(p=>p.tab===source.tabId&&p.terminal),existingPane=allPanes.find(p=>p.tab===source.tabId&&p.mod==='juhas');
+  const hasSidebar=tree=>Boolean(tree&&(tree.id==='git-review-sidebar'||(tree.children||[]).some(hasSidebar))),useLegacy=record.sourcePresentation!=='pane'&&hasSidebar(layout());
+  if(!useLegacy&&!existingPane&&!terminal)return fail('The source tab has no terminal for a review pane; the review has been retained');
+  const path=value=>{const p=String(value||'').replace(/\\/g,'/').replace(/\/+$/,'');return /^[a-z]:|^\/\//i.test(p)?p.toLowerCase():p;};
+  if(terminal?.cwd&&path(terminal.cwd)!==path(source.folder)){
+   const root=path(repo.root),folder=path(terminal.cwd);if(folder!==root&&!folder.startsWith(root+'/'))return fail('The source terminal moved to another repository; the review has been retained');
+   source={...source,folder:terminal.cwd,key:JSON.stringify([source.spaceId,source.tabId,source.machine??null,terminal.cwd])};
+  }
+  const sessionId=record.sourceSessionId||record.sessionId||this.sessionId,targetSelection=contextStorageKey('selection',sessionId,source),targetComposer=contextStorageKey('composer',sessionId,source),targetReview=contextStorageKey('review',sessionId,source);
+  this.persistComposer();this.persistReview();
+  const incoming=shared(this.composerKey),existing=shared(targetComposer),preview=shared(this.reviewStorageKey()),existingPreview=shared(targetReview),drafts=this.controller.session().drafts;
+  const dirty=value=>{if(!value?.target)return false;const saved=value.id?drafts.find(d=>d.id===value.id):null;return saved?value.body!==saved.body:Boolean(value.body?.trim());};
+  if(dirty(incoming)&&dirty(existing)&&JSON.stringify(incoming)!==JSON.stringify(existing))return fail('The source sidebar has another unsaved comment; save or cancel it before returning');
+  if(preview?.batch?.edited&&existingPreview?.batch?.edited&&preview.batch.text!==existingPreview.batch.text)return fail('The source sidebar has another edited review; finish it before returning');
+  this.publish();const selection=shared(this.selectionKey);if(!selection)return fail('The review source could not be transferred; the tab has been retained');
+  setShared(targetSelection,selection);if(incoming&&!dirty(existing))setShared(targetComposer,incoming);if(preview&&!existingPreview?.batch?.edited)setShared(targetReview,{...preview,batch:{...preview.batch,contextKey:source.key}});
+  const snapshot=this.viewSnapshots().get(this.selectionKey);if(snapshot)this.viewSnapshots().set(targetSelection,snapshot);
+  run('tab.select',{id:source.tabId});
+  if(useLegacy)openReview(run);
+  else{if(existingPane)run('pane.focus',{pane:existingPane.pane});else if(terminal)run('pane.split',{pane:terminal.pane,direction:'right',mod:'juhas',props:{role:'pane',sessionId}});}
+  setShared(this.composerKey,null);setShared(this.reviewStorageKey(),null);setShared('juhas.review-tabs.v1',(shared('juhas.review-tabs.v1')||[]).filter(entry=>entry.key!==key));setShared(key,{...record,sourceContext:source,opening:0,tabId:null,paneId:null});
+  if(allPanes.some(p=>p.tab===record.tabId&&p.pane!==record.paneId))run('pane.close',{pane:record.paneId});else run('tab.close',{id:record.tabId});return true;
  }
  reviewCurrentBranch(cx){if(this.hasUnsavedComment()){this.message='Save or cancel the current comment before switching branch context';cx.notify();return;}const controller=this.controller,repo=controller.state.repo,path=controller.state.file?.newPath;this.work(cx,async()=>{await controller.openRepo(repo.machine,repo.root,{repo,loadHistory:false});this.restoreBase();await this.updateFeatureHistory();await controller.selectScope(controller.state.empty?{kind:'working-tree',baseRef:'HEAD'}:{kind:'commit',commit:controller.state.history[0]?.oid||'HEAD'});const file=controller.state.files.find(f=>f.newPath===path);if(file)await controller.selectFile(file.id);this.publish();});}
  reviewLatest(cx){if(this.hasUnsavedComment()){this.message='Save or cancel the current comment before opening the latest version';cx.notify();return;}const path=this.controller.state.file?.newPath;this.work(cx,async()=>{await this.controller.selectScope({kind:'commit',commit:'HEAD'});const file=this.controller.state.files.find(f=>f.newPath===path);if(file)await this.controller.selectFile(file.id);this.publish();});}
@@ -216,14 +246,14 @@ export default class Juhas extends View {
  rememberLoadedView(){
   if(this.busy||!this.activeContext||!this.policy?.ready||!this.controller.state.repo)return;
   const selected=shared(this.selectionKey);if(!selected||JSON.stringify(selected)!==this.seenSelection)return;
-  const snapshot={version:selected.version,configKey:this.viewConfigKey(),config:this.config,state:this.controller.state,policy:this.policy,historyRef:this.historyRef,historyFull:this.historyFull,upperView:this.upperView,allChangesFrom:this.allChangesFrom,includeWorking:this.includeWorking,manualCommitBase:this.manualCommitBase,diffMode:this.diffMode,fileTree:this.fileTree,detailsOpen:this.detailsOpen,filtersOpen:this.filtersOpen,fields:Object.fromEntries(Object.entries(this.inputs).filter(([key])=>!['comment','review','note'].includes(key)).map(([key,input])=>[key,input.value()]))};
+  const snapshot={version:selected.version,configKey:this.viewConfigKey(),config:this.config,state:this.controller.state,policy:this.policy,historyRef:this.historyRef,historyFull:this.historyFull,upperView:this.upperView,allChangesFrom:this.allChangesFrom,includeWorking:this.includeWorking,manualCommitBase:this.manualCommitBase,diffMode:this.diffMode,readingOptions:this.readingOptions,allFiles:this.allFiles,fileTree:this.fileTree,detailsOpen:this.detailsOpen,filtersOpen:this.filtersOpen,fields:Object.fromEntries(Object.entries(this.inputs).filter(([key])=>!['comment','review','note'].includes(key)).map(([key,input])=>[key,input.value()]))};
   this.viewSnapshots().set(this.selectionKey,JSON.parse(JSON.stringify(snapshot)));
  }
  restoreLoadedView(selected,cx){
   if(!selected||!this.activeContext)return false;const saved=this.viewSnapshots().get(this.selectionKey);
   if(!saved||saved.version!==selected.version||saved.configKey!==this.viewConfigKey()||!allowedRepository(saved.policy,selected.root))return false;
   const snapshot=JSON.parse(JSON.stringify(saved));this.controller.state=snapshot.state;this.policy=snapshot.policy;this.config=snapshot.config;
-  for(const key of ['historyRef','historyFull','upperView','allChangesFrom','manualCommitBase','diffMode','fileTree','detailsOpen','filtersOpen'])this[key]=snapshot[key];this.upperView=snapshot.upperView||'changes';this.lastAppliedFrom=this.allChangesFrom||'branch';this.includeWorking=Boolean(selected.includeWorking||selected.scope?.includeWorking);
+  for(const key of ['historyRef','historyFull','upperView','allChangesFrom','manualCommitBase','diffMode','fileTree','detailsOpen','filtersOpen'])this[key]=snapshot[key];this.upperView=snapshot.upperView||'changes';this.readingOptions=snapshot.readingOptions||{wrap:false};this.allFiles=Boolean(snapshot.allFiles);if(this.allFiles){this.rebuildAllSections();this.prepareFileHeaders(cx);}this.lastAppliedFrom=this.allChangesFrom||'branch';this.includeWorking=Boolean(selected.includeWorking||selected.scope?.includeWorking);
   this.restoringComposer=true;try{for(const [key,value] of Object.entries(snapshot.fields))this.inputs[key]?.set_value(value);}finally{this.restoringComposer=false;}
   this.seenSelection=JSON.stringify(selected);this.restoreBase();cx.notify();return true;
  }
@@ -401,33 +431,29 @@ export default class Juhas extends View {
    .when(Boolean(this.policy?.canSwitch),e=>e.child(button('context-repos','Repositories',(_e,cx)=>{this.discovered=this.policy.repos;this.panel='repos';cx.notify();})));
   const mode=this.reviewMode(),from=this.allChangesFrom||'branch',comparison=s.comparison,advancedRange=comparison?.scope.kind==='range'&&comparison.scope.includeBase;
   const baseLabel=from==='branch'?`Base: ${this.baseChoice()?.ref?.replace(/^refs\/(heads|remotes)\//,'')||'choose branch'} · ${this.baseSource==='auto'?'automatic':this.baseSource||'not selected'}`:from==='commit'?`Base: ${this.manualCommitBase?.slice(0,8)||'choose commit'} · manual`:`Base: ${comparison?.scope.kind==='since-review'?comparison.baseOid?.slice(0,8):'no checkpoint selected'} · checkpoint`;
-  const scope=v_flex().px(8).pt(8).pb(8).gap(5)
+  const scope=v_flex().px(8).pt(8).pb(6).gap(5)
    .child(h_flex().gap(6).items_center().flex_wrap()
     .child(buttonGroup('scope',[{value:'commit',label:'Commit'},{value:'all',label:'All changes'},{value:'uncommitted',label:'Uncommitted'}],mode,(kind,cx)=>kind==='all'?this.applyAllChanges(cx):this.applyScope(kind==='uncommitted'?'working-tree':'commit',cx)))
     .when(mode==='all',e=>e.child(checkbox('include-working','Include uncommitted',this.includeWorking,(checked,cx)=>{this.includeWorking=checked;this.applyAllChanges(cx);})))
     .when(mode==='all'&&!advancedRange,e=>e.child(popover('compare-from',`Compare from: ${from==='branch'?'Base branch':from==='checkpoint'?'Last review checkpoint':'Choose commit'} ▾`,this.panel==='compareFrom',(open,cx)=>{if(open||this.panel==='compareFrom'){this.panel=open?'compareFrom':null;this.choosingCommitBase=false;}cx.notify();},()=>this.compareFromPicker(),{tooltip:'Choose the baseline for the final diff against HEAD'})))
+    .when(mode==='all'&&!advancedRange&&from==='branch',e=>e.child(popover('change-base',`${this.baseChoice()?.ref?.replace(/^refs\/(heads|remotes)\//,'')||'Choose branch'} ▾`,this.panel==='refs',(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false),{tooltip:baseLabel})))
     .child(div().flex_1())
     .child(text(comparison?`${comparison.mutableTarget?'Uncommitted':comparison.commitCount!=null?comparison.commitCount+' '+(comparison.commitCount===1?'commit':'commits'):comparison.scope.kind==='commit'?'1 commit':comparison.summaryError?'Count unavailable':'... commits'} \u00b7 ${s.files.length} ${s.files.length===1?'file':'files'}`:'',true).tooltip(comparison?.summaryError||'Commits and changed files in the selected comparison; independent of history filters'))
     .when(Boolean(s.refreshing),e=>e.child(text('Refreshing…',true))).child(button('refresh-review',svg('mods/juhas/icons/refresh.svg').size(16),(_e,cx)=>this.refreshContext(cx),{tooltip:'Refresh review without changing selection'}))
+    .when(Boolean(this.contextProps?.isReviewTab),e=>e.child(button('review-sidebar',svg('mods/juhas/icons/collapse.svg').size(16),(_e,cx)=>this.returnToSidebar(cx),{tooltip:'Return review to the source sidebar'}).disabled(Boolean(this.busy))))
     .child(popover('review-more',svg('mods/juhas/icons/more.svg').size(14),this.panel==='reviewMore',(open,cx)=>{if(open||this.panel==='reviewMore')this.panel=open?'reviewMore':null;cx.notify();},()=>v_flex().size_full()
+     .child(button('mark-seen',`Mark seen${comparison?.targetOid?' · '+comparison.targetOid.slice(0,12):''}`,(_e,cx)=>{this.panel=null;this.work(cx,async()=>{const cp=await this.controller.markSeen();this.message=`Checkpoint saved at ${cp.targetOid.slice(0,8)}; comments retained`;});},{tooltip:'Save a checkpoint at the displayed committed target'}).disabled(!comparison?.targetOid||Boolean(comparison?.mutableTarget)))
+     .when(Boolean(comparison?.mutableTarget),e=>e.child(button('save-snapshot','Save working snapshot',(_e,cx)=>{this.panel=null;this.saveWorkingCheckpoint(cx);})))
      .child(button('fetch-review','Fetch remotes',(_e,cx)=>this.fetch(cx)))
      .child(button('review-baselines','Review baselines',(_e,cx)=>{this.panel='checkpoints';cx.notify();}))
      .child(button('reset-viewed','Reset viewed files',(_e,cx)=>this.resetReviewed(cx)))
      .child(button('request-walkthrough','Request guided reading…',(_e,cx)=>this.requestGuided(cx)))
      .child(button('load-walkthrough','Load guided reading',(_e,cx)=>this.loadGuided(cx)))
-     .when(Boolean(this.config.showAdvanced),e=>e.child(button('advanced-range','Inclusive commit range…',(_e,cx)=>{this.panel=null;this.applyScope('range',cx);}))),{tooltip:'More review options'})))
-   .when(mode==='all'&&!advancedRange,e=>e.child(h_flex().gap(6).items_center().child(text(baseLabel+(s.historyBaseLoading?' · resolving…':''),true).truncate())
-    .when(from==='branch',e=>e.child(popover('change-base','Change…',this.panel==='refs',(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false),{tooltip:'Choose a base branch or return to automatic selection'})))))
-   .when(Boolean(advancedRange),e=>e.child(text('Advanced inclusive commit range',true)))
-   .when(Boolean(comparison?.mutableTarget),e=>e.child(text('Uncommitted changes',true)))
+     .when(Boolean(this.config.showAdvanced),e=>e.child(button('advanced-range','Inclusive commit range…',(_e,cx)=>{this.panel=null;this.applyScope('range',cx);}))),{tooltip:'More review options'}))
+    .child(button('submit-preview','Submit review',(_e,cx)=>this.preview(cx),{primary:true}).disabled((!session.drafts.some(d=>d.repoKey===s.repo?.key)&&!this.hasUnsavedComment()))))
    .when(this.panel==='refs'&&(mode!=='all'||from!=='branch'),e=>e.child(popover('configure-base','Choose base branch',true,(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false))))
    .when(this.panel==='historyRefs',e=>e.child(popover('browse-refs','Browse history',true,(open,cx)=>this.setReferencePicker(true,open,cx),()=>this.referencePicker(true))));
-  const actions=h_flex().px(8).pb(8).gap(5).flex_wrap().child(button('general-comment','General comment',(_e,cx)=>this.generalComment(cx)))
-   .child(button('submit-preview','Submit review',(_e,cx)=>this.preview(cx),{primary:true}).disabled((!session.drafts.some(d=>d.repoKey===s.repo?.key)&&!this.hasUnsavedComment())).when((!session.drafts.some(d=>d.repoKey===s.repo?.key)&&!this.hasUnsavedComment()),e=>e.opacity(0.5)))
-   .child(button('mark-seen',`Mark seen${comparison?.targetOid?' · '+comparison.targetOid.slice(0,12):''}`,(_e,cx)=>this.work(cx,async()=>{const cp=await this.controller.markSeen();this.message=`Checkpoint saved at ${cp.targetOid.slice(0,8)}; comments retained`;}),{tooltip:comparison?.targetOid?`Mark exactly ${comparison.targetOid} as reviewed; saves a checkpoint without sending feedback`:'Checkpoint requires a committed target'}).disabled(!comparison?.targetOid||Boolean(comparison?.mutableTarget)))
-   .when(Boolean(comparison?.mutableTarget),e=>e.child(button('save-snapshot','Save working snapshot',(_e,cx)=>this.saveWorkingCheckpoint(cx),{tooltip:'Explicitly store reviewed working contents as a local Git snapshot; real index and files stay unchanged'})))
-   .when(Boolean(comparison?.scope.kind==='commit'&&comparison?.parents.length>1),e=>e.child(button('merge-parent',`Parent ${(comparison.scope.parentIndex||0)+1}`,(_e,cx)=>{this.work(cx,async()=>{await this.controller.selectScope({...comparison.scope,parentIndex:((comparison.scope.parentIndex||0)+1)%comparison.parents.length});this.publish();});})));
-  const root=nativeFrame(this.id,{framed:!this.contextProps?.isReviewTab}).on_size_change(size).track_focus(this.handle).on_key_down((e,cx)=>this.key(e,cx)).when(!this.contextProps?.isReviewTab,e=>e.child(header)).when(Boolean(this.config.showAdvanced),e=>e.child(location)).when(Boolean(s.repo),e=>e.child(scope).child(actions))
+  const root=nativeFrame(this.id,{framed:!this.contextProps?.isReviewTab}).on_size_change(size).track_focus(this.handle).on_key_down((e,cx)=>this.key(e,cx)).when(!this.contextProps?.isReviewTab,e=>e.child(header)).when(Boolean(this.config.showAdvanced),e=>e.child(location)).when(Boolean(s.repo),e=>e.child(scope))
    .when(!this.compact&&this.filtersOpen&&this.upperView!=='comments',e=>e.child(h_flex().px(8).pb(8).gap(5).child(field(this.inputs.query,'Text or hash')).child(field(this.inputs.author,'Author')).child(field(this.inputs.path,'Path')).child(button('apply-filters','Search',(_e,cx)=>this.work(cx,()=>this.controller.loadHistory(this.filters()))))))
    .when(this.hasUnsavedComment()&&!this.composerIsVisible(),e=>e.child(h_flex().px(10).py(4).gap(6).items_center().child(text('Unsaved comment · '+this.target.newPath,true).flex_1().min_w(0).truncate()).child(button('resume-comment','Resume',(_e,cx)=>this.resumeComment(cx)))))
    .when(Boolean(this.message),e=>e.child(text(this.message).px(10).py(6).bg(t.raised)))
@@ -435,7 +461,7 @@ export default class Juhas extends View {
    .when(Boolean(s.sourceStale),e=>e.child(text('Newer source available · unsaved input retained; save or cancel before updating',true).px(10).py(4)))
    .when(Boolean(s.missingFile),e=>e.child(text(`${s.missingFile} no longer has a diff in this source; choose another file`,true).px(10).py(4)))
    .when(Boolean(s.branchChanged),e=>e.child(h_flex().gap(6).px(10).py(4).child(text(`Checkout changed to ${s.branchChanged?.current}; original review retained`,true)).child(button('adopt-branch','Review current branch',(_e,cx)=>this.reviewCurrentBranch(cx)))))
-   .when(Boolean(s.newHead),e=>e.child(h_flex().gap(6).px(10).py(4).child(text(s.sourceUnavailable?'Original commit unavailable; cached code retained':'Newer HEAD available; selected commit retained',true)).child(button('review-latest','Open latest',(_e,cx)=>this.reviewLatest(cx)))))
+   .when(Boolean(s.newHead&&s.sourceUnavailable),e=>e.child(text('Original commit unavailable; cached code retained',true).px(10).py(4)))
    ;
   const workspace=v_flex().flex_1().min_h(0).min_w(0);
   if(!s.repo)workspace.child(text(this.busy?'Reading repositories in the active directory…':'No Git repositories found in the active directory.').p(14));
@@ -443,7 +469,9 @@ export default class Juhas extends View {
   else {
    const upper=v_flex().size_full().min_h(0).min_w(0)
     .child(h_flex().min_h(34).flex_none().px(8).gap(6).items_center().border_b(1).border_color(t.border)
-     .child(buttonGroup('review-navigation',[{value:'changes',label:'Changes'},{value:'comments',label:`Comments · ${session.drafts.filter(d=>d.repoKey===s.repo?.key).length}`}],this.upperView||'changes',(value,cx)=>this.setUpperView(value,cx))));
+     .child(buttonGroup('review-navigation',[{value:'changes',label:'Changes'},{value:'comments',label:`Comments · ${session.drafts.filter(d=>d.repoKey===s.repo?.key).length}`}],this.upperView||'changes',(value,cx)=>this.setUpperView(value,cx)))
+     .child(div().flex_1())
+     .when(Boolean(s.newHead),e=>e.child(button('review-latest','Newer version',(_e,cx)=>this.reviewLatest(cx),{tooltip:`Open latest HEAD ${s.newHead}; the selected source stays pinned until you choose to switch`}))));
    if(this.upperView==='comments')upper.child(draftsPane(this,cx));
    else upper.child(this.compact?filesPane(this):h_resizable(`${this.id}-history-files`).size_full()
     .child(resizable_panel().size(480).size_range(180).child(historyPane(this,cx)))

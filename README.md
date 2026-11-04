@@ -1,34 +1,31 @@
-# Juhas 🧑‍🌾
+# Juhas - Code review
 
-**Review the agent’s work. Keep the conversation in Herdr.**
+Review your agent's changes in Herdr.
 
-Your coding agent makes the commits. Juhas helps you see what changed, leave
-comments beside the code and send one clear round of feedback — without leaving
-Herdr or pasting snippets into a chat.
+Review commits one by one, see a branch's combined changes, or inspect
+uncommitted work. Comment beside the code, then send your feedback to the
+coding agent in one review.
 
 ![A shepherd and sheep beside a native Juhas review with sample code](preview.png)
 
 *A native Juhas review with sample data, presented alongside an illustration.*
 
-## From commits to a conversation
+## Review workflow
 
-- **Review one step at a time.** Start with the latest commit, then move through
-  the history when each commit tells a useful part of the story.
-- **See the final result.** Switch to **All changes** when later commits keep
-  revising the same code. Review the final diff against your base branch, a
-  chosen commit or your last review checkpoint.
-- **Put feedback where it belongs.** Comment on a line, a range or a whole file.
-  Inline drafts stay with their original source when you navigate elsewhere.
-- **Send one thoughtful review.** Collect comments across commits, inspect the
-  recipient, edit or copy the message, then send it to your agent. Nothing is
-  sent automatically.
-- **Pick up the next round.** Mark a reviewed commit as seen, let the agent make
-  changes, then compare from that checkpoint.
+- Review commits one at a time when each covers a separate change. For commits
+  that keep revising the same code, use **All changes** to see the combined diff
+  against your base branch, a chosen commit or your last review checkpoint.
+- Comment on a line, a range or a whole file. Drafts keep their original source
+  when you move to another commit.
+- Collect comments from several commits into one review. Check the recipient,
+  edit or copy the message, then send it to your agent when you're ready.
+- Mark a reviewed commit as seen. After the agent makes more changes, compare
+  from that checkpoint to review the next round.
 
 Use the sidebar for a quick look, or expand into a dedicated review tab with Git
-history, a file list or tree, and a full-width Unified or Split diff. Native
-resizable panels, loading indicators and change navigation keep the review in
-one place.
+history, a file list or tree, and a full-width Unified or Split diff. Resize the
+panels to fit the code, and use change navigation to move through the diff.
+Loading indicators show when Git is still working.
 
 Juhas uses Herdr’s native GPUI controls. It works with local Git repositories
 and agent terminals; no GitHub account or pull request is required. Base-branch
@@ -62,9 +59,10 @@ herdr-app do pane.split --direction right --mod juhas
 
 Juhas follows the project where you open it. Expand opens or reuses a review
 tab for that exact repository/worktree within the space. The review tab keeps
-its source when you work in another terminal; Return goes to its source tab.
-Close it with normal tab/pane controls. Existing sidebar integrations remain supported.
-An optional personal toolbar button can invoke the same pane.split command.
+its source when you work in another terminal. The return icon moves the review
+back to the source sidebar, preserving the selected commit, file and unsaved
+comment. With the optional toolbar integration, clicking Juhas on the source tab
+focuses its existing review tab; clicking Juhas in that review returns to the sidebar.
 
 ## Your first review
 
@@ -109,8 +107,7 @@ for the details and current limits.
 
 A *juhas* is a shepherd working with the *baca*, the head shepherd in the Polish
 mountain tradition. Herdr has a flock; Juhas helps you keep an eye on the work
-coming back from your coding agents. Its name belongs to the flock, while its
-workflow fits your own projects and layout.
+coming back from your coding agents. You choose the base branches and layout for your own projects.
 
 ## Credits and license
 
@@ -127,4 +124,7 @@ Juhas is licensed under [Apache 2.0](LICENSE). See [NOTICE](NOTICE) and
 Maintainers: see the [publication guide](docs/publishing.md),
 [verification record](docs/acceptance.md) and [design brief](docs/design-brief.md).
 
-To add the toggle button to an existing personal tabs mod, run node scripts/install.mjs --tabs <personal-tabs-mod>. The button stays active while Juhas exists in the current tab, including when zoomed; clicking again closes that pane. This backs up the tabs mod and leaves layout files untouched. Use an unmodified personal tabs copy without the older sidebar integration.
+To add the Juhas button to an unmodified personal tabs copy, run
+`node scripts/install.mjs --tabs <personal-tabs-mod>`. To upgrade an existing
+Juhas toolbar integration, use `--update-tabs <personal-tabs-mod>` instead.
+Both options back up the personal tabs mod and leave layout files untouched.

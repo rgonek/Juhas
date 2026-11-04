@@ -6,6 +6,8 @@ The isolated native spike rendered two copies of a 3,000-row virtual list and a 
 
 Core tests execute against real temporary Git repositories. Native UI verification is recorded separately in acceptance.md. Linux/macOS support is designed through platform adapters; a local Windows result does not assert native verification on those systems. Remote SSH is outside initial acceptance.
 
+Platform-specific commands are selected by repository path: Windows directory discovery and working snapshots use PowerShell; POSIX discovery uses `find`, and snapshots use `sh` with a temporary index. The mod does not require PowerShell on Linux or macOS. Git and `hc` calls use argument arrays and explicit working directories. Install with `node scripts/install.mjs` on any of the three systems; `scripts/install.sh` is the POSIX wrapper. Tests cover snapshot races in both shell implementations and directory discovery with spaces, Unicode and pattern characters. CI runs the core suite on Windows, Ubuntu and macOS; it does not validate painted native UI or an agent's response to a delivered review.
+
 The app's generated API files are the version-specific reference. Run `herdr-app check <mod-directory>` after installation and inspect the running UI: check alone does not execute virtual rows or asynchronous states.
 
 Resizable panes use native `h_resizable`, `v_resizable` and `resizable_panel`. The installed runtime must expose these APIs. Virtual lists expose a single click key without mouse modifiers, so range selection uses explicit endpoints and split-diff comments have an explicit old/new side selector. No global modifier tracking or pointer interception is used.

@@ -43,6 +43,7 @@ export function draftsPane(view,cx){
  return v_flex().size_full().min_h(0).min_w(0)
   .child(h_flex().items_center().child(section(`Saved comments · ${visible.length}/${drafts.length}`).flex_1())
    .when(Boolean(view.navigateComment),e=>e.child(button('comment-previous','↑',(_e,cx)=>view.navigateComment(-1,cx),{tooltip:'Previous comment'})).child(button('comment-next','↓',(_e,cx)=>view.navigateComment(1,cx),{tooltip:'Next comment'})))
+   .when(Boolean(view.generalComment),e=>e.child(button('general-comment','General comment',(_e,cx)=>view.generalComment(cx))))
    .child(button('clear-comments','Clear all',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},{tooltip:'Delete all saved comments in this repository, including comments hidden by filters'}).disabled(!drafts.length)))
   .child(h_flex().min_h(36).flex_none().px(8).py(4).gap(6).flex_wrap().items_center()
    .child(buttonGroup('draft-status',[{value:'all',label:'All'},{value:'current',label:'Current'},{value:'outdated',label:'Outdated'}],status,(value,cx)=>{view.draftStatus=value;cx.notify();}))
@@ -74,9 +75,8 @@ export function historyPane(view,cx){
  const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD'&&!ref.startsWith('HEAD -> '));return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
   .child(graphCell(rows[i])).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(`${refs.length?'['+refs.join(', ')+'] ':''}${c.subject}`))
-  .child(div().w(112).flex_none().truncate().text_size(11).text_color(t.muted).child(formatCommitTime(c.timestamp)))
   .child(div().w(75).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author))
-  .child(div().w(60).flex_none().text_size(10).text_color(t.dim).child(c.oid.slice(0,8)));},(id,cx)=>view.selectCommit(id,cx));
+  .child(div().w(112).flex_none().truncate().text_size(11).text_color(t.muted).child(formatCommitTime(c.timestamp)));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().gap(4)
   .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())

@@ -1,21 +1,21 @@
-# Juhas — Review coding-agent work inside Herdr
+# Juhas - Code review
 
-Review your coding agent’s work without leaving Herdr. Browse commits or inspect the final result of a branch, leave comments beside the code and send one clear round of feedback back to your agent. A compact sidebar expands into a full review workspace, with Git history, changed files and a Unified or Split diff. Saved comments stay with their original source as you move between commits and projects.
+See what your coding agent changed, comment beside the code and send the review back from Herdr. Walk through individual commits or review the combined branch diff, including uncommitted work. Start in the sidebar and expand into a review tab when you need more room. Returning to the sidebar keeps your selected file and unsaved comment.
 
 ![Juhas](preview.png)
 
 ## What you see
 
 - A native panel matching Files/Changes: rounded 10px corners, theme background and borders, 13px body text and a 42px header. The sidebar has a Juhas header and Expand action; the dedicated review tab uses a flat surface without that extra header. Refresh lives in the comparison toolbar.
-- A small comparison toolbar: **Commit**, **All changes** and **Uncommitted**. Aggregate review exposes **Compare from** and its resolved base. A compact summary shows commit/file counts. Advanced comparisons live under **⋯**.
+- A small comparison toolbar: **Commit**, **All changes** and **Uncommitted**. Aggregate review exposes **Compare from** and its resolved base. A compact summary, Refresh, More and Submit review share the first row. Changes / Comments and the optional Newer version action form the second row. General comment is in Comments; Mark seen and working snapshots are in More. Advanced comparisons live under **⋯**.
 - In expanded view, History and Files sit side by side above a full-width diff. Their horizontal divider starts at 480px; the upper area starts at 230px high. Native dividers resize both directions. The sidebar shows Files above the diff, starting at 170px high.
-- History has a colored Git graph, commit subjects, authors and short IDs. Files has status colors, added/deleted line counts and comment badges, with an optional compact directory tree. Both lists use 29px rows. Loading stays in existing headers without displacing the content.
-- The diff offers **Unified / Split**, previous/next change, **Comment**, and a rightmost menu for **Whole file** and **Select / copy**. Added/removed lines use theme green/red. Saved comments and the retained comment editor appear below their source lines, on the matching side in Split.
+- History shows a colored Git graph, commit title, author and date in that order; the full hash stays in the tooltip. Files has status colors, added/deleted line counts and comment badges, with an optional compact directory tree. Both lists use 29px rows. Loading stays in existing headers without displacing the content.
+- The diff offers **Unified / Split**, previous/next change, **Comment**, **Whole file** in the file header and a rightmost menu for **Select / copy**. Added/removed lines use theme green/red. Saved comments and the retained comment editor appear below their source lines, on the matching side in Split.
 - Changes / Comments switches the upper section between History/Files and saved comments, with Current/Outdated and source-comparison filters; the diff stays below. Submit opens an editable **Review · N comments** preview with the recipient, generation options and fixed bottom Send/Copy/Cancel actions.
 
 ## How it behaves
 
-Open Juhas beside Files/Changes; expand into a per-repository/worktree review tab, hiding the source sidebar; the terminal remains available in its original tab. Terminals remain alive. The active project/tab directory determines the repository. Switching projects replaces the displayed review; returning restores that context. Sidebar and expanded share the selected comparison, drafts and loaded review data.
+Open Juhas beside Files/Changes; expand into a per-repository/worktree review tab, hiding the source sidebar; the terminal remains available in its original tab. Terminals remain alive. The active project/tab directory determines the repository. Switching projects replaces the displayed review; returning restores that context. Sidebar and expanded share the selected comparison, drafts and loaded review data. The return icon or Juhas toolbar button in the review tab restores the source sidebar, preserving unsaved text. On the source tab, the toolbar button focuses an existing review tab for that repository/worktree and space.
 
 **Commit** is the default, initially HEAD against its parent. Clicking a history row selects that commit; merge commits offer a parent selector. **All changes** shows the final tree difference against HEAD from a base branch’s merge-base, the last eligible review checkpoint or an explicitly chosen commit. The chosen baseline survives visits to individual commits. Missing or ambiguous bases require a choice and do not block Commit review.
 

@@ -42,6 +42,8 @@ test('dedicated review tabs omit the heading but keep Refresh in the common revi
  Object.assign(v,{id:'v',role:'pane',contextProps:{isReviewTab:true},config:{},inputs:{},deferSync(){},baseChoice:()=>null,hasUnsavedComment:()=>false,footer:()=>null,controller:{state:{repo:{key:'r'},files:[],history:[],refs:[]},session:()=>({drafts:[]})}});
  const walk=n=>[n,...(n.nodes||[]).flatMap(walk)];let root=v.render({});assert.deepEqual(root.frameOptions,{framed:false});let nodes=walk(root);assert.ok(nodes.some(n=>n.id==='refresh-review'));assert.ok(!nodes.some(n=>n.id==='open-full'));
  v.contextProps.isReviewTab=false;root=v.render({});assert.deepEqual(root.frameOptions,{framed:true});nodes=walk(root);assert.ok(nodes.some(n=>n.id==='open-full'));assert.equal(nodes.filter(n=>n.id==='refresh-review').length,1);
+ v.contextProps.isReviewTab=true;v.controller.state.newHead='new-head';nodes=walk(v.render({}));assert.ok(nodes.some(n=>n.nodes?.some(c=>c.id==='scope')&&n.nodes?.some(c=>c.id==='submit-preview')));assert.ok(nodes.some(n=>n.nodes?.some(c=>c.id==='review-navigation')&&n.nodes?.some(c=>c.id==='review-latest')));assert.ok(!nodes.some(n=>n.id==='general-comment'||n.id==='mark-seen'));
+
  v.upperView='comments';root=v.render({});nodes=walk(root);const split=nodes.find(n=>n.id==='v-lists-diff');assert.ok(split);assert.ok(walk(split.nodes[0]).some(n=>n.id==='comments-content'));assert.ok(walk(split.nodes[1]).some(n=>n.id==='diff-content'));assert.ok(!nodes.some(n=>n.id==='history-content'||n.id==='files-content'||n.id==='v-workspace-comments'));
  v.upperView='changes';nodes=walk(v.render({}));assert.ok(nodes.some(n=>n.id==='history-content'));assert.ok(nodes.some(n=>n.id==='files-content'));assert.ok(!nodes.some(n=>n.id==='comments-content'));
 });

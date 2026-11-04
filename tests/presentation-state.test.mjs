@@ -36,6 +36,10 @@ test('loaded view transfer retains the chosen upper Comments section without Git
  const h=harness();h.sidebar.upperView='comments';h.sidebar.publish();const full=h.view();full.activateContext(h.context,h.cx);
  assert.equal(full.upperView,'comments');assert.equal(h.calls.length,0);
 });
+test('loaded view transfer retains wrapping and All files with the selected patch',()=>{
+ const h=harness();h.sidebar.readingOptions={wrap:true};h.sidebar.allFiles=true;h.sidebar.publish();const full=h.view();full.activateContext(h.context,h.cx);
+ assert.equal(full.readingOptions.wrap,true);assert.equal(full.allFiles,true);assert.equal(full.allFileSections[0].patch.hunks[0].lines[0].text,'loaded code');assert.equal(h.calls.length,0);
+});
 test('cached presentation is rejected after Refresh or a different context/configuration',()=>{
  const h=harness();h.sidebar.publish();const full=h.view();full.activeContext={...h.context,key:'other'};full.selectionKey=contextStorageKey('selection','space',full.activeContext);assert.equal(full.restoreLoadedView(h.data.get(h.sidebar.selectionKey),h.cx),false);
  full.activeContext=h.context;full.selectionKey=h.sidebar.selectionKey;full.contextProps.config={maxDepth:1};assert.equal(full.restoreLoadedView(h.data.get(h.sidebar.selectionKey),h.cx),false);

@@ -17,9 +17,11 @@ added to that list. Do not package an installed Herdr home.
 
 ## GitHub presentation
 
+Gallery title (RECIPE.md): **Juhas - Code review**. Keep it short enough for a single card line.
+
 Description:
 
-> Review coding-agent changes inside Herdr, leave inline comments and send one clear round of feedback.
+> Review your coding agent's changes in Herdr. Leave comments beside the code and send the review back to your agent.
 
 Suggested topics: herdr-mod, herdr, gpui, git, code-review, coding-agents.
 

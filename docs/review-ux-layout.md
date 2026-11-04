@@ -27,3 +27,9 @@ Native Windows acceptance confirmed the repeated heading is absent, Refresh rema
 Approved option 2 replaces the bottom comments panel with a Changes / Comments switch above the upper section. Changes shows History/Files (Files only in the sidebar); Comments shows the existing repository-scoped saved-comment list. The diff stays underneath in the same native resizable group. There is no third comments split or duplicated Comments action in the main toolbar.
 
 Upper-section selection is separate from modal/editor state, retained per context and transferred with loaded view snapshots. Clicking Code may change the exact source below without closing Comments. Switching sections performs no Git reads and retains unsaved input, selection and the shared divider size. History search controls are hidden while Comments is selected, without clearing their values.
+
+## Two-row controls and sidebar handoff
+
+Approved compact variant 1 places Submit review in the comparison row, moves General comment into Comments and checkpoints/snapshots into More, and replaces the ordinary newer-HEAD banner with a compact action beside Changes / Comments. Error messages remain explicit.
+
+Toolbar routing reuses live expanded reviews within the same machine, space and checkout root. The expanded toolbar action delegates to the active review's sidebar command, which transfers selection, cached code, wrapping mode and unsaved feedback before closing the review pane. Existing unsaved source comments or edited messages are retained; conflicting unsaved work blocks the handoff. Unrelated terminals are never closed. Both native and legacy personal toolbar installations receive the standalone routing helper, with an idempotent updater for existing integrations.

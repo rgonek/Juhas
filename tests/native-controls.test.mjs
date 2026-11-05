@@ -6,6 +6,7 @@ import * as comments from '../mods/juhas/comments.js';
 import {formatCommitTime} from '../mods/juhas/commit-time.js';
 import * as reading from '../mods/juhas/reading.js';
 import {fileRows,splitRows,changeGroups,filterDrafts} from '../mods/juhas/review-ui.js';
+import {fileReviewKey,setFileReviewed} from '../mods/juhas/progress.js';
 function controls(overrides={}){
  let layout=false;
  const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
@@ -21,6 +22,22 @@ test('file row cache identity changes when comments are deleted without changing
  const file={id:'f',newPath:'a',status:'M'},saved={drafts:[{id:'d',repoKey:'r',newPath:'a'}]},view={id:'v',controller:{state:{repo:{key:'r'},files:[file]},session:()=>saved},selectFile(){}};
  const ui=controls(),first=descendants(ui.filesPane(view)).find(n=>n.kind==='virtual'),before=first.keyAt(0);
  saved.drafts=[];const next=descendants(ui.filesPane(view)).find(n=>n.kind==='virtual');assert.notEqual(next.keyAt(0),before);
+});
+test('large review pane reads one session and keeps viewed and comment counts repo-scoped',()=>{
+ const comparison={id:'source',repoKey:'r'},files=Array.from({length:2000},(_,i)=>({id:`f${i}`,newPath:`src/f${i}.js`,status:'M',oldOid:`old${i}`,newOid:`new${i}`}));
+ const drafts=Array.from({length:500},(_,i)=>({id:`r${i}`,repoKey:'r',comparisonId:'source',newPath:i===0?'src/f0.js':`src/f${i}.js`,body:'note'})).concat(Array.from({length:500},(_,i)=>({id:`other${i}`,repoKey:'other',comparisonId:'other-source',newPath:'src/f0.js',body:'other'})));
+ const reviewedFiles=Object.fromEntries(files.map(file=>[fileReviewKey(comparison,file),Date.now()]));let reads=0;
+ const view={id:'large-review',controller:{state:{repo:{key:'r'},comparison,files,file:files[0]},session:()=>{reads++;return {drafts,reviewedFiles};}},isFileReviewed:(file,session)=>Boolean(session.reviewedFiles[fileReviewKey(comparison,file)]),selectFile(){}};
+ const ui=controls(),root=ui.filesPane(view),list=descendants(root).find(n=>n.kind==='virtual');
+ assert.equal(reads,1);assert.equal(list.sizes,29);assert.equal(filterDrafts(drafts,{repoKey:'r'}).length,500);assert.equal(filterDrafts(drafts,{repoKey:'other'}).length,500);
+ const first=list.renderRows()[0];assert.ok(descendants(first).some(n=>n.kind==='div'&&n.nodes?.includes('1')));
+ const sectionNode=descendants(root).find(n=>n.kind==='div'&&n.nodes?.includes('FILES · 2000/2000 VIEWED'));assert.ok(sectionNode);
+});
+test('reviewed-file updates preserve the 2,000-entry cap and replace an existing key',()=>{
+ const comparison={id:'source',repoKey:'r'},file={oldPath:'a',newPath:'a',status:'M',oldOid:'old',newOid:'new'},reviewedFiles=Object.fromEntries(Array.from({length:2000},(_,i)=>[`entry-${i}`,i]));
+ const updated=setFileReviewed({reviewedFiles},comparison,file,true),key=fileReviewKey(comparison,file),entries=Object.entries(updated.reviewedFiles);
+ assert.equal(entries.length,2000);assert.equal(entries.at(-1)[0],key);assert.equal(entries[0][0],'entry-1');
+ const unchanged=setFileReviewed(updated,comparison,file,false);assert.equal(Object.hasOwn(unchanged.reviewedFiles,key),false);assert.equal(Object.keys(unchanged.reviewedFiles).length,1999);
 });
 test('saved-comment list offers code navigation separately from editing',()=>{
  const draft={id:'d',repoKey:'r',comparisonId:'c',newPath:'a',body:'fix'},calls=[],view={id:'v',controller:{state:{repo:{key:'r'}},session:()=>({drafts:[draft]})},openComment:(d)=>calls.push(d.id)};
@@ -143,3 +160,7 @@ test('diff file heading is bold and shows file-list totals, including zero and u
  Object.assign(view.controller.state.file,{additions:0,deletions:0});row=header();assert.ok(row.nodes.some(n=>n.nodes?.includes('+0')));assert.ok(row.nodes.some(n=>n.nodes?.includes('−0')));
  Object.assign(view.controller.state.file,{additions:null,deletions:null});row=header();assert.ok(!row.nodes.some(n=>n.nodes?.includes('+null')||n.nodes?.includes('−null')));
 });
+
+test('large file pane reads session once and calculates progress once per file',()=>{let reads=0,checks=0;const files=Array.from({length:1000},(_,i)=>({id:String(i),newPath:`group-${i%10}/file${i}`,status:'M'})),session={drafts:[]};const view={id:'large',fileTree:true,controller:{state:{repo:{key:'r'},files},session:()=>{reads++;return session;}},isFileReviewed:(_f,s)=>{checks++;assert.equal(s,session);return false;},selectFile(){}};const ui=controls(),root=ui.filesPane(view),nodes=descendants(root),list=nodes.find(n=>n.kind==='virtual'),rows=list.renderRows();assert.equal(reads,1);assert.equal(checks,files.length);assert.ok(nodes.some(n=>n.nodes?.includes(`FILES · 0/${files.length} VIEWED`)));assert.ok(nodes.some(n=>n.kind==='Toggle'&&n.identity==='file-tree'&&n.values.pressed));assert.equal(rows.length,fileRows(files,true).length);assert.equal(checks,files.length);});
+
+test('All files header preparation snapshots session once for a large range',()=>{let reads=0,created=0,notified=0;const saved={reviewedFiles:{}};const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1],Native=new Function('View','FileHeader','reviewedState','class Juhas extends View'+source+'\nreturn Juhas;')(class{},class{},(session,_comparison,file)=>Boolean(session.reviewedFiles[file.id])),v=Object.create(Native.prototype);v.allFiles=true;v.controller={state:{comparison:{id:'c'}},session:()=>{reads++;return structuredClone(saved);}};v.allFileSections=Array.from({length:1000},(_,i)=>({file:{id:String(i)},comparison:{id:'c'},collapsed:true}));const cx={new(){created++;return {release(){}};},notify(){notified++;}};v.prepareFileHeaders(cx);assert.equal(created,1000);assert.equal(reads,1);v.prepareFileHeaders(cx);assert.equal(created,1000);assert.equal(reads,2);assert.equal(notified,0);saved.reviewedFiles[0]=true;v.prepareFileHeaders(cx);assert.equal(reads,3);assert.equal(notified,1);v.controller.state.files=[{id:"0",additions:5,deletions:2}];v.prepareFileHeaders(cx);assert.equal(v.allFileSections[0].file.additions,5);assert.equal(v.allFileSections[0].collapsed,true);assert.equal(notified,2);});

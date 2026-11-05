@@ -2,19 +2,19 @@ import {resolveRepo} from './repositories.js';
 import {git,uid,oid,isAncestor,withGitBudget} from './git.js';
 import {listHistory,listRefs} from './history.js';
 import {resolveComparison,fromHistory,resolveBase} from './comparisons.js';
-import {listChangedFiles,loadPatch} from './diff.js';
+import {listChangedFiles,listChangedFileMetadata,loadChangedFileStats,loadPatch} from './diff.js';
 import {createCache,createRequestGate} from './cache.js';
 import {loadSession,mutateSession} from './storage.js';
 import {addDraft,markSeen,lastCheckpoint} from './review.js';
 import {observeWorking} from './working-observation.js';
 function patchKey(c,file,full=false){return JSON.stringify([c.repoKey,c.baseTree,c.mutableTarget?file.contentIdentity||c.targetTree:c.targetTree,file.id,'patch',full]);}
 export class Controller {
- constructor({run,store,sessionId='default',cache=createCache(),onChange=()=>{}}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.onChange=onChange;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.refreshGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false,historyLoading:false,historyLoadingMore:false};}
+ constructor({run,store,sessionId='default',cache=createCache(),onChange=()=>{}}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.onChange=onChange;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.refreshGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false,historyLoading:false,historyLoadingMore:false,fileStatsLoading:false,fileStatsError:null};}
  session(){return loadSession(this.store,this.sessionId);}
  mutate(fn){return mutateSession(this.store,this.sessionId,fn);}
  async openRepo(machine,folder,{repo:providedRepo,loadHistory=true}={}){
   this.refreshGate.begin('repo');
-  const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');this.state.historyLoading=false;this.state.historyLoadingMore=false;
+  const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');this.state.historyLoading=false;this.state.historyLoadingMore=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;
   const repo=providedRepo||await resolveRepo(this.run,machine,folder);if(!this.gate.isCurrent(token))return;if(!repo)throw new Error('Folder is not inside a Git repository; use Discover to find nested repositories');
   const [refs,branch]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD'])]);if(!this.gate.isCurrent(token))return;
   this.state={...this.state,repo,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null};
@@ -60,17 +60,25 @@ export class Controller {
  }
  async selectScope(scope,{preservePath=true}={}){
   const repo=this.state.repo;if(!repo)return;const token=this.gate.begin('scope'),patchToken=this.patchGate.begin('scope'),run=withGitBudget(this.run);
+  this.state.scopeLoading=true;this.state.pendingScope=scope;this.state.fileStatsLoading=false;this.state.fileStatsError=null;this.onChange();
+  try{
   this.refreshGate.begin('scope');const previousPath=preservePath?this.state.file?.newPath:null;
   const scopeKey=JSON.stringify([repo.key,scope]);const immutable=scope.kind==='commit'&&/^[a-f0-9]{40,64}$/.test(scope.commit)||scope.kind==='range'&&!scope.includeWorking&&/^[a-f0-9]{40,64}$/.test(scope.base)&&/^[a-f0-9]{40,64}$/.test(scope.target);
   let loaded=immutable?this.cache.get(scopeKey):null;
-  if(!loaded){const comparison=fromHistory(repo,scope,this.state.history)||await resolveComparison(run,repo,scope,this.session().checkpoints);const filesKey=JSON.stringify([repo.key,comparison.baseTree,comparison.targetTree,'files']);let files=this.cache.get(filesKey);if(!files){files=await listChangedFiles(run,comparison);if(!comparison.mutableTarget)this.cache.set(filesKey,files);}loaded={comparison,files};if(immutable)this.cache.set(scopeKey,loaded);}
+  if(!loaded){const comparison=fromHistory(repo,scope,this.state.history)||await resolveComparison(run,repo,scope,this.session().checkpoints),splitMetadata=!comparison.mutableTarget&&scope.kind!=='commit';const filesKey=JSON.stringify([repo.key,comparison.baseTree,comparison.targetTree,splitMetadata?'files:raw':'files']);let files=this.cache.get(filesKey);if(!files){files=splitMetadata?await listChangedFileMetadata(run,comparison):await listChangedFiles(run,comparison);if(!comparison.mutableTarget)this.cache.set(filesKey,files);}loaded={comparison,files,splitMetadata};if(immutable)this.cache.set(scopeKey,loaded);}
   if(!this.gate.isCurrent(token))return;
-  loaded={...loaded,comparison:await this.summarizeComparison(loaded.comparison,run)};if(!this.gate.isCurrent(token))return;
-  const retained=previousPath?loaded.files.find(f=>f.newPath===previousPath):null,patch=retained?await this.readFilePatch(retained,loaded.comparison,{run}):null;
-  if(!this.gate.isCurrent(token)||!this.patchGate.isCurrent(patchToken))return;
-  this.state={...this.state,comparison:loaded.comparison,details:null,files:loaded.files,file:retained||null,patch,error:null,sourceUnavailable:false,sourceStale:false,missingFile:previousPath&&!retained?previousPath:null,newHead:null};
-  await this.reconcileComments(loaded.comparison,{run});
+  const retained=previousPath?loaded.files.find(f=>f.newPath===previousPath):null;
+  this.state={...this.state,comparison:loaded.comparison,details:null,files:loaded.files,file:retained?{...retained}:null,patch:null,patchLoading:!!retained,fileStatsLoading:!!loaded.splitMetadata,fileStatsError:null,error:null,sourceUnavailable:false,sourceStale:false,missingFile:previousPath&&!retained?previousPath:null,newHead:null};this.onChange();
+  if(loaded.splitMetadata){const filesKey=JSON.stringify([repo.key,loaded.comparison.baseTree,loaded.comparison.targetTree,'files']),statsKey=filesKey+':numstat',current=()=>this.gate.isCurrent(token)&&this.state.comparison?.id===loaded.comparison.id;void (async()=>{try{let stats=this.cache.get(statsKey);if(!stats){stats=await loadChangedFileStats(run,loaded.comparison,loaded.files);this.cache.set(statsKey,stats);}if(!current())return;this.state.files=stats;if(this.state.file){const counts=stats.find(f=>f.id===this.state.file.id);if(counts)this.state.file={...this.state.file,additions:counts.additions,deletions:counts.deletions,binary:counts.binary};}this.state.fileStatsError=null;}catch(error){if(!current())return;this.state.fileStatsError=error.message;}finally{if(current()){this.state.fileStatsLoading=false;this.onChange();}}})();}
+  const summary=await this.summarizeComparison(loaded.comparison,run);if(!this.gate.isCurrent(token))return;
+  this.state.comparison=summary;this.onChange();
+  const patch=retained?await this.readFilePatch(retained,summary,{run}):null;
+  if(!this.gate.isCurrent(token))return;
+  if(this.patchGate.isCurrent(patchToken)){this.state.patch=patch;this.state.patchLoading=false;this.onChange();}
+  await this.reconcileComments(summary,{run});
+  }finally{if(this.gate.isCurrent(token)){this.state.scopeLoading=false;this.state.pendingScope=null;this.state.patchLoading=false;this.onChange();}}
  }
+
  async selectFile(id){
   const c=this.state.comparison;const file=this.state.files.find(f=>f.id===id);if(!c||!file)return;if(!c.mutableTarget&&this.state.file?.id===id&&this.state.patch)return;this.refreshGate.begin('file');const token=this.patchGate.begin(id);this.state.file=file;this.state.patch=null;
   if(c.mutableTarget&&!await this.validateWorking(c,token))return;
@@ -95,7 +103,7 @@ export class Controller {
  }
  async selectResolved(snapshot){
   this.refreshGate.begin('restore');
-  const repo=this.state.repo;if(!repo||snapshot.repoKey!==repo.key)throw new Error('Comparison belongs to another worktree');
+  const repo=this.state.repo;if(!repo||snapshot.repoKey!==repo.key)throw new Error('Comparison belongs to another worktree');this.state.fileStatsLoading=false;this.state.fileStatsError=null;
   const token=this.gate.begin('restore');this.patchGate.begin('restore');
   let comparison={...snapshot,repo};
   if(snapshot.mutableTarget){comparison=await resolveComparison(this.run,repo,snapshot.scope,this.session().checkpoints);if(comparison.id!==snapshot.id)throw new Error('Working tree changed; refresh the source comparison before switching views');}
@@ -154,8 +162,9 @@ export class Controller {
     }
    }
    if(!current()||this.state.historyRef!==historyToken)return false;
+   if(changed||candidate?.mutableTarget){const finalHead=await run(repo,['rev-parse','--verify','HEAD']);if((finalHead.code===0?finalHead.stdout.trim():null)!==head)throw new Error('Repository changed during refresh; previous source retained');if(!current())return false;}
    Object.assign(this.state,{observedHead:head,refs,history:history.commits,hasMore:history.hasMore,historyRef:history.ref,historyExclude:history.exclude,featureBaseOid:featureBase,empty:!head,newHead:comparison?.scope.kind==='commit'&&head&&head!==comparison.targetOid?head:null,branchChanged:null,comparison:candidate,details:candidate===comparison?this.state.details:null,files,file:nextFile,patch:nextPatch,missingFile,sourceUnavailable,sourceStale});
-   if(candidate!==comparison)this.state.sourceStale=false;
+   if(candidate!==comparison){this.state.sourceStale=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;}
    if(candidate&&(changed||candidate.mutableTarget||this.session().drafts.some(d=>d.repoKey===repo.key&&d.mutableTarget)))await this.reconcileComments(candidate,{run,headOid:head,validatedWorking:candidate.mutableTarget&&!this.state.sourceStale?candidate:null});
    return true;
   }catch(error){if(current())this.state.refreshError=error.message;return false;}finally{this.state.refreshing=false;this.refreshPromise=null;this.onChange();}})();

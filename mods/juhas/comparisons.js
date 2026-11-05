@@ -7,8 +7,9 @@ export function fromHistory(repo,scope,commits){
  return comparison(repo,scope,{baseOid:base.oid,targetOid:target.oid,baseTree:base.tree,targetTree:target.tree,parents:target.parents});
 }
 function comparison(repo,scope,data){const {baseOid,targetOid,baseTree,targetTree,parents=[]}=data;return {...data,id:comparisonKey(repo.key,baseOid,targetOid,baseTree,targetTree),repoKey:repo.key,repo,root:repo.root,scope,parents,label:`${scope.kind}: ${baseOid?.slice(0,8)||'empty'} → ${targetOid?.slice(0,8)||'working tree'}`,capturedAt:Date.now(),mutableTarget:!!data.observation};}
+const mergeBases=new WeakMap();
 export async function resolveBase(run,repo,baseRef,targetRef='HEAD'){
- const base=await oid(run,repo,baseRef),target=await oid(run,repo,targetRef);const result=await run(repo,['merge-base','--all',base,target]);if(result.code===1)throw new Error('No merge-base: select an explicit range');if(result.code!==0)throw new Error('Cannot resolve merge-base');const bases=result.stdout.trim().split('\n').filter(Boolean);if(bases.length!==1)throw new Error('No unique merge-base: select an explicit range');return bases[0];
+ const resolved=ref=>/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(ref)?Promise.resolve(ref):oid(run,repo,ref);const [base,target]=await Promise.all([resolved(baseRef),resolved(targetRef)]);const owner=run.originalRun||run;let cache=mergeBases.get(owner);if(!cache){cache=new Map();mergeBases.set(owner,cache);}const key=JSON.stringify([repo.key,base,target]);if(cache.has(key))return cache.get(key);const result=await run(repo,['merge-base','--all',base,target]);if(result.code===1)throw new Error('No merge-base: select an explicit range');if(result.code!==0)throw new Error('Cannot resolve merge-base');const bases=result.stdout.trim().split('\n').filter(Boolean);if(bases.length!==1)throw new Error('No unique merge-base: select an explicit range');cache.set(key,bases[0]);while(cache.size>128)cache.delete(cache.keys().next().value);return bases[0];
 }
 export async function resolveComparison(run,repo,scope,checkpoints=[]){
  let baseOid=null,targetOid=null,baseTree,targetTree,parents=[],observation;

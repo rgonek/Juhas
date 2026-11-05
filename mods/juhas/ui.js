@@ -95,15 +95,16 @@ export function historyPane(view,cx){
   .when(s.hasMore,e=>e.child(button('history-more',s.historyLoadingMore?'Loading...':'Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true))).disabled(Boolean(s.historyLoading||s.historyBaseLoading))));
 }
 export function filesPane(view){
- const s=view.controller.state,t=theme(),drafts=view.controller.session().drafts,rows=fileRows(s.files,view.fileTree,view.collapsedDirs||new Set());
+ const s=view.controller.state,t=theme(),session=view.controller.session(),drafts=session.drafts,rows=fileRows(s.files,view.fileTree,view.collapsedDirs||new Set());
+ const reviewed=new Set();for(const file of s.files)if(view.isFileReviewed?.(file,session))reviewed.add(file.id);
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
- return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${s.files.filter(f=>view.isFileReviewed?.(f)).length}/${s.files.length} viewed`).flex_1())
+ return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${reviewed.size}/${s.files.length} viewed`).flex_1())
   .when(Boolean(view.moveUnreviewed),e=>e.child(button('next-unreviewed','Next unreviewed',(_e,cx)=>view.moveUnreviewed(1,cx))))
   .child(toggle('file-tree','Tree',view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
- .child(virtualList(`${view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,Boolean(view.isFileReviewed?.(f)),s.file?.id===f.id])})),LIST_ROW_HEIGHT,f=>{
+ .child(virtualList(`${view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,Boolean(reviewed.has(f.id)),s.file?.id===f.id])})),LIST_ROW_HEIGHT,f=>{
   if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
   const count=counts.get(f.newPath)||0;return h_flex().h(LIST_ROW_HEIGHT).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
-   .child(text(view.isFileReviewed?.(f)?'✓':f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(f.status==='A'?t.ansi2:f.status==='D'?t.ansi1:t.ansi4).child(view.fileTree?f.name:f.newPath))
+   .child(text(reviewed.has(f.id)?'✓':f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(f.status==='A'?t.ansi2:f.status==='D'?t.ansi1:t.ansi4).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
  },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));

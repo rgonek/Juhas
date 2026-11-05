@@ -475,7 +475,7 @@ export default class Juhas extends View {
      .child(text('From',true).px(6))
      .child(popover('compare-from',`${from==='branch'?'Branch':from==='checkpoint'?'Checkpoint':'Commit'} ▾`,this.panel==='compareFrom',(open,cx)=>{if(open||this.panel==='compareFrom'){this.panel=open?'compareFrom':null;this.choosingCommitBase=false;}cx.notify();},()=>this.compareFromPicker(),{tooltip:'Choose the starting point; the comparison ends at HEAD'}))
      .when(from==='branch',e=>e.child(popover('change-base',`${this.baseChoice()?.ref?.replace(/^refs\/(heads|remotes)\//,'')||'Choose branch'} ▾`,this.panel==='refs',(open,cx)=>this.setReferencePicker(false,open,cx),()=>this.referencePicker(false),{tooltip:baseLabel+'; changes start at the common ancestor with HEAD'})))
-     .child(text('→ HEAD',true).px(6).tooltip('End of comparison: the selected branch HEAD'))))
+     .child(text(`→ ${s.branch&&s.branch!=='(detached)'?s.branch:comparison?.targetOid?.slice(0,8)||'HEAD'}`,true).max_w(200).truncate().px(6).tooltip(`End of comparison: ${s.branch&&s.branch!=='(detached)'?s.branch+' (HEAD)':'detached HEAD'}${comparison?.targetOid?' · '+comparison.targetOid:''}`))))
 
     .child(div().flex_1())
     .child(text(comparison?`${comparison.mutableTarget?(mode==='uncommitted'?'Uncommitted':'Committed + uncommitted'):comparison.commitCount!=null?comparison.commitCount+' '+(comparison.commitCount===1?'commit':'commits'):comparison.scope.kind==='commit'?'1 commit':comparison.summaryError?'Count unavailable':'... commits'} \u00b7 ${s.files.length} ${s.files.length===1?'file':'files'}`:'',true).tooltip(comparison?.summaryError||'Commits and changed files in the selected comparison; independent of history filters'))
@@ -503,9 +503,8 @@ export default class Juhas extends View {
   if(!s.repo)workspace.child(text(this.busy?'Reading repositories in the active directory…':'No Git repositories found in the active directory.').p(14));
   else if(s.empty&&!s.comparison?.mutableTarget)workspace.child(text('This repository has no commits yet; choose Uncommitted.').p(16));
   else {
-   const upper=v_flex().size_full().min_h(0).min_w(0)
-    .child(h_flex().min_h(34).flex_none().px(8).pb(6).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)
-     .child(buttonGroup('workspace-layout',[{value:'stacked',label:svg('mods/juhas/icons/layout-stacked.svg').size(15),tooltip:'History and files above the diff'},{value:'sidebar',label:svg('mods/juhas/icons/layout-sidebar.svg').size(15),tooltip:'Files on the left, history and diff on the right'}],this.workspaceLayout||'stacked',(value,cx)=>{this.workspaceLayout=value;cx.notify();}))
+   workspace.child(h_flex().min_h(34).flex_none().px(8).pb(6).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)
+     .child(buttonGroup('workspace-layout',[{value:'stacked',label:svg('mods/juhas/icons/layout-stacked.svg').size(15),tooltip:'History and files above the diff'},{value:'sidebar',label:svg('mods/juhas/icons/layout-sidebar.svg').size(15),tooltip:'History and files on the left of the diff'}],this.workspaceLayout||'stacked',(value,cx)=>{this.workspaceLayout=value;cx.notify();}))
      .child(buttonGroup('review-navigation',[{value:'changes',label:'Changes'},{value:'comments',label:`Comments · ${session.drafts.filter(d=>d.repoKey===s.repo?.key).length}`}],this.upperView||'changes',(value,cx)=>this.setUpperView(value,cx)))
      .when(Boolean(this.policy?.canSwitch),e=>e.child(repositoryPicker))
     .child(button('mark-seen',`Mark seen${comparison?.targetOid?' · '+comparison.targetOid.slice(0,12):''}`,(_e,cx)=>{this.panel=null;this.work(cx,async cx=>{const cp=await this.controller.markSeen();this.message=`Checkpoint saved at ${cp.targetOid.slice(0,8)}; comments retained`;});},{tooltip:'Save a checkpoint at the displayed committed target'}).disabled(Boolean(this.busy)||!comparison?.targetOid||Boolean(comparison?.mutableTarget)))
@@ -514,17 +513,19 @@ export default class Juhas extends View {
      .when(Boolean(notices.length),e=>e.child(popover('review-status',`${notices[0].title.length>28?notices[0].title.slice(0,27)+'…':notices[0].title}${notices.length>1?' · +'+(notices.length-1):''}`,this.panel==='reviewStatus',(open,cx)=>{if(open||this.panel==='reviewStatus')this.panel=open?'reviewStatus':null;cx.notify();},()=>v_flex().size_full().min_h(0).overflow_y_scrollbar().p(10).gap(8).children(notices.map(n=>text(n.detail))),{tooltip:notices.map(n=>n.detail).join('\n')})))
      .when(Boolean(s.branchChanged),e=>e.child(button('adopt-branch','Review current branch',(_e,cx)=>this.reviewCurrentBranch(cx),{tooltip:`Checkout changed to ${s.branchChanged?.current}; original review retained until you choose to switch` })))
      .when(Boolean(s.newHead),e=>e.child(button('review-latest','Newer version',(_e,cx)=>this.reviewLatest(cx),{tooltip:`Open latest HEAD ${s.newHead}; the selected source stays pinned until you choose to switch`}))));
+   const upper=v_flex().size_full().min_h(0).min_w(0);
    if(this.upperView==='comments')upper.child(draftsPane(this,cx));
-   else if(this.workspaceLayout==='sidebar')upper.child(historyPane(this,cx));
+   else if(this.workspaceLayout==='sidebar')upper.child(v_resizable(`${this.id}-sidebar-history-files`).size_full()
+    .child(resizable_panel().size(200).size_range(100).child(historyPane(this,cx)))
+    .child(resizable_panel().size_range(100).child(filesPane(this))));
    else upper.child(this.compact?filesPane(this):h_resizable(`${this.id}-history-files-${(this.width||0)>=900?'wide':'narrow'}`).size_full()
     .child(resizable_panel().size(Math.min(480,Math.max(180,(this.width||520)*0.5))).size_range(180).child(historyPane(this,cx)))
     .child(resizable_panel().size_range(160).child(filesPane(this))));
-   const reading=v_resizable(`${this.id}-lists-diff`).flex_1().min_h(0).w_full()
-    .child(resizable_panel().size(this.compact?170:230).size_range(100).child(upper))
-    .child(resizable_panel().size_range(100).child(diffPane(this)));
    workspace.child(this.workspaceLayout==='sidebar'?h_resizable(`${this.id}-files-sidebar`).size_full().min_w(0)
-    .child(resizable_panel().size(240).size_range(160).child(filesPane(this)))
-    .child(resizable_panel().size_range(240).child(reading)):reading);
+    .child(resizable_panel().size(340).size_range(200).child(upper))
+    .child(resizable_panel().size_range(240).child(diffPane(this))):v_resizable(`${this.id}-lists-diff`).flex_1().min_h(0).w_full()
+    .child(resizable_panel().size(this.compact?170:230).size_range(100).child(upper))
+    .child(resizable_panel().size_range(100).child(diffPane(this))));
   }
   root.child(workspace);const foot=this.footer(cx);if(foot)root.child(foot);return root;
  }

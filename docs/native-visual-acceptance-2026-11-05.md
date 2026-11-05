@@ -122,3 +122,8 @@ The repository picker now opens below its trigger. The ordinary toolbar has two 
 Two native resizable arrangements are available: history/files above the diff, or files on the left and history/diff on the right. History refs use a bounded badge and a count for additional refs, with complete refs in tooltips. Placement controls no longer depend on Git loading or repository discovery; a known context folder is sufficient. Discovery resolves provisional tab identity and reuses an already open canonical review tab.
 
 Evidence: loading-layout-01.png (stacked), sidebar-layout-01.png (files left), loading-header-02.png (placement controls), placement-tab-01.png (native tab action). These screenshots do not establish a timed click during initial loading; regression tests explicitly cover busy state with no resolved repository for both split directions and a new tab, and canonical-tab reuse. Full suite: 325 passed, 0 failed (final-verified.log); installed native check and git diff --check passed. Personal layout unchanged.
+
+
+### Correction: stable toolbar and complete left navigation
+
+Both toolbar rows now stay above the workspace in either arrangement. The alternate arrangement places history above files in a resizable left column, with the diff on the right. In this narrow history column, author/date remain in row tooltips rather than taking space from commit subjects. The comparison target shows the branch name (full name and pinned commit in the tooltip), with a short commit ID for detached HEAD. Native evidence: fixed-toolbar-sidebar.png; regression assertions cover history/files placement, toolbar exclusion from the split, and branch/detached labels.

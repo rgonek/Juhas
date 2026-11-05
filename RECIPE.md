@@ -8,7 +8,7 @@ Juhas lets you review your coding agent's changes and send feedback from Herdr. 
 
 - A native panel matching Files/Changes: rounded 10px corners, theme background and borders, 13px body text and a 42px header. The sidebar has a Juhas header and Expand action; the dedicated review tab uses a flat surface without that extra header. Refresh lives in the comparison toolbar.
 - A small comparison toolbar: **Commit**, **All changes** and **Uncommitted**. Aggregate review exposes **Compare from** and its resolved base. A compact summary, Refresh, More and Submit review share the first row. Changes / Comments and the optional Newer version action form the second row. General comment is in Comments; Mark seen and working snapshots are in More. Advanced comparisons live under **⋯**.
-- In expanded view, History and Files sit side by side above a full-width diff. Their horizontal divider starts at 480px; the upper area starts at 230px high. Native dividers resize both directions. The sidebar shows Files above the diff, starting at 170px high.
+- In expanded view, History and Files sit side by side above a full-width diff. Their horizontal divider adapts to pane width (up to 480px for History); the upper area starts at 230px high. Native dividers resize both directions. The sidebar shows Files above the diff, starting at 170px high.
 - History shows a colored Git graph, commit title, author and date in that order; the full hash stays in the tooltip. Files has status colors, added/deleted line counts and comment badges, with an optional compact directory tree. Both lists use 29px rows. Loading stays in existing headers without displacing the content.
 - The diff offers **Unified / Split**, previous/next change, **Comment**, **Whole file** in the file header and a rightmost menu for **Select / copy**. Added/removed lines use theme green/red. Saved comments and the retained comment editor appear below their source lines, on the matching side in Split.
 - Changes / Comments switches the upper section between History/Files and saved comments, with Current/Outdated and source-comparison filters; the diff stays below. Submit opens an editable **Review · N comments** preview with the recipient, generation options and fixed bottom Send/Copy/Cancel actions.
@@ -25,7 +25,7 @@ The recipient is selected automatically only when an unambiguous live project ag
 
 **Mark seen** records exactly the displayed committed target as a checkpoint. It does not send feedback or approve changes. **Fetch** contacts configured remotes only on request. Refresh reloads Git and local configuration. History pagination preserves loaded rows; stale responses cannot replace a newer selection or clear its loading indicator.
 
-When the review area has keyboard focus, j/k move between files, brackets move between commits, c adds a file comment and Escape returns to the terminal/sidebar. Text fields retain normal editing. Buttons, truncated commit subjects and copy actions provide tooltips. Change navigation continues across changed files and stops at review boundaries.
+When the review area has keyboard focus, j/k move between files, brackets move between commits, c adds a file comment and Escape returns to the terminal/sidebar. Text fields retain normal editing. Buttons, truncated commit subjects and copy actions provide tooltips. Copy code is directly available in the diff toolbar; it opens selectable original/modified loaded fragments. Change navigation continues across changed files and stops at review boundaries.
 
 ## Built from
 

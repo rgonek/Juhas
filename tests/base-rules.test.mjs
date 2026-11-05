@@ -36,7 +36,7 @@ import {readFileSync} from 'node:fs';
 function nativeBranchView(saved=''){
  let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const Native=new Function('View','selectBase',source+'\nreturn Juhas;')(class{},config.selectBase),view=Object.create(Native.prototype),calls=[];let base='';
- view.config={baseRules:rules};view.inputs={base:{value:()=>base,set_value:v=>base=v},target:{value:()=> 'HEAD'}};view.controller={state:{refs,branch:'feature/project-42/task-9'},base:()=>saved,setBase:v=>{saved=v;calls.push(['save',v]);},selectScope:async scope=>calls.push(['scope',scope])};view.publish=()=>{};view.work=(_cx,action)=>view.pending=action();return {view,calls};
+ view.config={baseRules:rules};view.inputs={base:{value:()=>base,set_value:v=>base=v},target:{value:()=> 'HEAD'}};view.controller={state:{refs,branch:'feature/project-42/task-9'},base:()=>saved,setBase:v=>{saved=v;calls.push(['save',v]);},selectScope:async scope=>calls.push(['scope',scope])};view.publish=()=>{};view.work=(_cx,action)=>view.pending=action(_cx);return {view,calls};
 }
 test('native Branch automatically applies a rule without pinning it as a manual override',async()=>{
  const {view,calls}=nativeBranchView();view.restoreBase();assert.equal(view.inputs.base.value(),'refs/heads/integration/project-42');assert.equal(view.baseSource,'auto');view.applyScope('branch',{notify(){}});await view.pending;

@@ -64,7 +64,7 @@ export async function captureWorkingSnapshot(exec,repo,{branch=null,maxBytes=64*
  if(branch&&branch!==capturedBranch)throw new Error('Branch context changed; refresh before capturing a snapshot');
  const run=createRunner(exec),listing=await git(run,repo,['ls-tree','-r','-l','-z',treeOid]);let bytes=0,files=0;
  for(const entry of listing.split('\0').filter(Boolean)){const size=/^[0-7]+ [^ ]+ [a-f0-9]+\s+([0-9-]+)\t/.exec(entry);if(!size)throw new Error('Cannot verify snapshot size');bytes+=size[1]==='-'?0:Number(size[1]);files++;}
- if(bytes>maxBytes||files>maxFiles)throw new Error('Working snapshot exceeds the size/file limit');
+ if(bytes>maxBytes||files>maxFiles)throw new Error(`Working snapshot exceeds the limit (${Math.round(maxBytes/1024/1024)} MiB or ${maxFiles} files); commit the changes and use Mark seen instead`);
  const id=uid(),refName=`refs/git-review/snapshots/${id}`;
  await git(run,repo,['update-ref',refName,treeOid,'0'.repeat(treeOid.length)]);
  return {kind:'working-snapshot',id,treeOid,refName,repoKey:repo.key,root:repo.root,branch:capturedBranch,markedAt:Date.now(),bytes,files};

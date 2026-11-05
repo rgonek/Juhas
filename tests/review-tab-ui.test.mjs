@@ -46,7 +46,27 @@ for(const direction of ['right','down'])test(`sidebar opens ${direction} at the 
 test('missing source terminal leaves sidebar and selection intact',()=>{
  const {v,commands}=setup();v.role='sidebar';v.openReviewPane('right');assert.deepEqual(commands,[]);
 });
-test('pane placement actions are unavailable outside the sidebar or while busy',()=>{
+test('pane placement actions are unavailable outside the sidebar',()=>{
  const {v,commands,live,source}=setup();live.panes=[{pane:'agent',tab:source.tabId,terminal:'t1'}];
- for(const role of ['pane','bar']){v.role=role;v.openReviewPane('down');}v.role='sidebar';v.busy=true;v.openReviewPane('right');assert.deepEqual(commands,[]);
+ for(const role of ['pane','bar']){v.role=role;v.openReviewPane('down');}assert.deepEqual(commands,[]);
+});
+
+for(const direction of ['right','down'])test(`loading sidebar can move ${direction} before repository discovery`,()=>{
+ const {v,commands,live,source}=setup();v.role='sidebar';v.busy=true;v.controller.state.repo=null;v.persistComposer=()=>{};v.persistReview=()=>{};live.panes=[{pane:'agent',tab:source.tabId,terminal:'t1'}];
+ v.openReviewPane(direction);assert.equal(commands[0][0],'pane.split');assert.equal(commands[0][1].props.reviewContext.folder,source.folder);
+});
+test('loading review can open a tab before repository discovery',()=>{
+ const {v,commands,source}=setup();v.busy=true;v.controller.state.repo=null;v.openReviewTab();assert.equal(commands[0][0],'tab.new');assert.equal(commands[0][1].props.folder,source.folder);
+});
+
+test('a tab opened from a parent folder adopts the discovered repository identity',()=>{
+ const {v,data,live,source}=setup(),parent={root:'D:/',machine:null},key=reviewTabKey(parent,source.spaceId),canonical=reviewTabKey(v.controller.state.repo,source.spaceId);
+ v.contextProps={isReviewTab:true,reviewTabKey:key,folder:parent.root,reviewContext:source};live.spaces=[{id:source.spaceId,tabs:[{id:'new-review'}]}];live.panes=[{pane:'new-pane',tab:'new-review',mod:'juhas'}];data.set(key,{previousTabIds:[]});
+ assert.equal(v.registerReviewTab(),true);assert.equal(v.contextProps.reviewTabKey,canonical);assert.equal(data.get(canonical).paneId,'new-pane');assert.equal(data.get(key),null);
+});
+
+test('discovery reuses an existing canonical review instead of replacing its live record',()=>{
+ const {v,data,commands,live,source}=setup(),key=reviewTabKey({root:'D:/',machine:null},source.spaceId),canonical=reviewTabKey(v.controller.state.repo,source.spaceId),context={...source,key:'existing-review'};
+ v.contextProps={isReviewTab:true,reviewTabKey:key,folder:'D:/',reviewContext:source};live.spaces=[{id:source.spaceId,tabs:[{id:'opening'},{id:'existing'}]}];live.panes=[{pane:'opening-pane',tab:'opening',mod:'juhas'},{pane:'existing-pane',tab:'existing',mod:'juhas'}];data.set(key,{previousTabIds:['existing']});data.set(canonical,{tabId:'existing',paneId:'existing-pane',sessionId:'other',context});
+ assert.equal(v.registerReviewTab(),true);assert.equal(data.get(canonical).paneId,'existing-pane');assert.equal(data.get(key),null);assert.deepEqual(commands,[['tab.select',{id:'existing'}],['tab.close',{id:'opening'}]]);
 });

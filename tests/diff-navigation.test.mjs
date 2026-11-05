@@ -45,7 +45,7 @@ test('navigation crosses file boundaries, skips empty patches and stops at revie
  state.files=[{id:'a'},{id:'binary'},{id:'b'}];state.file=state.files[0];
  view.diffRowsKey=view.diffChangeKey();view.changeCursor={source:view.diffRowsKey,id:'two'};
  const selected=[];view.controller.session=()=>({drafts:[]});view.controller.selectFile=async id=>{selected.push(id);state.file=state.files.find(f=>f.id===id);state.patch={hunks:id==='binary'?[]:[{header:'@@',lines:[line('first','new'),line('context','context'),line('last','new')]}]};};
- view.publish=()=>{};view.work=(_cx,action)=>{view.pending=action();};
+ view.publish=()=>{};view.work=(_cx,action)=>{view.pending=action(_cx);};
  view.navigateChange(1,cx);await view.pending;assert.deepEqual(selected,['binary','b']);assert.equal(view.changeCursor.id,'h0l0');assert.deepEqual(scroll.at(-1),[1,'top']);
  view.diffRows=[line('one','new'),line('context','context'),line('two','old')];view.diffRowsKey=view.diffChangeKey();view.changeCursor={source:view.diffRowsKey,id:'two'};
  view.navigateChange(1,cx);await view.pending;assert.equal(view.message,'End of review');assert.equal(state.file.id,'b');

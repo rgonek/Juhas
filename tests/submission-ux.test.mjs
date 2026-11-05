@@ -73,7 +73,7 @@ function nativeSubmission(data=new Map()){
  let selectedSession={...session,submittedBatches:[],drafts:comments.map(d=>({...d}))};let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const deliveries=[],deps={...submission,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,v),agents:()=>[agent('right')],terminals:()=>[terminal('right'),terminal('manual')],submit:submission.createSubmitter(),exec:async(_cmd,args)=>{deliveries.push(args);return {code:0};}};
  const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps)),view=Object.create(Native.prototype);
- view.controller={state:{repo:{key:'repo'},comparison:null},session:()=>selectedSession,mutate:fn=>selectedSession=fn(selectedSession)};view.currentContext=()=>({...context,key:'context'});view.activeContext=view.currentContext();view.reviewKey='review-key';view.inputs={note:{value:()=>''}};let text='';view.inputs.review={value:()=>text,set_value:value=>text=value};view.work=(_cx,fn)=>view.pending=fn();const cx={notify(){},write_to_clipboard:value=>data.set('clipboard',value)};return {view,data,deliveries,cx,getSession:()=>selectedSession};
+ view.controller={state:{repo:{key:'repo'},comparison:null},session:()=>selectedSession,mutate:fn=>selectedSession=fn(selectedSession)};view.currentContext=()=>({...context,key:'context'});view.activeContext=view.currentContext();view.reviewKey='review-key';view.inputs={note:{value:()=>''}};let text='';view.inputs.review={value:()=>text,set_value:value=>text=value};view.work=(_cx,fn)=>view.pending=fn(_cx);const cx={notify(){},write_to_clipboard:value=>data.set('clipboard',value)};return {view,data,deliveries,cx,getSession:()=>selectedSession};
 }
 test('native preview auto-selects the project agent and scopes the editable message to one repo',()=>{
  const {view,deliveries,cx}=nativeSubmission();view.preview(cx);assert.equal(view.panel,'submit');assert.equal(view.batch.agentAddress,'right');assert.deepEqual(view.batch.draftIds,['1','2']);assert.equal(view.inputs.review.value(),view.batch.text);assert.equal(deliveries.length,0);
@@ -84,8 +84,8 @@ test('preview refuses stale project context before selecting an agent or generat
 test('native edits survive changing recipient, cancellation/reopen and Copy uses the exact edited text',()=>{
  const {view,data,cx}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('My edited review');view.changeReview(cx);view.buildPreview('manual',cx);assert.equal(view.batch.text,'My edited review');assert.equal(view.batch.agentAddress,'manual');view.copyReview(cx);assert.equal(data.get('clipboard'),'My edited review');view.panel=null;view.batch=null;view.preview(cx);assert.equal(view.batch.text,'My edited review');assert.equal(view.batch.agentAddress,'manual');
 });
-test('native Send uses the exact edited payload and retains source drafts after free-form edits',async()=>{
- const {view,deliveries,cx,getSession}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('Precisely this');view.changeReview(cx);view.send(cx);await view.pending;assert.equal(deliveries.length,1);assert.equal(deliveries[0][2],'Precisely this');assert.equal(getSession().drafts.length,3);
+test('native Send archives and clears included source drafts even after message edits',async()=>{
+ const {view,deliveries,cx,getSession}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('Precisely this');view.changeReview(cx);view.send(cx);await view.pending;assert.equal(deliveries.length,1);assert.equal(deliveries[0][2],'Precisely this');assert.deepEqual(getSession().drafts.map(d=>d.id),['3']);assert.deepEqual(Object.keys(getSession().submittedBatches[0].draftSnapshots),['1','2']);
 });
 test('native Send does not send an empty edit or a preview from another project context',async()=>{
  const {view,deliveries,cx}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('  ');view.changeReview(cx);view.send(cx);if(view.pending)await view.pending;assert.equal(deliveries.length,0);
@@ -141,4 +141,8 @@ test('a checkbox in an older preview preserves preferences changed in another vi
  const data=new Map(),first=nativeSubmission(data),second=nativeSubmission(data);first.view.preview(first.cx);second.view.preview(second.cx);
  first.view.toggleResponseGuidance(first.cx,true);second.view.toggleReviewQuotes(second.cx,true);data.delete('review-key');const next=nativeSubmission(data);next.view.preview(next.cx);
  assert.equal(next.view.includeResponseGuidance,true);assert.equal(next.view.includeQuotes,true);
+});
+
+test('sending an edited review preserves comments changed after preview',async()=>{
+ const {view,cx,getSession}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('Small wording correction');view.changeReview(cx);getSession().drafts[0].body='Newer feedback';view.send(cx);await view.pending;assert.deepEqual(getSession().drafts.map(d=>d.id),['1','3']);assert.equal(getSession().drafts[0].body,'Newer feedback');
 });

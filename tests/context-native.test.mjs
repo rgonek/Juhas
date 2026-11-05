@@ -14,7 +14,7 @@ function nativeView(){
  const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps));const view=Object.create(Native.prototype);
  view.contextProps={};view.config={maxDepth:3,maxRepos:20};view.contextViews=new Map();view.policy={repos:[],canSwitch:false};view.inputs={};view.role='sidebar';view.sessionId='initial';
  for(const key of ['folder','base','target','query','author','path','comment','note']){let value='';view.inputs[key]={value:()=>value,set_value:next=>value=next};}
- view.work=(_cx,fn)=>view.pending=fn();return {view,store};
+ view.work=(_cx,fn)=>view.pending=fn(_cx);return {view,store};
 }
 test('switching projects replaces Git and comments; returning restores the correct cached project',async t=>{
  const a=fixture(t),b=fixture(t);a.commit('project A');b.commit('project B');const {view,store}=nativeView();const cx={notify(){},spawn(fn){return fn(this);}};

@@ -9,7 +9,7 @@ import {decorateLine,intraline,multiFileRows} from './reading.js';
 export function nativeFrame(id,{framed=true}={}){const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).when(framed,e=>e.rounded(10).border_1().border_color(t.border)).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(13);}
 function control(element,{active=false,primary=false,segment=false}={}){const t=theme();return element.h(28).flex_none().px(8).flex().gap(6).items_center().justify_center().rounded(6).text_size(12).cursor_pointer()
  .text_color(primary?t.solid_foreground:t.foreground).bg(primary?t.solid:active?t.selected:segment?t.chrome:t.background)
- .hover(el=>el.bg(primary?t.accent:t.hover)).active(el=>el.bg(primary?t.accent:t.selected));}
+ .hover(el=>el.bg(primary?t.solid:t.hover)).active(el=>el.bg(primary?t.solid:t.selected));}
 export function button(id,label,action,options={}){
  const name=options.tooltip||(typeof label==='string'?label:'Action');return control(Button.new(id),options).selected(Boolean(options.active)).tab_index(0).accessibility_label(name).tooltip(name)
   .when(Boolean(action),el=>el.on_click(action)).child(label);
@@ -21,7 +21,7 @@ export function checkbox(id,label,checked,change,{tooltip=label}={}){
    .child(label));
 }
 export function toggle(id,label,pressed,change,{tooltip=label}={}){
- return control(Toggle.new(id),{active:Boolean(pressed)}).pressed(Boolean(pressed)).tab_index(0).accessibility_label(label).on_change(change).child(div().tooltip(tooltip).child(label));
+ return control(Toggle.new(id),{active:Boolean(pressed)}).pressed(Boolean(pressed)).tab_index(0).accessibility_label(typeof label==='string'?label:tooltip).on_change(change).child(div().tooltip(tooltip).child(label));
 }
 export function buttonGroup(id,items,selected,select){
  const t=theme();return h_flex().id(id).role('group').accessibility_label(id).flex_none().rounded(6).border_1().border_color(t.border).overflow_hidden()
@@ -35,7 +35,7 @@ export function field(state,_placeholder,width){const t=theme();return Input.new
 export function text(value,dim=false){const t=theme();return div().text_size(12).text_color(dim?t.muted:t.foreground).child(value);}
 export function commitId(oid){return h_flex().gap(4).items_center().child(text(oid,true)).child(button('copy-commit-id',svg('mods/juhas/icons/copy.svg').size(13),(_e,cx)=>cx.write_to_clipboard(oid),{tooltip:'Copy full commit ID'}).h(22).w(22).px(0));}
 export function virtualList(id,items,height,row,click,scrollHandle=null){return v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(v_virtual_list(id,items.length,height,i=>String(items[i].renderKey??items[i].id??items[i].oid??i),range=>items.slice(range.start,range.end).map(row)).when(Boolean(scrollHandle),el=>el.track_scroll(scrollHandle)).on_item_click((key,cx)=>{const item=items.find(i=>String(i.renderKey??i.id??i.oid)===String(key));click(item?.id??item?.oid??key,cx);}).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());}
-export function section(title){const t=theme();return div().h(28).flex_none().px(10).py(6).text_size(10).font_semibold().text_color(t.muted).bg(t.chrome).child(title.toUpperCase());}
+export function section(title){const t=theme();return div().h(28).flex_none().px(10).py(6).text_size(11).font_semibold().text_color(t.foreground).bg(t.chrome).child(title);}
 export function draftsPane(view,cx){
  const repoKey=view.controller.state.repo?.key,drafts=filterDrafts(view.controller.session().drafts,{repoKey}),status=view.draftStatus||'all',source=view.draftSource||'all',visible=filterDrafts(drafts,{status,source}),sources=[...new Map(drafts.map(d=>[d.comparisonId,d])).values()];
  const sourceLabel=d=>d.targetOid?`${d.baseOid?.slice(0,8)||'empty'} → ${d.targetOid.slice(0,8)}`:'Working tree';
@@ -54,7 +54,7 @@ export function draftsPane(view,cx){
    .when(!visible.length,e=>e.child(text('No saved comments match these filters.',true).p(10)))
    .children(visible.map(d=>h_flex().gap(6).px(8).py(4).items_center()
     .child(v_flex().flex_1().min_w(0).tooltip(`${d.scope==='general'?'General review':d.newPath||d.oldPath}\n${sourceLabel(d)}\n${d.body}`)
-     .child(text(`${d.status==='outdated'?'[OUTDATED] ':''}${d.scope==='general'?'General review':`${d.newPath||d.oldPath} ${d.startLine??''}`}`,true).truncate())
+     .child(text(`${d.status==='outdated'?'[OUTDATED] ':''}${d.scope==='general'?'General review':`${d.newPath||d.oldPath} ${d.startLine??''}`}`,true).truncate().text_ellipsis_middle().tooltip(d.newPath||d.oldPath||'General review'))
      .child(text(d.body).truncate()).child(text(sourceLabel(d),true).text_size(10)).when(Boolean(view.openComment)&&d.scope!=='general',e=>e.cursor_pointer().on_click((_e,cx)=>view.openComment(d,cx))))
     .when(Boolean(view.openComment)&&d.scope!=='general',e=>e.child(button(`open-code-${d.id}`,'Code',(_e,cx)=>view.openComment(d,cx),{tooltip:'Open the exact source of this comment'})))
     .child(button(`edit-${d.id}`,'Edit',(_e,cx)=>view.editDraft(d,cx))).child(button(`delete-${d.id}`,'Delete',(_e,cx)=>{view.controller.removeComment(d.id);cx.notify();})))));
@@ -72,11 +72,14 @@ export function historyPane(view,cx){
  const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows;
  const first=s.history.findIndex(c=>c.oid===(view.commitAnchor||s.comparison?.scope.base)),last=s.history.findIndex(c=>c.oid===s.comparison?.targetOid);
  const selected=(c,i)=>view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
- const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD'&&!ref.startsWith('HEAD -> '));return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
+ const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
-  .child(graphCell(rows[i])).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(`${refs.length?'['+refs.join(', ')+'] ':''}${c.subject}`))
-  .child(div().w(75).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author))
-  .child(div().w(112).flex_none().truncate().text_size(11).text_color(t.muted).child(formatCommitTime(c.timestamp)));},(id,cx)=>view.selectCommit(id,cx));
+  .child(graphCell(rows[i]))
+  .when(Boolean(refs.length),e=>e.child(h_flex().max_w(160).min_w(0).gap(3).items_center().children(refs.slice(0,1).map(ref=>h_flex().min_w(0).max_w(130).h(20).px(4).gap(3).items_center().rounded(4).border_1().border_color(ref.current?t.accent:t.border).bg(ref.current?t.selected:t.chrome).tooltip(ref.full)
+   .child(text(ref.current?'\u2713':ref.tag?'\u25c7':'\u2442',true)).child(text(ref.label).min_w(0).truncate().text_ellipsis_middle()))).when(refs.length>1,e=>e.child(text(`+${refs.length-1}`,true).flex_none().tooltip(refs.slice(1).map(ref=>ref.full).join('\n'))))))
+  .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(c.subject))
+  .when(view.workspaceLayout!=='sidebar'&&(!view.width||view.width>=900),e=>e.child(div().w(75).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author)))
+  .when(view.workspaceLayout!=='sidebar'&&(!view.width||view.width>=720),e=>e.child(div().w(112).flex_none().truncate().text_size(11).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().gap(4)
   .child(section(view.historyRef==='all'?'History · all branches':view.historyFull?'History · full':s.featureBaseOid?'History · feature commits':'History · HEAD').flex_1().min_w(0).truncate())
@@ -95,19 +98,22 @@ export function historyPane(view,cx){
   .when(s.hasMore,e=>e.child(button('history-more',s.historyLoadingMore?'Loading...':'Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true))).disabled(Boolean(s.historyLoading||s.historyBaseLoading))));
 }
 export function filesPane(view){
- const s=view.controller.state,t=theme(),session=view.controller.session(),drafts=session.drafts,rows=fileRows(s.files,view.fileTree,view.collapsedDirs||new Set());
+ const s=view.controller.state,t=theme(),session=view.controller.session(),drafts=session.drafts,query=view.inputs?.fileQuery?.value()||'',rows=fileRows(s.files,view.fileTree,view.collapsedDirs||new Set(),query);
  const reviewed=new Set();for(const file of s.files)if(view.isFileReviewed?.(file,session))reviewed.add(file.id);
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
- return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${reviewed.size}/${s.files.length} viewed`).flex_1())
-  .when(Boolean(view.moveUnreviewed),e=>e.child(button('next-unreviewed','Next unreviewed',(_e,cx)=>view.moveUnreviewed(1,cx))))
-  .child(toggle('file-tree','Tree',view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
+ return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${reviewed.size}/${s.files.length} viewed`).flex_1().min_w(0).truncate())
+  .when(Boolean(view.inputs?.fileQuery),e=>e.child(button('toggle-file-filter',svg('mods/juhas/icons/search.svg').size(14),(_e,cx)=>{view.fileFilterOpen=!view.fileFilterOpen;if(view.fileFilterOpen)view.inputs.fileQuery.focus();cx.notify();},{active:Boolean(view.fileFilterOpen||query),tooltip:'Filter files by path'})))
+  .when(Boolean(view.moveUnreviewed),e=>e.child(button('next-unreviewed',svg('mods/juhas/icons/chevron-right.svg').size(14),(_e,cx)=>view.moveUnreviewed(1,cx),{tooltip:'Next unreviewed file in the full comparison'})))
+  .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
+ .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(38).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
+ .when(!rows.length,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(10)))
  .child(virtualList(`${view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,Boolean(reviewed.has(f.id)),s.file?.id===f.id])})),LIST_ROW_HEIGHT,f=>{
-  if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
+  if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().text_ellipsis_middle().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
   const count=counts.get(f.newPath)||0;return h_flex().h(LIST_ROW_HEIGHT).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
-   .child(text(reviewed.has(f.id)?'✓':f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(f.status==='A'?t.ansi2:f.status==='D'?t.ansi1:t.ansi4).child(view.fileTree?f.name:f.newPath))
+   .child(text(reviewed.has(f.id)?'✓':f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().when(view.fileTree,e=>e.text_ellipsis_middle()).when(!view.fileTree,e=>e.text_ellipsis_start()).text_size(12).text_color(t.foreground).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
- },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));
+ },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){if(query.trim())return;view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));
 }
 function sourceText(row,path,t,wrap,changed,matches,prefix=''){
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
@@ -175,10 +181,9 @@ export function diffPane(view){
    .child(toggle('diff-search','Search',Boolean(view.searchOpen),(pressed,cx)=>view.toggleSearch?.(pressed,cx)))
    .child(div().flex_1())
    .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
-   .child(popover('diff-more',svg('mods/juhas/icons/more.svg').size(14),view.panel==='diffMore',(open,cx)=>{if(open||view.panel==='diffMore')view.panel=open?'diffMore':null;cx.notify();},()=>v_flex().size_full()
-    .child(button('select-code','Select / copy selected file',(_e,cx)=>view.openCodeCopy('new',cx)).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))),{tooltip:'More diff options'})))
+   .child(button('select-code','Copy code',(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy the loaded original or modified code without diff markers'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))))
   .when(!view.allFiles&&Boolean(s.file),e=>e.child(h_flex().id('diff-file-header').min_h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
-   .child(text(s.file.newPath).font_semibold().min_w(0).truncate().tooltip(s.file.newPath))
+   .child(text(s.file.newPath).font_semibold().min_w(0).truncate().text_ellipsis_start().tooltip(s.file.newPath))
    .when(s.file.additions!=null,e=>e.child(text('+'+s.file.additions).text_color(t.ansi2)).child(text('−'+s.file.deletions).text_color(t.ansi1)))
    .child(div().flex_1())
    .when(Boolean(view.markFileReviewed),e=>e.child(checkbox('file-reviewed','Viewed',view.isFileReviewed?.(s.file),(checked,cx)=>view.markFileReviewed(checked,cx))))

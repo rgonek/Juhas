@@ -25,7 +25,7 @@ coding agent in one review.
 Use the sidebar for a quick look, or open beside/below the agent or in a dedicated review tab with Git
 history, a file list or tree, and a full-width Unified or Split diff. Resize the
 panels to fit the code, and use change navigation to move through the diff.
-Loading indicators show when Git is still working.
+Filter changed files by path without changing the open diff. Search review recipients by name, terminal address or directory. Mark seen and Checkpoints are available directly in the comparison toolbar. Loading indicators show when Git is still working.
 
 Juhas uses Herdr’s native GPUI controls. It works with local Git repositories
 and agent terminals; no GitHub account or pull request is required. Base-branch

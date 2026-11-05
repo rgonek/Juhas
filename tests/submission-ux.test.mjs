@@ -84,8 +84,8 @@ test('preview refuses stale project context before selecting an agent or generat
 test('native edits survive changing recipient, cancellation/reopen and Copy uses the exact edited text',()=>{
  const {view,data,cx}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('My edited review');view.changeReview(cx);view.buildPreview('manual',cx);assert.equal(view.batch.text,'My edited review');assert.equal(view.batch.agentAddress,'manual');view.copyReview(cx);assert.equal(data.get('clipboard'),'My edited review');view.panel=null;view.batch=null;view.preview(cx);assert.equal(view.batch.text,'My edited review');assert.equal(view.batch.agentAddress,'manual');
 });
-test('native Send uses the exact edited payload and retains source drafts after free-form edits',async()=>{
- const {view,deliveries,cx,getSession}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('Precisely this');view.changeReview(cx);view.send(cx);await view.pending;assert.equal(deliveries.length,1);assert.equal(deliveries[0][2],'Precisely this');assert.equal(getSession().drafts.length,3);
+test('native Send archives and clears included source drafts even after message edits',async()=>{
+ const {view,deliveries,cx,getSession}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('Precisely this');view.changeReview(cx);view.send(cx);await view.pending;assert.equal(deliveries.length,1);assert.equal(deliveries[0][2],'Precisely this');assert.deepEqual(getSession().drafts.map(d=>d.id),['3']);assert.deepEqual(Object.keys(getSession().submittedBatches[0].draftSnapshots),['1','2']);
 });
 test('native Send does not send an empty edit or a preview from another project context',async()=>{
  const {view,deliveries,cx}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('  ');view.changeReview(cx);view.send(cx);if(view.pending)await view.pending;assert.equal(deliveries.length,0);
@@ -141,4 +141,8 @@ test('a checkbox in an older preview preserves preferences changed in another vi
  const data=new Map(),first=nativeSubmission(data),second=nativeSubmission(data);first.view.preview(first.cx);second.view.preview(second.cx);
  first.view.toggleResponseGuidance(first.cx,true);second.view.toggleReviewQuotes(second.cx,true);data.delete('review-key');const next=nativeSubmission(data);next.view.preview(next.cx);
  assert.equal(next.view.includeResponseGuidance,true);assert.equal(next.view.includeQuotes,true);
+});
+
+test('sending an edited review preserves comments changed after preview',async()=>{
+ const {view,cx,getSession}=nativeSubmission();view.preview(cx);view.inputs.review.set_value('Small wording correction');view.changeReview(cx);getSession().drafts[0].body='Newer feedback';view.send(cx);await view.pending;assert.deepEqual(getSession().drafts.map(d=>d.id),['1','3']);assert.equal(getSession().drafts[0].body,'Newer feedback');
 });

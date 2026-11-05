@@ -21,7 +21,7 @@ export function checkbox(id,label,checked,change,{tooltip=label}={}){
    .child(label));
 }
 export function toggle(id,label,pressed,change,{tooltip=label}={}){
- return control(Toggle.new(id),{active:Boolean(pressed)}).pressed(Boolean(pressed)).tab_index(0).accessibility_label(label).on_change(change).child(div().tooltip(tooltip).child(label));
+ return control(Toggle.new(id),{active:Boolean(pressed)}).pressed(Boolean(pressed)).tab_index(0).accessibility_label(typeof label==='string'?label:tooltip).on_change(change).child(div().tooltip(tooltip).child(label));
 }
 export function buttonGroup(id,items,selected,select){
  const t=theme();return h_flex().id(id).role('group').accessibility_label(id).flex_none().rounded(6).border_1().border_color(t.border).overflow_hidden()
@@ -72,9 +72,12 @@ export function historyPane(view,cx){
  const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows;
  const first=s.history.findIndex(c=>c.oid===(view.commitAnchor||s.comparison?.scope.base)),last=s.history.findIndex(c=>c.oid===s.comparison?.targetOid);
  const selected=(c,i)=>view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
- const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD'&&!ref.startsWith('HEAD -> '));return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
+ const list=virtualList(`${view.id}-history`,s.history,LIST_ROW_HEIGHT,c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(LIST_ROW_HEIGHT).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
-  .child(graphCell(rows[i])).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(`${refs.length?'['+refs.join(', ')+'] ':''}${c.subject}`))
+  .child(graphCell(rows[i]))
+  .when(Boolean(refs.length),e=>e.child(h_flex().max_w(160).min_w(0).gap(3).items_center().children(refs.slice(0,1).map(ref=>h_flex().min_w(0).max_w(130).h(20).px(4).gap(3).items_center().rounded(4).border_1().border_color(ref.current?t.accent:t.border).bg(ref.current?t.selected:t.chrome).tooltip(ref.full)
+   .child(text(ref.current?'\u2713':ref.tag?'\u25c7':'\u2442',true)).child(text(ref.label).min_w(0).truncate()))).when(refs.length>1,e=>e.child(text(`+${refs.length-1}`,true).flex_none().tooltip(refs.slice(1).map(ref=>ref.full).join('\n'))))))
+  .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(c.subject))
   .when(!view.width||view.width>=900,e=>e.child(div().w(75).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author)))
   .when(!view.width||view.width>=720,e=>e.child(div().w(112).flex_none().truncate().text_size(11).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
@@ -99,9 +102,10 @@ export function filesPane(view){
  const reviewed=new Set();for(const file of s.files)if(view.isFileReviewed?.(file,session))reviewed.add(file.id);
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(30).flex_none().items_center().child(section(`Files · ${reviewed.size}/${s.files.length} viewed`).flex_1().min_w(0).truncate())
+  .when(Boolean(view.inputs?.fileQuery),e=>e.child(button('toggle-file-filter',svg('mods/juhas/icons/search.svg').size(14),(_e,cx)=>{view.fileFilterOpen=!view.fileFilterOpen;if(view.fileFilterOpen)view.inputs.fileQuery.focus();cx.notify();},{active:Boolean(view.fileFilterOpen||query),tooltip:'Filter files by path'})))
   .when(Boolean(view.moveUnreviewed),e=>e.child(button('next-unreviewed',svg('mods/juhas/icons/chevron-right.svg').size(14),(_e,cx)=>view.moveUnreviewed(1,cx),{tooltip:'Next unreviewed file in the full comparison'})))
-  .child(toggle('file-tree','Tree',view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
- .when(Boolean(view.inputs?.fileQuery),e=>e.child(h_flex().min_h(38).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
+  .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
+ .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(38).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
  .when(!rows.length,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(10)))
  .child(virtualList(`${view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,Boolean(reviewed.has(f.id)),s.file?.id===f.id])})),LIST_ROW_HEIGHT,f=>{
   if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));

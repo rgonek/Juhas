@@ -113,3 +113,12 @@ Subjective ratings for the inspected native Windows surfaces, considering the co
 The three highest-value opportunities were implemented after this audit: a local file path filter, recipient search with directory context, and direct Mark seen / Checkpoints toolbar controls. The filter preserves source selection and saved tree collapse state; matching ancestors remain expanded while searching. Recipient search respects the selected project/all-live scope and does not modify the review text.
 
 Native follow-up evidence: convenience-02-file-filter.png (one matching file with the original selected diff retained), convenience-03-checkpoints.png (existing checkpoint panel), and convenience-06-recipient-search.png (t1y found with directory context). The new contracts and tree-click regression are covered by the full 318-test suite (convenience-final.log); native check and diff whitespace checks pass.
+
+
+## Follow-up: compact controls, placement and alternate layout
+
+The repository picker now opens below its trigger. The ordinary toolbar has two rows; narrow panes wrap controls to keep them reachable. Baseline controls form one group: From [Branch] [ref] -> HEAD (branch mode still uses the merge base). File search is hidden behind an icon until opened or a query is active; Tree is an icon with an accessible label. Sent comments are removed only when unchanged since preview, even when the outgoing review text was edited; the submitted record retains the original draft snapshots.
+
+Two native resizable arrangements are available: history/files above the diff, or files on the left and history/diff on the right. History refs use a bounded badge and a count for additional refs, with complete refs in tooltips. Placement controls no longer depend on Git loading or repository discovery; a known context folder is sufficient. Discovery resolves provisional tab identity and reuses an already open canonical review tab.
+
+Evidence: loading-layout-01.png (stacked), sidebar-layout-01.png (files left), loading-header-02.png (placement controls), placement-tab-01.png (native tab action). These screenshots do not establish a timed click during initial loading; regression tests explicitly cover busy state with no resolved repository for both split directions and a new tab, and canonical-tab reuse. Full suite: 325 passed, 0 failed (final-verified.log); installed native check and git diff --check passed. Personal layout unchanged.

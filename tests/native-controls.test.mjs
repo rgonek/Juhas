@@ -140,10 +140,10 @@ test('history and files use the same row height and graph cells span a full row'
  const ui=controls(),view={id:'rows',controller:{state:{repo:{key:'r'},history:[{oid:'a',parents:[],subject:'Example',author:'Author',timestamp:0,refs:[]}],files:[{id:'file',newPath:'a.js',status:'M'}]},session:()=>({drafts:[]})},selectCommit(){},selectFile(){}},cx={notify(){}};
  view.controller.session=()=>({drafts:[]});const history=descendants(ui.historyPane(view,cx)).find(x=>x.kind==='virtual'),files=descendants(ui.filesPane(view)).find(x=>x.kind==='virtual');assert.equal(history.sizes,files.sizes);assert.equal(history.renderRows()[0].values.h,ui.LIST_ROW_HEIGHT);assert.equal(files.renderRows()[0].values.h,ui.LIST_ROW_HEIGHT);assert.equal(ui.graphCell({before:[],after:[],lane:0,edges:[]}).values.h,ui.LIST_ROW_HEIGHT);
 });
-test('history omits redundant HEAD branch text but retains tags and full-ref tooltips',()=>{
+test('history displays the current branch as a bounded badge and summarizes extra refs',()=>{
  const view={id:'history',controller:{state:{history:[{oid:'a'.repeat(40),parents:[],subject:'Fix something',author:'Author',timestamp:0,refs:['HEAD -> feature/topic','tag: v1']}],comparison:null}},selectCommit(){}};
  const row=descendants(controls().historyPane(view,{})).find(n=>n.kind==='virtual').renderRows()[0],texts=descendants(row).flatMap(n=>n.nodes||[]).filter(n=>typeof n==='string');
- assert.ok(texts.includes('[tag: v1] Fix something'));assert.ok(!texts.some(t=>t.includes('HEAD ->')));assert.match(row.values.tooltip,/HEAD -> feature\/topic/);
+ assert.ok(texts.includes('feature/topic'));assert.ok(texts.includes('+1'));assert.ok(texts.includes('Fix something'));assert.ok(!texts.some(t=>t.includes('HEAD ->')));assert.match(row.values.tooltip,/HEAD -> feature\/topic/);
 });
 test('history loading uses native SVG animation and disables duplicate pagination',()=>{
  const ui=controls(),indicator=ui.historyLoadingIndicator({historyLoadingMore:true}),icon=descendants(indicator).find(x=>x.kind==='svg');assert.equal(icon.values.spin,900);assert.match(indicator.values.accessibility_label,/Loading more/);
@@ -168,4 +168,9 @@ test('All files header preparation snapshots session once for a large range',()=
 test('clicking a filtered folder never changes the saved tree collapse state',()=>{
  const files=[{id:'a',newPath:'src/a.js',status:'M'},{id:'b',newPath:'src/b.js',status:'M'}],view={id:'filtered',fileTree:true,collapsedDirs:new Set(),inputs:{fileQuery:{value:()=> 'src'}},controller:{state:{repo:{key:'r'},files},session:()=>({drafts:[]})},selectFile(){}};
  const nodes=descendants(controls().filesPane(view)),list=nodes.find(n=>n.kind==='virtual');list.renderRows();nodes.find(n=>n?.handlers?.on_item_click).handlers.on_item_click('dir:src/',{notify(){}});assert.deepEqual([...view.collapsedDirs],[]);
+});
+
+test('file search is collapsed initially and remains visible with an active query',()=>{
+ let query='';const view={id:'search',inputs:{fileQuery:{value:()=>query,focus(){}}},controller:{state:{files:[],repo:{key:'r'}},session:()=>({drafts:[]})}};
+ let nodes=descendants(controls().filesPane(view));assert.ok(!nodes.some(n=>n?.kind==='Input'));nodes.find(n=>n?.identity==='toggle-file-filter').handlers.on_click({}, {notify(){}});nodes=descendants(controls().filesPane(view));assert.ok(nodes.some(n=>n?.kind==='Input'));view.fileFilterOpen=false;query='active';assert.ok(descendants(controls().filesPane(view)).some(n=>n?.kind==='Input'));
 });

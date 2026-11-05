@@ -18,6 +18,12 @@ test('mixed feedback separates general remarks from real file anchors',()=>{
  const s={id:'s',drafts:[{...review.generalTarget(c),id:'g',body:'General'},{repoKey:'repo',comparisonId:c.id,id:'f',newPath:'file.js',body:'Specific',startLine:3,side:'new'}]};
  const batch=buildBatch(s,[c]);assert.match(batch.text,/### General feedback/);assert.match(batch.text,/### file.js/);assert.match(batch.text,/- 3: Specific/);assert.ok(!batch.text.includes('file: General'));
 });
+test('large review progress and comments survive a session save/load without crossing repositories',()=>{
+ const data=new Map(),store={get:k=>data.get(k),set:(k,v)=>data.set(k,v)},session=review.createSession('large');
+ session.reviewedFiles=Object.fromEntries(Array.from({length:2000},(_,i)=>[`reviewed-${i}`,i]));
+ session.drafts=Array.from({length:500},(_,i)=>({id:`r${i}`,repoKey:'repo',comparisonId:'c',newPath:`src/${i}.js`,body:'note'})).concat(Array.from({length:500},(_,i)=>({id:`other${i}`,repoKey:'other',comparisonId:'other-c',newPath:`src/${i}.js`,body:'other'})));
+ saveSession(store,session);const loaded=loadSession(store,'large');assert.equal(Object.keys(loaded.reviewedFiles).length,2000);assert.deepEqual(loaded.reviewedFiles,session.reviewedFiles);assert.deepEqual(loaded.drafts,session.drafts);
+});
 test('progress is pure, content/mode/path sensitive and bounded navigation stops at edges',()=>{
  const f={id:'f',oldPath:'a',newPath:'b',status:'R',oldOid:'old',newOid:'new',oldMode:'100644',newMode:'100755'},g={...f,id:'g',newPath:'c'};
  const s=review.createSession('s'),marked=progress.setFileReviewed(s,c,f,true);assert.equal(progress.reviewedState(s,c,f),false);assert.equal(progress.reviewedState(marked,c,f),true);

@@ -1,5 +1,7 @@
 // Pure presentation models; retain original patch rows for comment anchors.
-export function fileRows(files,tree=false,collapsed=new Set()){
+export function fileRows(files,tree=false,collapsed=new Set(),query=''){
+ const normalized=value=>String(value||'').normalize('NFC').replace(/\\/g,'/').toLowerCase(),needle=normalized(query).trim();
+ if(needle)files=files.filter(file=>[file.newPath,file.oldPath].some(path=>normalized(path).includes(needle)));
  if(!tree)return files;
  const node=()=>({dirs:new Map(),files:[],fileCount:0}),root=node();
  for(const file of files){const parts=file.newPath.split('/');let current=root;current.fileCount++;
@@ -11,7 +13,7 @@ export function fileRows(files,tree=false,collapsed=new Set()){
   for(const [name,child] of [...current.dirs].sort(([a],[b])=>a.localeCompare(b))){
    let branch=child,path=prefix+name+'/',names=[name],paths=[path];
    while(!branch.files.length&&branch.dirs.size===1){const [nextName,next]=branch.dirs.entries().next().value;path+=nextName+'/';names.push(nextName);paths.push(path);branch=next;}
-   const closed=paths.some(path=>collapsed.has(path));
+   const closed=!needle&&paths.some(path=>collapsed.has(path));
    rows.push({id:'dir:'+path,directory:true,path,paths,name:names.join('/'),depth,fileCount:child.fileCount,closed});
    if(!closed)walk(branch,path,depth+1);
   }

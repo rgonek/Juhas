@@ -107,3 +107,9 @@ Subjective ratings for the inspected native Windows surfaces, considering the co
 - CivicLens master clean; temporary branch clean and tracking its pushed origin branch.
 - Juhas changes are uncommitted on the requested new branch; no Juhas push or merge performed.
 - No Linux/macOS interactive acceptance; no claim of successful native snapshot capture on CivicLens; no claim that hc's raw Python stdin sink preserves agent bracketed-paste formatting.
+
+## Follow-up: review conveniences
+
+The three highest-value opportunities were implemented after this audit: a local file path filter, recipient search with directory context, and direct Mark seen / Checkpoints toolbar controls. The filter preserves source selection and saved tree collapse state; matching ancestors remain expanded while searching. Recipient search respects the selected project/all-live scope and does not modify the review text.
+
+Native follow-up evidence: convenience-02-file-filter.png (one matching file with the original selected diff retained), convenience-03-checkpoints.png (existing checkpoint panel), and convenience-06-recipient-search.png (t1y found with directory context). The new contracts and tree-click regression are covered by the full 318-test suite (convenience-final.log); native check and diff whitespace checks pass.

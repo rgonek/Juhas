@@ -54,7 +54,7 @@ export function draftsPane(view,cx){
    .when(!visible.length,e=>e.child(text('No saved comments match these filters.',true).p(10)))
    .children(visible.map(d=>h_flex().gap(6).px(8).py(4).items_center()
     .child(v_flex().flex_1().min_w(0).tooltip(`${d.scope==='general'?'General review':d.newPath||d.oldPath}\n${sourceLabel(d)}\n${d.body}`)
-     .child(text(`${d.status==='outdated'?'[OUTDATED] ':''}${d.scope==='general'?'General review':`${d.newPath||d.oldPath} ${d.startLine??''}`}`,true).truncate())
+     .child(text(`${d.status==='outdated'?'[OUTDATED] ':''}${d.scope==='general'?'General review':`${d.newPath||d.oldPath} ${d.startLine??''}`}`,true).truncate().text_ellipsis_middle().tooltip(d.newPath||d.oldPath||'General review'))
      .child(text(d.body).truncate()).child(text(sourceLabel(d),true).text_size(10)).when(Boolean(view.openComment)&&d.scope!=='general',e=>e.cursor_pointer().on_click((_e,cx)=>view.openComment(d,cx))))
     .when(Boolean(view.openComment)&&d.scope!=='general',e=>e.child(button(`open-code-${d.id}`,'Code',(_e,cx)=>view.openComment(d,cx),{tooltip:'Open the exact source of this comment'})))
     .child(button(`edit-${d.id}`,'Edit',(_e,cx)=>view.editDraft(d,cx))).child(button(`delete-${d.id}`,'Delete',(_e,cx)=>{view.controller.removeComment(d.id);cx.notify();})))));
@@ -76,7 +76,7 @@ export function historyPane(view,cx){
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
   .child(graphCell(rows[i]))
   .when(Boolean(refs.length),e=>e.child(h_flex().max_w(160).min_w(0).gap(3).items_center().children(refs.slice(0,1).map(ref=>h_flex().min_w(0).max_w(130).h(20).px(4).gap(3).items_center().rounded(4).border_1().border_color(ref.current?t.accent:t.border).bg(ref.current?t.selected:t.chrome).tooltip(ref.full)
-   .child(text(ref.current?'\u2713':ref.tag?'\u25c7':'\u2442',true)).child(text(ref.label).min_w(0).truncate()))).when(refs.length>1,e=>e.child(text(`+${refs.length-1}`,true).flex_none().tooltip(refs.slice(1).map(ref=>ref.full).join('\n'))))))
+   .child(text(ref.current?'\u2713':ref.tag?'\u25c7':'\u2442',true)).child(text(ref.label).min_w(0).truncate().text_ellipsis_middle()))).when(refs.length>1,e=>e.child(text(`+${refs.length-1}`,true).flex_none().tooltip(refs.slice(1).map(ref=>ref.full).join('\n'))))))
   .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(c.parents.length>1?t.muted:t.foreground).child(c.subject))
   .when(view.workspaceLayout!=='sidebar'&&(!view.width||view.width>=900),e=>e.child(div().w(75).flex_none().truncate().text_size(11).text_color(t.muted).child(c.author)))
   .when(view.workspaceLayout!=='sidebar'&&(!view.width||view.width>=720),e=>e.child(div().w(112).flex_none().truncate().text_size(11).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx));
@@ -108,9 +108,9 @@ export function filesPane(view){
  .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(38).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
  .when(!rows.length,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(10)))
  .child(virtualList(`${view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,Boolean(reviewed.has(f.id)),s.file?.id===f.id])})),LIST_ROW_HEIGHT,f=>{
-  if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
+  if(f.directory)return h_flex().h(LIST_ROW_HEIGHT).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(12).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().text_ellipsis_middle().child(f.name)).child(div().flex_none().text_size(11).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
   const count=counts.get(f.newPath)||0;return h_flex().h(LIST_ROW_HEIGHT).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
-   .child(text(reviewed.has(f.id)?'✓':f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.foreground).child(view.fileTree?f.name:f.newPath))
+   .child(text(reviewed.has(f.id)?'✓':f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().when(view.fileTree,e=>e.text_ellipsis_middle()).when(!view.fileTree,e=>e.text_ellipsis_start()).text_size(12).text_color(t.foreground).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
  },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){if(query.trim())return;view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));
@@ -183,7 +183,7 @@ export function diffPane(view){
    .when(split,e=>e.child(buttonGroup('comment-side',[{value:'old',label:'Old',tooltip:'Attach comments to the original version'},{value:'new',label:'New',tooltip:'Attach comments to the modified version'}],view.commentSide||'new',(side,cx)=>{view.commentSide=side;cx.notify();})))
    .child(button('select-code','Copy code',(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy the loaded original or modified code without diff markers'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))))
   .when(!view.allFiles&&Boolean(s.file),e=>e.child(h_flex().id('diff-file-header').min_h(34).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
-   .child(text(s.file.newPath).font_semibold().min_w(0).truncate().tooltip(s.file.newPath))
+   .child(text(s.file.newPath).font_semibold().min_w(0).truncate().text_ellipsis_start().tooltip(s.file.newPath))
    .when(s.file.additions!=null,e=>e.child(text('+'+s.file.additions).text_color(t.ansi2)).child(text('−'+s.file.deletions).text_color(t.ansi1)))
    .child(div().flex_1())
    .when(Boolean(view.markFileReviewed),e=>e.child(checkbox('file-reviewed','Viewed',view.isFileReviewed?.(s.file),(checked,cx)=>view.markFileReviewed(checked,cx))))

@@ -127,3 +127,10 @@ Evidence: loading-layout-01.png (stacked), sidebar-layout-01.png (files left), l
 ### Correction: stable toolbar and complete left navigation
 
 Both toolbar rows now stay above the workspace in either arrangement. The alternate arrangement places history above files in a resizable left column, with the diff on the right. In this narrow history column, author/date remain in row tooltips rather than taking space from commit subjects. The comparison target shows the branch name (full name and pinned commit in the tooltip), with a short commit ID for detached HEAD. Native evidence: fixed-toolbar-sidebar.png; regression assertions cover history/files placement, toolbar exclusion from the split, and branch/detached labels.
+
+
+### Text overflow policy
+
+Use native measured truncation rather than modifying source strings. Branch/tag labels and standalone file/directory names retain both ends with text_ellipsis_middle. Complete file paths in the flat file list and diff headers, repository paths and recipient working directories use text_ellipsis_start to prioritize the filename or nearest directory. Draft source labels and unsaved/copy-source captions retain both ends; descriptions, commit subjects, authors and status messages retain their beginning with ordinary end truncation. Short Git IDs retain their conventional prefix. Full values remain available in tooltips; source, search, clipboard and review payloads are unchanged.
+
+Focused native-control/render suite: 42 passed. Native installed check passed. Live light-theme evidence: middle-ellipsis-native.png and middle-ellipsis-sidebar.png (initial middle-ellipsis pass); final path-policy screenshot: text-overflow-final.png. No full-suite rerun for this presentation-only change.

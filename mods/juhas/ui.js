@@ -113,7 +113,7 @@ export function filesPane(view){
    .child(text(reviewed.has(f.id)?'✓':f.status,true).w(16)).child(div().flex_1().min_w(0).truncate().when(view.fileTree,e=>e.text_ellipsis_middle()).when(!view.fileTree,e=>e.text_ellipsis_start()).text_size(12).text_color(t.foreground).child(view.fileTree?f.name:f.newPath))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
- },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){if(query.trim())return;view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);}));
+ },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){if(query.trim())return;view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);},view.reviewIsVisible?.()===false?null:view.filesScroll));
 }
 function sourceText(row,path,t,wrap,changed,matches,prefix=''){
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
@@ -171,7 +171,8 @@ export function diffPane(view){
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
  const id=`${view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}`;
- body=(wrap||rows.some(row=>row.kind==='editor'))?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(view.diffScroll),e=>e.track_scroll(view.diffScroll)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?INLINE_EDITOR_HEIGHT:r.kind==='comment'?commentHeight(r.text):r.kind==='notice'?46:r.kind==='file-header'?34:22),renderRow,click,view.diffScroll);}
+ const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
+ body=wrap?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?INLINE_EDITOR_HEIGHT:r.kind==='comment'?commentHeight(r.text):r.kind==='notice'?46:r.kind==='file-header'?34:22),renderRow,click,scroller);}
  const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
   .child(h_flex().min_h(36).flex_none().px(8).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)

@@ -91,10 +91,17 @@ test('saved general feedback has a review label without a fabricated file anchor
  const root=controls().draftsPane(view,{});assert.ok(descendants(root).some(n=>n?.nodes?.includes('General review')));
 });
 test('virtual rows embed the retained editor without registering callbacks during layout',()=>{
- const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,3);assert.ok(descendants(rows[2]).includes(view.inlineEditor));assert.equal(rows[2].values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(rows[2].values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(root.nodes[0].nodes.at(-1).identity,'select-code');
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,3);assert.ok(descendants(rows[2]).includes(view.inlineEditor));assert.equal(rows[2].values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(rows[2].values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(list.sizes[2],comments.INLINE_EDITOR_HEIGHT);assert.equal(root.nodes[0].nodes.at(-1).identity,'select-code');
 });
 test('binary and mode-only file comments still display the same inline editor',()=>{
- for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(rows[1].values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
+ for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(list.sizes[1],comments.INLINE_EDITOR_HEIGHT);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
+});
+test('a hidden review keeps its diff and file scroll handles detached',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);view.diffScroll={name:'diff'};view.filesScroll={name:'files'};view.reviewIsVisible=()=>false;view.controller.state.repo={key:'r'};view.controller.state.files=[{id:'a',newPath:'a.js',status:'M'}];view.isFileReviewed=()=>false;
+ const diff=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');const files=descendants(controls().filesPane(view)).find(n=>n.kind==='virtual');
+ assert.equal(diff.values.track_scroll,undefined);assert.equal(files.values.track_scroll,undefined);
+ view.reviewIsVisible=()=>true;const shown=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');const shownFiles=descendants(controls().filesPane(view)).find(n=>n.kind==='virtual');
+ assert.equal(shown.values.track_scroll.name,'diff');assert.equal(shownFiles.values.track_scroll.name,'files');
 });
 test('queued diff clicks keep their displayed line snapshot and cannot target another file',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'shown code'}]}]},null),calls=[];view.diffChangeKey=()=>view.controller.state.file.newPath;view.selectLine=(...args)=>calls.push(args);const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='virtual');

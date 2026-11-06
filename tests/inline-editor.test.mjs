@@ -16,6 +16,9 @@ function fixture(data=new Map()){
  const field=()=>{let value='';return {value:()=>value,set_value:next=>value=next,focus(){}};};v.inputs={comment:field(),review:field(),note:field()};v.handle={focus(){}};v.inlineEditor={};v.diffMode='split';v.diffScroll={scroll_to_item(){}};v.patchRows=comments.annotatePatch(patch,[],'c','a');v.diffRows=models.splitRows(v.patchRows);v.composerKey='composer';v.reviewKey='review';v.currentContext=()=>({key:'context',spaceId:'space',tabId:'tab'});v.activeContext=v.currentContext();v.work=(_cx,action)=>v.pending=action(_cx);v.publish=()=>{};
  const cx={notify(){},spawn:action=>action(cx)};return {v,cx,data,saved};
 }
+test('clicking a visible diff line leaves the diff scroll where it is',()=>{
+ const {v,cx}=fixture(),calls=[];v.diffScroll={scroll_to_item:(...args)=>calls.push(args)};v.selectLine('h0l1',cx);assert.deepEqual(calls,[]);assert.equal(v.target.endLine,1);
+});
 test('inline range selection preserves typed text and original-side context anchors in Split',()=>{
  const {v,cx,data}=fixture();v.selectLine('h0l0',cx);v.inputs.comment.set_value('unsaved range');v.persistComposer();v.selectLine('h0l2',cx,'old');assert.equal(v.target.side,'old');assert.equal(v.target.startLine,1);assert.equal(v.target.endLine,2);assert.equal(v.target.quote,'before\nshared');assert.equal(v.inputs.comment.value(),'unsaved range');assert.equal(data.get('composer').comparison.id,'c');
  const rows=models.splitRows(comments.composerRows(v.patchRows,v.target));assert.equal(rows.at(-1).kind,'editor');assert.equal(rows.at(-1).draft.side,'old');

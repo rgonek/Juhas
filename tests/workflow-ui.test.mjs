@@ -15,11 +15,9 @@ test('All changes retains its base across commits and manual commit baseline is 
  const {v,calls}=view(),cx={notify(){}};v.controller.setBase('refs/heads/trunk');v.restoreBase();v.applyAllChanges(cx);await v.pending;assert.equal(calls.at(-1).kind,'branch');assert.equal(v.reviewMode(),'all');
  v.selectCommit('first',cx);await v.pending;assert.equal(v.reviewMode(),'commit');assert.equal(calls.at(-1).commit,'first');v.applyAllChanges(cx);await v.pending;assert.equal(calls.at(-1).baseRef,'refs/heads/trunk');
  v.allChangesFrom='commit';v.manualCommitBase='baseline';v.applyAllChanges(cx);await v.pending;assert.deepEqual(calls.at(-1),{kind:'range',base:'baseline',target:'HEAD',includeBase:false});
- v.allChangesFrom='checkpoint';v.applyAllChanges(cx);await v.pending;assert.deepEqual(calls.at(-1),{kind:'since-review',checkpointId:'checkpoint',targetRef:'HEAD'});
 });
-test('All changes always targets HEAD, including advanced contexts; failed checkpoint selection retains the applied source',async()=>{
+test('All changes always targets HEAD, including advanced contexts',async()=>{
  const {v,calls}=view(),cx={notify(){}};v.config.showAdvanced=true;v.controller.setBase('trunk');v.restoreBase();v.inputs.target.set_value('earlier');v.applyAllChanges(cx);await v.pending;assert.equal(calls.at(-1).targetRef,'HEAD');
- v.controller.lastCheckpoint=async()=>null;v.allChangesFrom='checkpoint';v.applyAllChanges(cx);await assert.rejects(()=>v.pending,/No checkpoint/);assert.equal(v.allChangesFrom,'branch');assert.equal(v.controller.state.comparison.scope.kind,'branch');
 });
 test('unresolved base opens the native picker without blocking Commit; legacy advanced ranges and working tree remain',async()=>{
  const {v,calls}=view(),cx={notify(){}};v.applyAllChanges(cx);await v.pending;assert.equal(v.panel,'refs');assert.equal(calls.length,0);assert.equal(v.reviewMode(),'commit');
@@ -32,9 +30,9 @@ test('sidebar and expanded synchronize both mode and baseline even for identical
 });
 
 
-test('cold startup shows the persisted mode before Git restores the comparison; new contexts default to Commit',()=>{
+test('cold startup shows the persisted mode before Git restores the comparison; new contexts default to Branch',()=>{
  const {v,sharedData}=view();v.controller.state.comparison=null;
- assert.equal(v.reviewMode(),'commit');
+ assert.equal(v.reviewMode(),'all');
  sharedData.set('selection',JSON.parse(JSON.stringify({scope:{kind:'commit',commit:'chosen',parentIndex:1}})));assert.equal(v.reviewMode(),'commit');
  for(const scope of [{kind:'branch',baseRef:'trunk'},{kind:'since-review',checkpointId:'round'},{kind:'range',base:'chosen',includeBase:false},{kind:'working-tree'}]){sharedData.set('selection',{scope});assert.equal(v.reviewMode(),scope.kind==='working-tree'?'uncommitted':'all');}
  v.controller.state.comparison={scope:{kind:'commit',commit:'current'}};assert.equal(v.reviewMode(),'commit');
@@ -75,3 +73,7 @@ test('Git request budget failure clears loading, retains the displayed compariso
 
 test('superseded branch failure does not reopen the base picker',async()=>{const {v}=view();let rejectOld;v.controller.setBase('refs/heads/trunk');v.restoreBase();v.setReferencePicker=()=>{v.panel='refs';};v.controller.selectScope=async scope=>{if(scope.kind==='branch')await new Promise((_,reject)=>rejectOld=reject);else v.controller.state.comparison={scope};};v.applyScope('branch',{notify(){}});const old=v.pending;v.applyScope('working-tree',{notify(){}});await v.pending;rejectOld(new Error('old base failure'));await old;assert.equal(v.panel,undefined);assert.equal(v.pendingScope,null);});
 test('returning to the same file does not revive an older failure',async()=>{const {v}=view();v.config.prefetch=false;v.notifyEditor=()=>{};v.rememberLoadedView=()=>{};v.revealSelectedSection=()=>{};let rejectOld,first=true;v.controller.selectFile=async id=>{v.controller.state.file={id};if(first){first=false;await new Promise((_,reject)=>rejectOld=reject);}};const actions=[];v.work=(_cx,action)=>actions.push(v.workAsync({notify(){}},action));v.selectFile('a',{});v.selectFile('b',{});await actions[1];v.selectFile('a',{});await actions[2];rejectOld(new Error('obsolete first a read'));await actions[0];assert.equal(v.message,'');});
+test('delayed Automatic never replaces a newer source selection',async()=>{
+ const {v}=view(),cx={notify(){}};let release;const actions=[],original=v.applyScope;v.applyScope=function(kind,cx){actions.push(kind);return original.call(this,kind,cx);};v.controller.ensureAutomaticBase=()=>release?Promise.resolve():new Promise(resolve=>release=resolve);v.updateFeatureHistory=async()=>{};
+ v.chooseAutomaticBase(cx);const old=v.pending;v.applyScope('commit',cx);await v.pending;release({ref:'refs/heads/trunk'});await old;assert.deepEqual(actions,['commit']);assert.equal(v.controller.state.comparison.scope.kind,'commit');
+});

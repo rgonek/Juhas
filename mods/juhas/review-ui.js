@@ -1,4 +1,15 @@
 // Pure presentation models; retain original patch rows for comment anchors.
+export function currentBranchFits(width,current,base,fontSize=13,summary=''){
+ if(!width)return true;const textWidth=value=>String(value||'').length*fontSize*0.56;
+ const controls=16+textWidth('Changes')+26+Math.min(width<460?85:160,textWidth(base))+26+28+28+30+28;
+ return controls+Math.min(180,textWidth(current))+20+(width>=680?textWidth(summary)+8:0)<=width;
+}
+export function isTestFile(file){
+ const path=String(typeof file==='string'?file:file?.newPath||file?.oldPath||'').replace(/\\/g,'/'),name=path.split('/').at(-1);
+ return /(?:^|\/)(?:__tests__|tests?|[^/]+[._-]tests?)(?:\/|$)/i.test(path)
+  || /^(?:test|spec)[._-]/i.test(name)||/[._-](?:test|spec)s?\.[^.]+$/i.test(name)
+  || /^(?:tests?|specs?)\.[^.]+$/i.test(name)||/(?:Tests?|Specs?)\.(?:cs|java|kt|scala)$/.test(name);
+}
 export function fileRows(files,tree=false,collapsed=new Set(),query=''){
  const normalized=value=>String(value||'').normalize('NFC').replace(/\\/g,'/').toLowerCase(),needle=normalized(query).trim();
  if(needle)files=files.filter(file=>[file.newPath,file.oldPath].some(path=>normalized(path).includes(needle)));
@@ -46,3 +57,16 @@ export function stepChange(groups,currentId,direction){
 }
 export function rangeSelection(history,first,last){const a=history.findIndex(c=>c.oid===first),b=history.findIndex(c=>c.oid===last);if(a<0||b<0)return null;return {kind:'range',base:history[Math.max(a,b)].oid,target:history[Math.min(a,b)].oid,includeBase:true};}
 export function filterDrafts(drafts,{repoKey,status='all',source='all'}={}){return drafts.filter(d=>(repoKey==null||d.repoKey===repoKey)&&(status==='all'||(d.status||'current')===status)&&(source==='all'||d.comparisonId===source));}
+
+// Prefer the configured upstream; otherwise pair a unique same-name remote.
+export function branchChoices(refs,selected=''){
+ const remotes=refs.filter(r=>r.fullName.startsWith('refs/remotes/')&&!r.symref),used=new Set(),choices=[];
+ for(const local of refs.filter(r=>r.fullName.startsWith('refs/heads/'))){
+  const matches=remotes.filter(r=>r.fullName.slice('refs/remotes/'.length).split('/').slice(1).join('/')===local.name);
+  const remote=remotes.find(r=>r.fullName===local.upstream)||(matches.length===1?matches[0]:matches.find(r=>r.name==='origin/'+local.name))||null;
+  if(remote)used.add(remote.fullName);const value=remote?.fullName===selected?remote:local;
+  choices.push({...value,id:local.fullName,name:local.name,local,remote});
+ }
+ for(const remote of remotes)if(!used.has(remote.fullName))choices.push({...remote,id:remote.fullName,local:null,remote});
+ return choices;
+}

@@ -2,6 +2,12 @@ import {mkdtempSync,writeFileSync,mkdirSync,rmSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync,spawnSync} from 'node:child_process';
+// Git for Windows may be installed by Scoop or in a custom directory.
+export function gitTool(command){
+ if(process.platform!=='win32')return command;
+ const gitExecPath=execFileSync('git',['--exec-path'],{encoding:'utf8'}).trim();
+ return join(gitExecPath,'..','..','..','usr','bin',`${command}.exe`);
+}
 export function fixture(t,{format='sha1'}={}){
  const parent=mkdtempSync(join(tmpdir(),'juhas-'));const root=join(parent,"repo żółć ' one");mkdirSync(root);
  t.after(()=>rmSync(parent,{recursive:true,force:true}));

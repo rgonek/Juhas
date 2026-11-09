@@ -1,3 +1,4 @@
+import {resolveAutomaticBase} from './automatic-base.js';
 import {resolveRepo} from './repositories.js';
 import {git,uid,oid,isAncestor,withGitBudget} from './git.js';
 import {listHistory,listRefs} from './history.js';
@@ -13,11 +14,11 @@ export class Controller {
  session(){return loadSession(this.store,this.sessionId);}
  mutate(fn){return mutateSession(this.store,this.sessionId,fn);}
  async openRepo(machine,folder,{repo:providedRepo,loadHistory=true}={}){
-  this.refreshGate.begin('repo');
+  this.automaticVersion=(this.automaticVersion||0)+1;this.automaticRequest=null;this.refreshGate.begin('repo');
   const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');this.state.historyLoading=false;this.state.historyLoadingMore=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;
   const repo=providedRepo||await resolveRepo(this.run,machine,folder);if(!this.gate.isCurrent(token))return;if(!repo)throw new Error('Folder is not inside a Git repository; use Discover to find nested repositories');
   const [refs,branch]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD'])]);if(!this.gate.isCurrent(token))return;
-  this.state={...this.state,repo,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null};
+  this.state={...this.state,repo,automaticChoice:null,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null};
   const head=await this.run(repo,['rev-parse','--verify','HEAD']);if(!this.gate.isCurrent(token))return;if(head.code!==0){this.state.empty=true;this.state.observedHead=null;return;}
   this.state.empty=false;this.state.observedHead=head.stdout.trim();if(loadHistory)await this.loadHistory({},false,head.stdout.trim());
  }
@@ -94,7 +95,7 @@ export class Controller {
   await verify();const key=patchKey(comparison,file,full);let patch=this.cache.get(key);if(!patch){patch=await loadPatch(run,comparison,file,{full});this.cache.set(key,patch);}await verify();return patch;
  }
  async loadDetails(){const repo=this.state.repo,id=this.state.comparison?.targetOid;if(!repo||!id)return;const key=JSON.stringify([repo.key,id,'details']);let details=this.cache.get(key);if(!details){const raw=await git(this.run,repo,['show','-s','--format=%s%x00%an <%ae> · %aI%x00%b',id,'--']);const [subject,author,body]=raw.split('\0');details={subject,author,body:body?.trim()};this.cache.set(key,details);}if(this.state.repo?.key===repo.key&&this.state.comparison?.targetOid===id)this.state.details=details;}
- async expandFile(){this.refreshGate.begin('expand');const c=this.state.comparison,file=this.state.file;if(!c||!file)return;const token=this.patchGate.begin(file.id);const patch=await loadPatch(this.run,c,file,{full:true});if(c.mutableTarget&&!await this.validateWorking(c,token))return;if(this.patchGate.isCurrent(token)&&this.state.comparison?.id===c.id)this.state.patch=patch;}
+ async expandFile(full=true){this.refreshGate.begin('expand');const c=this.state.comparison,file=this.state.file;if(!c||!file)return;const token=this.patchGate.begin(file.id);const patch=await loadPatch(this.run,c,file,{full});if(c.mutableTarget&&!await this.validateWorking(c,token))return;if(this.patchGate.isCurrent(token)&&this.state.comparison?.id===c.id)this.state.patch={...patch,fullContext:full};}
  async validateWorking(expected,token){
   if(!this.patchGate.isCurrent(token)||this.state.comparison?.id!==expected.id)return false;
   const current=await resolveComparison(this.run,expected.repo,expected.scope,this.session().checkpoints);
@@ -170,6 +171,25 @@ export class Controller {
   }catch(error){if(current())this.state.refreshError=error.message;return false;}finally{this.state.refreshing=false;this.refreshPromise=null;this.onChange();}})();
   return this.refreshPromise;
  }
- setBase(baseRef){const key=`git-review.v1.base.${this.state.repo.key}.${this.state.branch}`;this.store.set(key,baseRef);}
+ async ensureAutomaticBase(config={}, {force=false}={}){
+  const repo=this.state.repo,branch=this.state.branch;if(!repo||this.state.empty||this.base())return null;
+  const signature=JSON.stringify([repo.key,branch,config.baseRef||null,config.baseRules||[]]);
+  if(!force&&this.state.automaticChoice?.signature===signature)return this.state.automaticChoice;
+  if(!force&&this.automaticRequest?.signature===signature)return this.automaticRequest.promise;
+  const version=this.automaticVersion=(this.automaticVersion||0)+1;
+  const storageKey='git-review.v1.automatic-base.'+repo.key+'.'+branch;
+  const saved=force?null:this.store.get(storageKey);
+  const promise=(async()=>{
+   let choice;
+   if(saved?.signature===signature&&saved.ref){
+    let exists=this.state.refs.some(ref=>ref.fullName===saved.ref||ref.name===saved.ref);if(!exists)try{await oid(this.run,repo,saved.ref);exists=true;}catch{}
+    choice=exists?saved:{ref:null,source:'unavailable',reason:'The retained automatic base is unavailable; choose a base or recalculate Automatic',candidates:[],signature};
+   }else choice={...await resolveAutomaticBase(this.run,repo,{branch,refs:this.state.refs,config}),signature};
+   if(this.automaticVersion!==version||this.state.repo!==repo||this.state.branch!==branch||this.base())return null;
+   this.state.automaticChoice=choice;if(choice.ref)this.store.set(storageKey,choice);else if(force)this.store.set(storageKey,null);this.onChange();return choice;
+  })();
+  this.automaticRequest={signature,promise};try{return await promise;}finally{if(this.automaticRequest?.promise===promise)this.automaticRequest=null;}
+ }
+ setBase(baseRef){this.automaticVersion=(this.automaticVersion||0)+1;this.automaticRequest=null;const key=`git-review.v1.base.${this.state.repo.key}.${this.state.branch}`;this.store.set(key,baseRef);}
  base(){return this.state.repo?this.store.get(`git-review.v1.base.${this.state.repo.key}.${this.state.branch}`)||'':'';}
 }

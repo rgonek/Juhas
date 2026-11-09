@@ -12,20 +12,18 @@ coding agent in one review.
 
 ## Review workflow
 
-- Review commits one at a time when each covers a separate change. For commits
-  that keep revising the same code, use **All changes** to see the combined diff
-  against your base branch, a chosen commit or your last review checkpoint.
+- Start in **Changes** to see the combined diff, with all changed files in one
+  expandable list. Include uncommitted work when needed, or switch to **Commit**,
+  **Uncommitted**. Git history stays hidden until opened.
 - Comment on a line, a range or a whole file. Drafts keep their original source
   when you move to another commit.
 - Collect comments from several commits into one review. Check the recipient,
   edit or copy the message, then send it to your agent when you're ready.
-- Mark a reviewed commit as seen. After the agent makes more changes, compare
-  from that checkpoint to review the next round.
 
 Use the sidebar for a quick look, or open beside/below the agent or in a dedicated review tab with Git
 history, a file list or tree, and a full-width Unified or Split diff. Resize the
 panels to fit the code, and use change navigation to move through the diff.
-Filter changed files by path without changing the open diff. Search review recipients by name, terminal address or directory. Mark seen and Checkpoints are available directly in the comparison toolbar. Loading indicators show when Git is still working.
+Filter changed files by path without changing the open diff. Search review recipients by name, terminal address or directory. Loading indicators show when Git is still working.
 
 Juhas uses Herdr’s native GPUI controls. It works with local Git repositories
 and agent terminals; no GitHub account or pull request is required. Base-branch
@@ -75,9 +73,6 @@ preserving the selected commit, file and unsaved comment. Pane management uses H
 4. Choose **Submit review**. Check the recipient and message, then **Send review**
    or **Copy**. Unsaved comments offer an explicit Save / Skip / Back choice.
 
-**Mark seen** is separate from sending feedback. It records the exact displayed
-commit as a checkpoint; it does not approve changes or silently mark newer work
-as reviewed.
 
 ## Local by default, deliberate when sending
 
@@ -85,16 +80,14 @@ Juhas sends no telemetry. Browsing reads Git locally; **Fetch** contacts your
 configured remotes only when you request it. **Send review** deliberately sends
 the preview text to the selected terminal.
 
-Drafts and edited previews stay in your Herdr home. Checkpoints use private Git
-refs and do not change your branch, index or working tree. Comments keep their
+Drafts and edited previews stay in your Herdr home. Comments keep their
 original revisions and line ranges; outdated feedback is marked rather than
 silently moved to another line. Full code quotes and Git headers are optional.
 
 Visible reviews check for changes every 15 seconds without jumping away from
 your selected commit/file. Unchanged sources reuse cached data. Viewed markers,
 find in loaded code, optional wrapping and All files support longer reviews.
-General feedback needs no file anchor. Save working snapshot explicitly records
-uncommitted contents as a local baseline; background checks never take snapshots.
+General feedback needs no file anchor.
 
 The author reports successful review delivery to a coding agent in real use.
 A send acknowledgement means the terminal accepted the message, not that the

@@ -12,12 +12,12 @@ function nativeView(){
  let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const deps={createCache,resolveConfig,selectBase,readLocalConfig,readTextFile:async()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});},shared:store.get,setShared:store.set,store,Controller,createRunner,cache:createCache(),exec:(_command,args,options)=>run({root:options.cwd},args),scopeCache:new Map(),resolveRepositoryScope,allowedRepository,contextStorageKey,readDirectories:(_exec,_home,machine,path)=>directories(machine,path),appHome:()=>'',uid:()=>String(++id)};
  const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps));const view=Object.create(Native.prototype);
- view.contextProps={};view.config={maxDepth:3,maxRepos:20};view.contextViews=new Map();view.policy={repos:[],canSwitch:false};view.inputs={};view.role='sidebar';view.sessionId='initial';
+ view.contextProps={config:{baseRef:'refs/heads/trunk'}};view.config={maxDepth:3,maxRepos:20};view.contextViews=new Map();view.policy={repos:[],canSwitch:false};view.inputs={};view.role='sidebar';view.sessionId='initial';
  for(const key of ['folder','base','target','query','author','path','comment','note']){let value='';view.inputs[key]={value:()=>value,set_value:next=>value=next};}
  view.work=(_cx,fn)=>view.pending=fn(_cx);return {view,store};
 }
 test('switching projects replaces Git and comments; returning restores the correct cached project',async t=>{
- const a=fixture(t),b=fixture(t);a.commit('project A');b.commit('project B');const {view,store}=nativeView();const cx={notify(){},spawn(fn){return fn(this);}};
+ const a=fixture(t),b=fixture(t);a.commit('base A');a.git('checkout','-b','feature/a');a.commit('project A');b.commit('base B');b.git('checkout','-b','feature/b');b.commit('project B');const {view,store}=nativeView();const cx={notify(){},spawn(fn){return fn(this);}};
  const first={key:'project-a',spaceId:'a',folder:a.root,machine:null},second={key:'project-b',spaceId:'b',folder:b.root,machine:null};
  view.activateContext(first,cx);await view.pending;const controllerA=view.controller,keyA=view.selectionKey,rootA=view.controller.state.repo.root;
  view.controller.addComment({repoKey:view.controller.state.repo.key,comparisonId:view.controller.state.comparison.id,newPath:'file.txt'},'Keep project A comment');view.panel='comment';view.target={repoKey:view.controller.state.repo.key,newPath:'file.txt'};view.inputs.comment.set_value('Unsaved A text');

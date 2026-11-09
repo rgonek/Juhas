@@ -65,16 +65,16 @@ function nativeEditorFixture({modern=true}={}){
  const source=readFileSync(new URL('../mods/juhas/inline-editor.js',import.meta.url),'utf8').split('export default class InlineEditor extends View')[1];
  const Native=new Function('View','class InlineEditor extends View'+source+'\nreturn InlineEditor;')(class{}),editor=new Native(),events=new Map(),input={set_rows:rows=>input.rows=rows,set_auto_grow:(min,max)=>input.growth=[min,max],on:(event,fn)=>events.set(event,fn)};
  if(modern)input.set_submit_on_enter=value=>input.submitOnEnter=value;
- let saves=0,stops=0;const owner={busy:false},cx={focus_handle:()=>({}),bind_keys:()=>assert.fail('native textarea owns keyboard dispatch'),stop_propagation:()=>stops++};
- editor.init({owner,input,save:()=>saves++},cx);return {editor,input,owner,cx,events,saves:()=>saves,stops:()=>stops};
+ let saves=0,stops=0;const bindings=[],owner={busy:false},cx={focus_handle:()=>({}),bind_keys:items=>bindings.push(...items),stop_propagation:()=>stops++};
+ editor.init({owner,input,save:()=>saves++},cx);return {editor,input,owner,cx,events,bindings,saves:()=>saves,stops:()=>stops};
 }
 
-test('native textarea submit saves on Enter, leaves Shift+Enter to native editing, and guards busy saves',()=>{
- const f=nativeEditorFixture();assert.equal(f.input.rows,2);assert.deepEqual(f.input.growth,[2,5]);assert.equal(f.input.submitOnEnter,true);assert.equal(typeof f.events.get('submit'),'function');
- const submit=f.events.get('submit');submit({shift:true},f.cx);assert.equal(f.saves(),0);assert.equal(f.stops(),0);
- submit({shift:false},f.cx);assert.equal(f.saves(),1);f.owner.busy=true;submit({shift:false},f.cx);assert.equal(f.saves(),1);assert.equal(f.stops(),2);
+test('comment editor keeps Enter for newlines and binds Ctrl/Cmd Enter only inside its own context',()=>{
+ const f=nativeEditorFixture();assert.equal(f.input.rows,2);assert.deepEqual(f.input.growth,[2,5]);assert.equal(f.input.submitOnEnter,false);assert.equal(f.events.has('submit'),false);
+ assert.deepEqual(f.bindings,[{keystroke:'ctrl-enter',action:'juhas.comment.submit',context:'JuhasComment'},{keystroke:'cmd-enter',action:'juhas.comment.submit',context:'JuhasComment'}]);
+ f.editor.submit(f.cx);assert.equal(f.saves(),1);f.owner.busy=true;f.editor.submit(f.cx);assert.equal(f.saves(),1);assert.equal(f.stops(),2);
 });
 
-test('older textarea hosts still register native submission without an unsupported API call',()=>{
- const f=nativeEditorFixture({modern:false});f.events.get('submit')({shift:false},f.cx);assert.equal(f.saves(),1);
+test('older textarea hosts retain multiline editing and the explicit comment action',()=>{
+ const f=nativeEditorFixture({modern:false});assert.equal(f.events.has('submit'),false);assert.equal(f.bindings.length,2);f.editor.submit(f.cx);assert.equal(f.saves(),1);
 });

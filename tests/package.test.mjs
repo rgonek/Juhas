@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 test('release contains every local runtime dependency, including new review features',()=>{
  const source=fileURLToPath(new URL('..',import.meta.url)),files=new Set(releaseFiles(source));
  for(const file of files){if(!file.startsWith('mods/juhas/')||!file.endsWith('.js'))continue;const body=readFileSync(join(source,file),'utf8');for(const match of body.matchAll(/from ['"]\.\/([^'"]+)['"]/g))assert.ok(files.has('mods/juhas/'+match[1]),`${file} needs ${match[1]}`);}
- assert.ok(files.has('mods/juhas/pane-presentation.js'));assert.ok(files.has('mods/juhas/diff-row.js'));assert.ok(files.has('mods/juhas/icons/trash.svg'));
+ assert.ok(files.has('mods/juhas/pane-presentation.js'));assert.ok(!files.has('mods/juhas/diff-row.js'));assert.ok(files.has('mods/juhas/icons/trash.svg'));
 });
 test('release allowlist excludes review data, generated types and local plans',t=>{
  const root=mkdtempSync(join(tmpdir(),'juhas-package-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const source=join(root,'source'),dest=join(root,'output');

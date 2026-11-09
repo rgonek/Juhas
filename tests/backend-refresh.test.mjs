@@ -56,3 +56,18 @@ test('rapid file selections keep the newest header and patch after reordered rea
 test('refresh discards a mixed snapshot when HEAD advances during history loading',async t=>{const f=fixture(t);const base=f.commit('base');f.commit('first');let block=false,release,started;const paused=new Promise(r=>started=r),wait=new Promise(r=>release=r);const c=controller(async(r,a)=>{if(block&&a[0]==='log'){block=false;started();await wait;}return run(r,a);});await c.openRepo(null,f.root);await c.selectScope({kind:'range',base,target:'HEAD'});const comparison=c.state.comparison,history=c.state.history;f.commit('intermediate');block=true;const pending=c.refresh();await paused;f.commit('newest');release();assert.equal(await pending,false);assert.equal(c.state.comparison,comparison);assert.equal(c.state.history,history);assert.match(c.state.refreshError,/changed during refresh/i);assert.equal(c.state.refreshing,false);});
 
 test('deferred counts cannot replace files published by a newer refresh',async t=>{const f=fixture(t),base=f.commit('base');f.commit('one','one.txt');let release,started,hold=true;const paused=new Promise(r=>started=r),wait=new Promise(r=>release=r);const c=controller(async(r,a)=>{if(hold&&a[0]==='diff'&&a.includes('--numstat')){hold=false;started();await wait;}return run(r,a);});await c.openRepo(null,f.root);const selection=c.selectScope({kind:'range',base,target:'HEAD'});await paused;await selection;f.commit('two','two.txt');await c.refresh();release();await new Promise(r=>setTimeout(r,10));assert.ok(c.state.files.some(f=>f.newPath==='two.txt'));assert.equal(c.state.fileStatsLoading,false);});
+
+test('working branch counts use the target commit captured with that observation',async t=>{
+ const f=fixture(t),base=f.commit('base\n');f.git('checkout','-b','feature');f.commit('first\n');const head=f.commit('second\n');writeFileSync(join(f.root,'file.txt'),'uncommitted\n');
+ const c=controller();await c.openRepo(null,f.root);await c.selectScope({kind:'branch',baseRef:base,targetRef:'HEAD',includeWorking:true});
+ assert.equal(c.state.comparison.targetOid,null);assert.equal(c.state.comparison.committedTargetOid,head);assert.equal(c.state.comparison.commitCount,2);
+});
+
+test('committing unchanged working contents and empty commits update counts without replacing the patch',async t=>{
+ const f=fixture(t),base=f.commit('base\n');f.git('checkout','-b','feature');f.commit('first\n');writeFileSync(join(f.root,'file.txt'),'second\n');
+ const commands=[],c=controller(async(repo,args)=>{commands.push(args);return run(repo,args);});await c.openRepo(null,f.root);await c.selectScope({kind:'branch',baseRef:base,targetRef:'HEAD',includeWorking:true});await c.selectFile(c.state.files[0].id);
+ const source=c.state.comparison.id,patch=c.state.patch;assert.equal(c.state.comparison.commitCount,1);const committed=f.commit('second\n');assert.equal(await c.refresh(),true);
+ assert.equal(c.state.comparison.id,source);assert.equal(c.state.comparison.committedTargetOid,committed);assert.equal(c.state.comparison.commitCount,2);assert.equal(c.state.patch,patch);
+ f.git('commit','--allow-empty','-m','Empty commit');const empty=f.git('rev-parse','HEAD');assert.equal(await c.refresh({preserveComposer:true}),true);assert.equal(c.state.comparison.committedTargetOid,empty);assert.equal(c.state.comparison.commitCount,3);assert.equal(c.state.comparison.id,source);assert.equal(c.state.patch,patch);
+ assert.equal(await c.refresh(),true);assert.equal(commands.filter(args=>args[0]==='rev-list'&&args.includes('--count')).length,3);
+});

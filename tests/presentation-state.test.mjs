@@ -51,3 +51,10 @@ test('collapse transfers whole-file expansion and paginated history even without
  h.sidebar.sync(h.cx);if(h.sidebar.pending)await h.sidebar.pending;
  assert.equal(h.calls.length,0);assert.equal(h.sidebar.controller.state.patch.hunks[0].lines.length,2);assert.equal(h.sidebar.controller.state.history.length,2);assert.equal(h.sidebar.controller.state.hasMore,false);
 });
+
+test('panel visibility and placement survive presentation restoration without Git reads',()=>{
+ const h=harness();Object.assign(h.sidebar,{summaryLines:true,showFiles:false,showHistory:true,showComments:true,commentPanelPosition:'right',filePanelPosition:'left',historyPanelPosition:'right'});h.sidebar.publish();
+ const full=h.view();full.activateContext(h.context,h.cx);assert.equal(full.summaryLines,true);assert.equal(full.showFiles,false);assert.equal(full.showHistory,true);assert.equal(full.showComments,true);assert.equal(full.commentPanelPosition,'right');assert.equal(full.filePanelPosition,'left');assert.equal(full.historyPanelPosition,'right');
+ full.toggleFiles(true,h.cx);full.positionPanel('history','top',h.cx);full.rememberLoadedView();
+ const restored=h.view();restored.activateContext(h.context,h.cx);assert.equal(restored.summaryLines,true);assert.equal(restored.showFiles,true);assert.equal(restored.showHistory,true);assert.equal(restored.showComments,true);assert.equal(restored.commentPanelPosition,'right');assert.equal(restored.filePanelPosition,'left');assert.equal(restored.historyPanelPosition,'top');assert.deepEqual(h.calls,[]);
+});

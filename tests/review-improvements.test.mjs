@@ -31,3 +31,8 @@ test('an older history response cannot stop the newer loading indicator',async()
  const requests=[{started:deferred(),result:deferred()},{started:deferred(),result:deferred()}];let index=0;const c=new Controller({store:{get(){},set(){}},run:async(_repo,args)=>{if(args[0]==='rev-parse')return {code:0,stdout:ids.HEAD};const active=requests[index++];active.started.resolve();return active.result.promise;}});c.state.repo=repo;
  const first=c.loadHistory();await requests[0].started.promise;const second=c.loadHistory();await requests[1].started.promise;requests[0].result.resolve({code:0,stdout:''});await first;assert.equal(c.state.historyLoading,true);requests[1].result.resolve({code:0,stdout:''});await second;assert.equal(c.state.historyLoading,false);
 });
+
+test('working branch summaries count captured committed target and reuse the same immutable count cache',async()=>{
+ const {c,calls}=setup();const comparison={repoKey:'repo',repo,baseOid:ids.A,targetOid:null,committedTargetOid:ids.HEAD,mutableTarget:true,scope:{kind:'branch',includeWorking:true}};
+ assert.equal((await c.summarizeComparison(comparison)).commitCount,7);assert.equal((await c.summarizeComparison(comparison)).commitCount,7);assert.equal(calls.filter(args=>args[0]==='rev-list').length,1);
+});

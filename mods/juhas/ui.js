@@ -33,7 +33,7 @@ export function popover(id,label,open,change,content,{tooltip=label,width=380,he
  const t=theme();return Popover.new(id).open(Boolean(open)).on_open_change(change).trigger(button(`${id}-trigger`,label,null,{tooltip}))
   .when(Boolean(open),el=>el.content(v_flex().w(width).min_h(0).min_w(0).p(4).rounded(6).border_1().border_color(t.border).bg(t.background).text_color(t.foreground).child(content())));
 }
-export function selector(id,label,open,change,content,{tooltip=label,width=300,triggerFocus,listFocus,context,onMove,onChoose}={}){const type=uiMetrics(),t=theme();
+export function selector(id,label,open,change,content,{tooltip=label,width=300,triggerFocus,listFocus,context,onMove,onChoose,compact=false}={}){const type=uiMetrics(),t=theme();
  const root=Select.new(id).open(Boolean(open)).on_open_change(change)
   .when(Boolean(triggerFocus),e=>e.track_focus(triggerFocus)).when(Boolean(listFocus),e=>e.content_focus_handle(listFocus))
   .accessibility_label(tooltip);
@@ -43,7 +43,7 @@ export function selector(id,label,open,change,content,{tooltip=label,width=300,t
   .on_action('juhas.picker.previous',(_e,cx)=>{cx.stop_propagation();onMove?.(-1,cx);})
   .on_action('juhas.picker.next',(_e,cx)=>{cx.stop_propagation();onMove?.(1,cx);})
   .on_action('juhas.picker.choose',(_e,cx)=>{cx.stop_propagation();onChoose?.(cx);}).child(content());
- return root.child(Popup.new(`${id}-popup`,button(`${id}-trigger`,label,(_e,cx)=>{cx.stop_propagation();change(!open,cx);},{tooltip}))
+ return root.child(Popup.new(`${id}-popup`,button(`${id}-trigger`,label,(_e,cx)=>{cx.stop_propagation();change(!open,cx);},{tooltip}).when(compact,e=>e.w(type.px(20)).px(0).rounded(0)))
   .when(Boolean(open),e=>e.content(surface())));
 }
 export function field(state,_placeholder,width){const type=uiMetrics();const t=theme();return Input.new(state).h(type.px(32)).min_w(0).when(Boolean(width),e=>e.w(width)).when(!width,e=>e.flex_1()).px(8).rounded(8).border_1().border_color(t.border).bg(t.background).text_color(t.foreground).text_size(type.body).line_height(type.lineHeight);}
@@ -109,7 +109,7 @@ export function graphCell(row){const type=uiMetrics();
  return div().relative().w(Math.min(120,Math.max(28,(Math.max(row.before.length,row.after.length)+1)*11))).h(height).flex_none().overflow_hidden().children(paths).child(div().absolute().left(x(row.lane)-3).top(mid-3).size(6).rounded(3).bg(colors[row.lane%colors.length]));
 }
 export function historyPane(view,cx){const type=uiMetrics();
- const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows;
+ const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows,width=view.historyPaneWidth??view.width??480;
  const first=s.history.findIndex(c=>c.oid===(view.commitAnchor||s.comparison?.scope.base)),last=s.history.findIndex(c=>c.oid===s.comparison?.targetOid);
  const selected=(c,i)=>view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
  const list=virtualList(`${view.id}-history`,s.history,type.px(LIST_ROW_HEIGHT),c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
@@ -118,10 +118,10 @@ export function historyPane(view,cx){const type=uiMetrics();
   .when(Boolean(refs.length),e=>e.child(h_flex().max_w(160).min_w(0).gap(3).items_center().children(refs.slice(0,1).map(ref=>h_flex().min_w(0).max_w(130).h(type.px(24)).px(4).gap(3).items_center().rounded(4).border_1().border_color(ref.current?t.accent:t.border).bg(ref.current?t.selected:t.chrome).tooltip(ref.full)
    .child(text(ref.current?'\u2713':ref.tag?'\u25c7':'\u2442',true)).child(text(ref.label).min_w(0).truncate().text_ellipsis_middle()))).when(refs.length>1,e=>e.child(text(`+${refs.length-1}`,true).flex_none().tooltip(refs.slice(1).map(ref=>ref.full).join('\n'))))))
   .child(div().flex_1().min_w(0).truncate().text_size(type.body).text_color(c.parents.length>1?t.muted:t.foreground).child(c.subject))
-  .when(view.workspaceLayout!=='sidebar'&&(!view.width||view.width>=900),e=>e.child(div().w(75).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(c.author)))
-  .when(view.workspaceLayout!=='sidebar'&&(!view.width||view.width>=720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx));
+  .when(width>=type.px(900),e=>e.child(div().w(75).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(c.author)))
+  .when(width>=type.px(720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx));
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
- return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(type.px(34)).flex_none().items_center().gap(4)
+ return v_flex().size_full().min_w(0).min_h(0).on_size_change((size,cx)=>{const width=Math.round(size.width);if(view.historyPaneWidth!==width){view.historyPaneWidth=width;cx.notify();}}).child(h_flex().h(type.px(34)).flex_none().items_center().gap(4)
   .child(section(view.historyRef==='all'?'Git history · all branches':view.historyFull?'Git history':s.featureBaseOid?'Git history · branch':'Git history · HEAD').flex_1().min_w(0).truncate())
   .when(Boolean(s.historyLoading||s.historyBaseLoading),e=>e.child(historyLoadingIndicator(s)))
   .child(popover('history-options',svg('mods/juhas/icons/more.svg').size(14),view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
@@ -145,7 +145,7 @@ export function filesPane(view){const type=uiMetrics();
 
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
  return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(type.px(30)).flex_none().items_center().child(section(`Files · ${s.files.length}`).flex_1().min_w(0).truncate())
-  .when(!view.allFiles,e=>e.child(toggle('hide-tests',svg('mods/juhas/icons/flask-conical-off.svg').size(15),Boolean(view.hideTests),(pressed,cx)=>view.setHideTests?.(pressed,cx),{tooltip:'Hide test files'})))
+  .child(toggle('hide-tests',svg('mods/juhas/icons/flask-conical-off.svg').size(15),Boolean(view.hideTests),(pressed,cx)=>view.setHideTests?.(pressed,cx),{tooltip:'Hide test files'}))
   .when(Boolean(view.inputs?.fileQuery),e=>e.child(button('toggle-file-filter',svg('mods/juhas/icons/search.svg').size(14),(_e,cx)=>{view.fileFilterOpen=!view.fileFilterOpen;if(view.fileFilterOpen)view.inputs.fileQuery.focus();cx.notify();},{active:Boolean(view.fileFilterOpen||query),tooltip:'Filter files by path'})))
   .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
  .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(type.px(38)).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
@@ -188,8 +188,7 @@ export function diffPane(view,cx){const type=uiMetrics();
  if((!view.allFiles&&hiddenSelected)||(view.allFiles&&view.hideTests&&s.files?.length&&!sections.length))body=text('Test files are hidden',true).p(type.px(20));
  else if(!s.file&&!view.allFiles)body=text('Select a file to review').p(type.px(20));
  else if(!s.patch&&!view.allFiles)body=text(view.busy?'Reading diff…':'No diff loaded').p(type.px(20));
- else {const renderRow=(row,plain=false)=>{
-  const entity=!plain&&view.diffRowViews?.get(clickSource+':'+row.id)?.entity;if(entity){const mounted=div().w_full().min_w(0).child(entity);if(split&&row.kind==='comment'&&row.draft?.side)return h_flex().h(type.px(commentHeight(row.text))).w_full().min_w(0).child(div().flex_1().min_w(0).when(row.draft.side==='old',e=>e.child(mounted))).child(div().w(1).h_full().bg(t.border)).child(div().flex_1().min_w(0).when(row.draft.side==='new',e=>e.child(mounted)));return mounted;}
+ else {const renderRow=row=>{
   if(row.kind==='file-header'&&view.fileHeaderViews?.has(row.fileId))return div().h(type.px(34)).w_full().child(view.fileHeaderViews.get(row.fileId));
   if(row.kind==='file-header')return h_flex().h(type.px(34)).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(type.px(46)).p(type.px(12));
@@ -205,9 +204,10 @@ export function diffPane(view,cx){const type=uiMetrics();
   return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).px(8).gap(8).font_family(settings().font_family).text_size(type.code).line_height(type.lineHeight).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
    .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.oldLine??''))).child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.newLine??'')))
    .child(sourceText(row,row.filePath||s.file?.newPath,t,wrap,fragments(row),ranges(row,row.side==='old'?'old':'new'),`${mark} `));
- };view.prepareDiffRows?.(rows,renderRow,cx,split);const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rows.find(r=>r.id===id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
-  if(row.kind==='pair')return;
-  else if(row.kind==='comment')view.editDraft?.(row.draft,cx);};
+ };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rows.find(r=>r.id===id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
+  if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}
+  if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
+  else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
  const measured=wrap||rows.some(row=>row.kind==='editor'),id=`${view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':measured?'-editor':''}-${type.body}`;
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
  // A growing retained editor has no fixed row height; let the native list measure it.
@@ -220,10 +220,9 @@ export function diffPane(view,cx){const type=uiMetrics();
    .child(buttonGroup('diff-mode',[{value:'unified',label:svg('mods/juhas/icons/diff-unified.svg').size(15),tooltip:'Unified diff'},{value:'split',label:svg('mods/juhas/icons/diff-split.svg').size(15),tooltip:'Split diff'}],view.diffMode||'unified',(mode,cx)=>view.setDiffMode(mode,cx)))
    .child(toggle('diff-wrap',svg('mods/juhas/icons/wrap.svg').size(15),wrap,(pressed,cx)=>view.toggleWrap?.(pressed,cx),{tooltip:'Wrap long lines'}).disabled(!view.toggleWrap))
    .child(toggle('diff-search',svg('mods/juhas/icons/search.svg').size(15),Boolean(view.searchOpen),(pressed,cx)=>view.toggleSearch?.(pressed,cx),{tooltip:'Search in loaded diff'}))
-   .when(Boolean(view.allFiles),e=>e.child(toggle('hide-tests',svg('mods/juhas/icons/flask-conical-off.svg').size(15),Boolean(view.hideTests),(pressed,cx)=>view.setHideTests?.(pressed,cx),{tooltip:'Hide test files'})))
+   .when(Boolean(view.allFiles),e=>e.child(toggle('diff-hide-tests',svg('mods/juhas/icons/flask-conical-off.svg').size(15),Boolean(view.hideTests),(pressed,cx)=>view.setHideTests?.(pressed,cx),{tooltip:'Hide test files'})))
    .child(button('expand-all-files',svg(`mods/juhas/icons/${view.anyFileExpanded?.()?'chevrons-down-up':'chevrons-up-down'}.svg`).size(15),(_e,cx)=>view.toggleAllExpansion?.(cx),{tooltip:view.anyFileExpanded?.()?'Collapse all files':'Expand all visible files'}).disabled(!s.files?.length||Boolean(view.busy&&!view.anyFileExpanded?.())))
-   .child(div().flex_1())
-   .child(button('select-code',svg('mods/juhas/icons/copy.svg').size(15),(_e,cx)=>view.openCodeCopy('new',cx),{tooltip:'Select and copy the loaded original or modified code without diff markers'}).disabled(!s.patch||Boolean(s.patch.binary||s.patch.modeOnly))))
+   .child(div().flex_1()))
   .when(!view.allFiles&&!hiddenSelected&&Boolean(s.file),e=>e.child(h_flex().id('diff-file-header').min_h(type.px(34)).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
    .child(fileStatus(s.file))
    .child(text(s.file.newPath).flex_1().min_w(0).truncate().text_ellipsis_middle().tooltip(s.file.newPath))

@@ -5,9 +5,9 @@ import {typography} from '../mods/juhas/typography.js';
 import {isTestFile,currentBranchFits,branchChoices} from '../mods/juhas/review-ui.js';
 
 function fixture(){
- const element=(id)=>{let proxy;const data={nodes:[]};if(id)data.id=id;proxy=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...args)=>{if(k==='id')t.id=args[0];else if(k==='child')t.nodes.push(args[0]);else if(k==='children')t.nodes.push(...args[0]);else if(k==='when'){if(args[0])args[1](proxy);}return proxy;}});return proxy;};
+ const element=(id)=>{let proxy;const data={nodes:[],values:{}};if(id)data.id=id;proxy=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...args)=>{if(k==='id')t.id=args[0];else if(k==='child')t.nodes.push(args[0]);else if(k==='children')t.nodes.push(...args[0]);else if(k==='when'){if(args[0])args[1](proxy);}else t.values[k]=args.length===1?args[0]:args;return proxy;}});return proxy;};
  const controls=new Map(),control=(id,label,action,options)=>{const node=element(id);Object.assign(node,{label,action,options});controls.set(id,node);return node;};
- const deps={branchChoices,uiMetrics:()=>typography(14,16),theme:()=>({}),div:element,section:element,h_flex:element,v_flex:element,nativeFrame:element,svg:element,text:(label)=>{const node=element();node.label=label;return node;},button:control,buttonGroup:control,checkbox:(id,label,checked,action)=>control(id,label,action,{checked}),toggle:(id,label,pressed,action)=>control(id,label,action,{pressed}),popover:(id,label,open,action,content)=>{const node=control(id,label,action);if(open)node.nodes.push(content());return node;},h_resizable:element,v_resizable:element,resizable_panel:element,filesPane:()=>element('files-content'),historyPane:()=>element('history-content'),draftsPane:()=>element('comments-content'),diffPane:()=>element('diff-content'),shared:()=>null};
+ const deps={branchChoices,uiMetrics:()=>typography(14,16),theme:()=>({ansi2:'added',ansi1:'removed'}),div:element,section:element,h_flex:element,v_flex:element,nativeFrame:element,svg:element,text:(label)=>{const node=element();node.label=label;return node;},button:control,buttonGroup:control,checkbox:(id,label,checked,action)=>control(id,label,action,{checked}),toggle:(id,label,pressed,action)=>control(id,label,action,{pressed}),popover:(id,label,open,action,content)=>{const node=control(id,label,action);if(open)node.nodes.push(content());return node;},h_resizable:element,v_resizable:element,resizable_panel:element,filesPane:()=>element('files-content'),historyPane:()=>element('history-content'),draftsPane:()=>element('comments-content'),diffPane:()=>element('diff-content'),shared:()=>null};
  deps.selector=deps.popover;const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
  const Native=new Function('View','isTestFile','currentBranchFits',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},isTestFile,currentBranchFits,...Object.values(deps));
  const view=Object.create(Native.prototype),state={repo:{key:'repo'},branch:'feature/topic',files:[],history:[],refs:[],comparison:{id:'comparison',scope:{kind:'branch'},targetOid:'abcdef0123456789'}};
@@ -27,14 +27,12 @@ test('one source picker shows current branch before base and retains include unc
  view.panel='reviewMore';render();assert.ok(!controls.has('request-walkthrough')&&!controls.has('load-walkthrough'));
 });
 
-test('history is optional and all-file mode has no duplicate file list',()=>{
+test('Files and History toggles remain independent of the diff file mode',()=>{
  const {view,state,controls,cx,render}=fixture();view.allFiles=true;
- const original=state.comparison;let nodes=render();
- assert.ok(!nodes.some(n=>n.id==='history-content'||n.id==='files-content'));
- assert.ok(nodes.some(n=>n.id==='diff-content'));
- controls.get('toggle-history').action(true,cx);nodes=render();assert.ok(nodes.some(n=>n.id==='history-content'));assert.ok(!nodes.some(n=>n.id==='files-content'));assert.equal(state.comparison,original);
- controls.get('toggle-history').action(false,cx);view.allFiles=false;nodes=render();assert.ok(nodes.some(n=>n.id==='files-content'));assert.ok(!nodes.some(n=>n.id==='history-content'));assert.equal(state.comparison,original);
- view.showHistory=true;view.workspaceLayout='sidebar';nodes=render();assert.ok(nodes.some(n=>n.id==='history-content'));assert.ok(nodes.some(n=>n.id==='files-content'));
+ const original=state.comparison;let nodes=render();assert.ok(nodes.some(n=>n.id==='files-content'));assert.ok(!nodes.some(n=>n.id==='history-content'));
+ controls.get('toggle-history').action(true,cx);nodes=render();assert.ok(nodes.some(n=>n.id==='history-content'));assert.ok(nodes.some(n=>n.id==='files-content'));assert.equal(state.comparison,original);
+ controls.get('toggle-files').action(false,cx);nodes=render();assert.ok(!nodes.some(n=>n.id==='files-content'));assert.ok(nodes.some(n=>n.id==='history-content'));
+ controls.get('toggle-history').action(false,cx);view.allFiles=false;nodes=render();assert.ok(!nodes.some(n=>n.id==='files-content'||n.id==='history-content'));assert.ok(nodes.some(n=>n.id==='diff-content'));assert.equal(state.comparison,original);
 });
 
 test('fresh comparison defaults to Branch and empty repositories to Uncommitted',()=>{
@@ -51,9 +49,9 @@ test('source picker uses existing scope handlers and opens history for choosing 
 });
 
 test('opening history or choosing Commit from Comments reveals history without changing drafts',()=>{
- const {view,cx,render}=fixture(),drafts=[{id:'draft',body:'Keep this feedback'}];view.controller.session=()=>({drafts});view.upperView='comments';
- view.toggleHistory(true,cx);assert.equal(view.upperView,'changes');assert.ok(render().some(node=>node.id==='history-content'));assert.equal(view.controller.session().drafts,drafts);
- view.upperView='comments';view.showHistory=false;view.applyScope=()=>{};view.chooseReviewSource('commit',cx);assert.equal(view.upperView,'changes');assert.ok(render().some(node=>node.id==='history-content'));assert.equal(view.controller.session().drafts,drafts);
+ const {view,cx,render}=fixture(),drafts=[{id:'draft',body:'Keep this feedback'}];view.controller.session=()=>({drafts});view.showComments=true;
+ view.toggleHistory(true,cx);assert.equal(view.showComments,true);assert.ok(render().some(node=>node.id==='history-content'));assert.equal(view.controller.session().drafts,drafts);
+ view.showComments=true;view.showHistory=false;view.applyScope=()=>{};view.chooseReviewSource('commit',cx);assert.equal(view.showComments,true);assert.ok(render().some(node=>node.id==='history-content'));assert.equal(view.controller.session().drafts,drafts);
 });
 
 test('file rows expose icon actions and preserve their own source independently of selection',()=>{
@@ -124,4 +122,25 @@ test('current branch remains visible whenever the names and fixed controls fit',
 
 test('review toolbar omits the more menu and layout choices',()=>{
  const {view,controls,render}=fixture();view.allFiles=true;view.panel='reviewMore';render();assert.ok(!controls.has('reset-viewed'));assert.ok(!controls.has('workspace-layout'));view.showHistory=true;controls.clear();render();assert.ok(!controls.has('workspace-layout'));assert.ok(!controls.has('review-more'));view.showHistory=false;view.allFiles=false;controls.clear();render();assert.ok(!controls.has('workspace-layout'));assert.ok(!controls.has('review-more'));
+});
+
+test('review toolbar keeps baseline on the left and panel refresh summary submit controls in one row',()=>{
+ const {view,state,render}=fixture();state.comparison.commitCount=20;state.files=[{additions:123456,deletions:4500}];
+ const nodes=render(),toolbar=nodes.find(n=>n.id==='review-toolbar');assert.ok(toolbar);
+ const ids=toolbar.nodes.map(n=>n.id),order=['comparison-baseline','panel-control-comments','panel-control-files','panel-control-history','refresh-review','review-summary','submit-preview'];
+ let previous=-1;for(const id of order){const index=ids.indexOf(id);assert.ok(index>previous,id);previous=index;}assert.equal(ids.at(-1),'submit-preview');
+ assert.equal(nodes.filter(n=>n.id==='refresh-review').length,1);assert.equal(nodes.filter(n=>n.id==='review-summary').length,1);
+});
+test('compact counts use at most three digits and promote a rounded 1000 to the next suffix',()=>{
+ const {view}=fixture();for(const [value,want] of [[0,'0'],[999,'999'],[1000,'1k'],[1234,'1.23k'],[12345,'12.3k'],[123456,'123k'],[999499,'999k'],[999500,'1M'],[1000000,'1M'],[123456789,'123M'],[Number.MAX_SAFE_INTEGER,'9.01Q']]){const result=view.compactCount(value);assert.equal(result,want);assert.ok(result.replace(/\D/g,'').length<=3);}assert.equal(view.compactCount(null),'…');
+});
+test('summary click shows colored compact line counts and tooltip keeps exact complete totals',()=>{
+ const {view,state,controls,cx,render}=fixture();state.comparison.commitCount=20;state.files=[{additions:123456,deletions:1200},{additions:90,deletions:34},{binary:true,additions:null,deletions:null}];
+ render();let summary=controls.get('review-summary');assert.ok(summary);assert.match(summary.options.tooltip,/3 files/);assert.match(summary.options.tooltip,/20 commits/);assert.match(summary.options.tooltip,/123,546/);assert.match(summary.options.tooltip,/1,234/);assert.ok(summary.options.tooltip.includes('\n'));
+ const original=state.comparison;summary.action({},cx);assert.equal(view.summaryLines,true);render();summary=controls.get('review-summary');const labels=[];const scan=n=>{if(n?.label!=null)labels.push(n.label);for(const child of n?.nodes||[])scan(child);};scan(summary.label);assert.ok(labels.includes('+124k'));assert.ok(labels.includes('−1.23k'));const colored=[];const colors=n=>{if(n?.values?.text_color)colored.push(n.values.text_color);for(const child of n?.nodes||[])colors(child);};colors(summary.label);assert.deepEqual(colored,['added','removed']);assert.equal(state.comparison,original);
+ summary.action({},cx);assert.equal(view.summaryLines,false);
+});
+test('line totals distinguish unknown statistics from zero and ignore binary files',()=>{
+ const {view,state}=fixture();state.files=[{additions:null,deletions:null,binary:false},{binary:true,additions:null,deletions:null}];assert.equal(view.reviewCounts().linesKnown,false);
+ state.files=[{additions:0,deletions:0},{binary:true,additions:null,deletions:null}];assert.deepEqual(view.reviewCounts(),{files:2,commits:null,additions:0,deletions:0,binary:1,linesKnown:true});state.fileStatsLoading=true;assert.equal(view.reviewCounts().linesKnown,false);
 });

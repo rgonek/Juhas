@@ -36,10 +36,10 @@ export class Controller {
   this.state.featureBaseOid=base;this.state.historyBaseRef=baseRef||null;this.state.historyBaseError=error;this.state.historyBaseLoading=false;this.onChange();return true;
  }
  async summarizeComparison(comparison,run=this.run){
-  if(!comparison.targetOid)return {...comparison,commitCount:null};
+  const targetOid=comparison.targetOid||comparison.committedTargetOid;if(!targetOid)return {...comparison,commitCount:null};
   if(comparison.scope.kind==='commit')return {...comparison,commitCount:1};
-  const key=JSON.stringify([comparison.repoKey,comparison.baseOid,comparison.targetOid,'commit-count']);let count=this.cache.get(key);
-  try{if(count==null){const raw=(await git(run,comparison.repo,['rev-list','--count',comparison.targetOid,...(comparison.baseOid?['^'+comparison.baseOid]:[]),'--'])).trim();count=Number(raw);if(!/^\d+$/.test(raw)||!Number.isSafeInteger(count))throw new Error('Invalid Git commit count');this.cache.set(key,count);}}
+  const key=JSON.stringify([comparison.repoKey,comparison.baseOid,targetOid,'commit-count']);let count=this.cache.get(key);
+  try{if(count==null){const raw=(await git(run,comparison.repo,['rev-list','--count',targetOid,...(comparison.baseOid?['^'+comparison.baseOid]:[]),'--'])).trim();count=Number(raw);if(!/^\d+$/.test(raw)||!Number.isSafeInteger(count))throw new Error('Invalid Git commit count');this.cache.set(key,count);}}
   catch(error){return {...comparison,commitCount:null,summaryError:error.message};}
   return {...comparison,commitCount:count,summaryError:null};
  }
@@ -151,7 +151,7 @@ export class Controller {
      try{await oid(run,repo,comparison.targetOid);sourceUnavailable=false;}catch{sourceUnavailable=true;}
     }else{
      candidate=!changed&&!comparison.mutableTarget?comparison:await resolveComparison(run,repo,comparison.scope,this.session().checkpoints);
-     if(candidate.id===comparison.id)candidate=comparison;
+     if(candidate.id===comparison.id)candidate=candidate.committedTargetOid!==comparison.committedTargetOid?await this.summarizeComparison({...comparison,committedTargetOid:candidate.committedTargetOid},run):comparison;
      else if(preserveComposer){sourceStale=true;candidate=comparison;}
      else{
       const key=JSON.stringify([repo.key,candidate.baseTree,candidate.targetTree,'files']);files=this.cache.get(key)||await listChangedFiles(run,candidate);if(!candidate.mutableTarget)this.cache.set(key,files);

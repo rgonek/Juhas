@@ -66,3 +66,11 @@ A native 657-file aggregate was observed with a file list, Tree, selected patch 
 Run `node --expose-gc scripts/soak.mjs` for a 15-minute workload against a disposable Git repository. It cycles large patches, immutable scopes and mutable edits with refreshes, samples memory after GC, and removes the fixture afterward.
 
 The recorded run completed 2,240 file selections, 32 immutable scope selections and 186 mutable edits/refreshes without workload errors. After warmup, post-GC heap stayed between 76.5 and 79.5 MiB and retained cache size between 62.66 and 63.71 MiB. The byte limit bound before the independent 64-entry limit. RSS varied without a monotonic rise; these Node observations do not prove native Herdr memory stability. Latency quantiles from that run were not recoverable from the truncated output. The runner now prints bounded latency summaries for future runs.
+
+## Working diff loading (2026-11-09)
+
+The per-line native entities used by hover comment buttons have been removed from the production diff. The experiment and its tests remain on `spike/selectable-diff-2026-11-09`. Source rows use virtual-list item clicks again; creating a large diff no longer schedules an entity for every loaded line.
+
+Working observations now inspect untracked paths with at most four concurrent Git processes. Results retain Git path order, mode/binary metadata and the existing content fingerprints. A failed metadata read stops scheduling new paths, drains in-flight reads and rejects the observation. Whole-comparison verification still runs before and after detached patch reads, including cache hits.
+
+A five-sample asynchronous Controller comparison on this repository used the same branch comparison against `origin/main`, with working changes included and `mods/juhas/main.js` selected (512 patch lines). Warm medians, excluding the first sample, were 2,960 ms on `main` and 1,989 ms with bounded concurrency: about 33% less time. Both performed 36 Git commands per warm read. These are local elapsed times with host variability; they do not measure input-to-frame latency. The optimization overlaps process execution rather than skipping source validation. Comparisons with no untracked paths are not expected to gain the same improvement.

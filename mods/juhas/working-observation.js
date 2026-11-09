@@ -14,7 +14,13 @@ export async function observeWorking(run,repo,baseTree){
  if(files.length+untracked.length>10000)throw new Error('Working observation exceeds 10000 changed paths; previous source retained');
  // --no-index raw/numstat observes untracked modes (including symlinks) and
  // binary status without serializing their potentially enormous binary patch.
- for(const path of untracked){const result=await run(repo,['diff',...options,'--no-index','--raw','--numstat','--no-abbrev','-z','--','/dev/null',path]);if(result.code!==0&&result.code!==1)throw new Error(result.stderr||'Cannot inspect untracked file');const metadata=parseFiles(result.stdout)[0];if(!metadata)throw new Error('Untracked file disappeared during observation');files.push({...metadata,id:JSON.stringify([null,path]),oldPath:null,newPath:path,untracked:true});}
+ // Bound process fan-out while preserving path order and exact metadata checks.
+ const metadataFiles=new Array(untracked.length);let next=0,stopped=false;
+ const workers=Array.from({length:Math.min(4,untracked.length)},async()=>{
+  while(!stopped&&next<untracked.length){const index=next++,path=untracked[index];try{const result=await run(repo,['diff',...options,'--no-index','--raw','--numstat','--no-abbrev','-z','--','/dev/null',path]);if(result.code!==0&&result.code!==1)throw new Error(result.stderr||'Cannot inspect untracked file');const metadata=parseFiles(result.stdout)[0];if(!metadata)throw new Error('Untracked file disappeared during observation');metadataFiles[index]=({...metadata,id:JSON.stringify([null,path]),oldPath:null,newPath:path,untracked:true});}catch(error){stopped=true;throw error;}}
+ });
+ const results=await Promise.allSettled(workers),failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
+ files.push(...metadataFiles);
  if(files.length>10000)throw new Error('Working observation exceeds 10000 changed paths; previous source retained');
  const regular=files.filter(f=>!['000000','120000','160000'].includes(f.newMode));
  for(let i=0;i<regular.length;i+=40){const batch=regular.slice(i,i+40),hashes=(await git(run,repo,['hash-object','--no-filters','--',...batch.map(f=>f.newPath)])).trim().split('\n');if(hashes.length!==batch.length||hashes.some(h=>! /^[a-f0-9]{40,64}$/.test(h)))throw new Error('Cannot verify working file contents');batch.forEach((f,j)=>f.newOid=hashes[j]);}

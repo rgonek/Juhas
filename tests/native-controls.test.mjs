@@ -59,9 +59,11 @@ function diffView(patch,target){return {id:'fixture',width:360,readingOptions:{s
 test('hunk headers can be hidden while exact source rows remain available for comments',()=>{
  const view=diffView({hunks:[{header:'@@ -1 +1 @@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);view.readingOptions.showHunks=false;const root=controls().diffPane(view);assert.ok(!view.diffRows.some(row=>row.kind==='hunk'));assert.ok(view.patchRows.some(row=>row.kind==='hunk'));assert.ok(!descendants(root).some(node=>node.values?.id==='change-navigation'));assert.ok(!descendants(root).some(node=>node.identity==='change-navigation'));
 });
-test('hide-tests belongs to the file navigator in Single file and the diff toolbar in All files',()=>{
- const view=diffView({hunks:[]},null);view.controller.state.files=[];view.controller.state.repo={key:'r'};view.allFiles=false;const ui=controls();assert.ok(!descendants(ui.diffPane(view)).some(node=>node.identity==='hide-tests'));assert.ok(descendants(ui.filesPane(view)).some(node=>node.identity==='hide-tests'));view.allFiles=true;assert.ok(descendants(ui.diffPane(view)).some(node=>node.identity==='hide-tests'));assert.ok(!descendants(ui.filesPane(view)).some(node=>node.identity==='hide-tests'));
+test('Files always offers Hide test files independently of the diff file mode',()=>{
+ const view=diffView({hunks:[]},null);view.controller.state.files=[];view.controller.state.repo={key:'r'};const ui=controls();
+ for(const allFiles of [false,true]){view.allFiles=allFiles;const files=descendants(ui.filesPane(view));assert.ok(files.some(n=>n.identity==='hide-tests'));const diff=descendants(ui.diffPane(view));assert.ok(!diff.some(n=>n.identity==='hide-tests'));assert.equal(diff.some(n=>n.identity==='diff-hide-tests'),allFiles);}
 });
+
 test('hiding test files removes their diff rows and the single-file editor without changing source data',()=>{
  const ui=controls(),patch={hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'test code'}]}]},view=diffView(patch,null),file={id:'test',newPath:'tests/context.test.js'};
  view.hideTests=true;view.controller.state.file=file;view.controller.state.files=[file];let root=ui.diffPane(view);assert.ok(!descendants(root).some(node=>node.values?.id==='diff-file-header'));assert.deepEqual(view.patchRows,[]);assert.equal(view.controller.state.patch,patch);
@@ -76,7 +78,7 @@ test('wrapping uses native measured rows and retains pure exact source snapshots
 test('all-files native clicks carry exact section provenance and headers never become comments',()=>{
  const view=diffView({hunks:[]},null),calls=[];view.allFiles=true;view.requestAllFiles=(id)=>calls.push(['header',id]);view.selectFileLine=(row,id)=>calls.push(['source',row.text,id,row.comparisonId]);view.allFileSections=[{file:{id:'other',newPath:'other.ts'},comparison:{id:'exact'},patch:{hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]}}];
  const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='virtual');list.renderRows();list.handlers.on_item_click('file:other',{});list.handlers.on_item_click('file:other:h0l0',{});
- assert.deepEqual(calls,[['header','other']]);
+ assert.deepEqual(calls,[['header','other'],['source','code','other','exact']]);
 });
 test('All files displays its section headers before an individual file is selected',()=>{
  const view=diffView(null,null);view.controller.state.file=null;view.allFiles=true;view.allFileSections=[{file:{id:'other',newPath:'other.ts'},comparison:{id:'c'},collapsed:true}];
@@ -99,17 +101,17 @@ test('loaded-source find and comment navigation use guarded existing callbacks o
  const root=controls().diffPane(view);for(const id of ['find-previous','find-next'])descendants(root).find(n=>n?.identity===id).handlers.on_click({},{});
  view.controller.state.repo={key:'r'};for(const id of ['comment-previous','comment-next'])descendants(controls().draftsPane(view,{})).find(n=>n?.identity===id).handlers.on_click({},{});assert.deepEqual(calls,[['find',-1],['find',1],['comment',-1],['comment',1]]);assert.ok(descendants(root).some(n=>n?.nodes?.includes('1/1 · loaded context only')));
 });
-test('wrapped source clicks do not create a comment',()=>{
+test('wrapped source clicks create a comment with the displayed line snapshot',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'wrapped code'}]}]},null),calls=[];view.readingOptions={wrap:true};view.selectLine=(...args)=>calls.push(args);
  const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='measured');list.handlers.on_item_click('h0l0',{});
- assert.deepEqual(calls,[]);
+ assert.equal(calls.length,1);assert.equal(calls[0][3].text,'wrapped code');assert.equal(calls[0][3].newLine,9);
 });
 test('saved general feedback has a review label without a fabricated file anchor',()=>{
  const view=diffView({hunks:[]},null);view.controller.state.repo={key:'repo'};view.controller.session=()=>({drafts:[{id:'general',scope:'general',repoKey:'repo',comparisonId:'c',body:'Review feedback'}]});
  const root=controls().draftsPane(view,{});assert.ok(descendants(root).some(n=>n?.nodes?.includes('General review')));
 });
 test('measured rows embed the growing retained editor without registering callbacks during layout',()=>{
- const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(Object.hasOwn(list,'sizes'),false);assert.equal(root.nodes[0].nodes.at(-1).identity,'select-code');
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(Object.hasOwn(list,'sizes'),false);assert.ok(!descendants(root).some(n=>n.identity==='select-code'));
 });
 test('binary and mode-only file comments still display the same inline editor',()=>{
  for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(Object.hasOwn(list,'sizes'),false);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
@@ -121,9 +123,9 @@ test('a hidden review keeps its diff and file scroll handles detached',()=>{
  view.reviewIsVisible=()=>true;const shown=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');const shownFiles=descendants(controls().filesPane(view)).find(n=>n.kind==='virtual');
  assert.equal(shown.values.track_scroll.name,'diff');assert.equal(shownFiles.values.track_scroll.name,'files');
 });
-test('plain diff clicks never open a comment, including stale viewports',()=>{
+test('plain diff clicks comment on the current source and reject stale viewports',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'shown code'}]}]},null),calls=[];view.diffChangeKey=()=>view.controller.state.file.newPath;view.selectLine=(...args)=>calls.push(args);const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='virtual');
- list.handlers.on_item_click('h0l0',{});assert.deepEqual(calls,[]);view.controller.state.file={newPath:'another'};list.handlers.on_item_click('h0l0',{});assert.deepEqual(calls,[]);
+ list.handlers.on_item_click('h0l0',{});assert.equal(calls.length,1);assert.equal(calls[0][3].text,'shown code');view.controller.state.file={newPath:'another'};list.handlers.on_item_click('h0l0',{});assert.equal(calls.length,1);
 });
 test('action controls use native Button selection, accessible labels and one activation callback',()=>{
  const ui=controls(),calls=[],button=ui.button('save','Save',(e,cx)=>calls.push(cx),{active:true});assert.equal(button.kind,'Button');assert.equal(button.values.selected,true);assert.equal(button.values.accessibility_label,'Save');button.handlers.on_click({},'context');assert.deepEqual(calls,['context']);
@@ -273,4 +275,20 @@ test('comment anchors highlight only their split column and use the current them
 test('unified anchor highlight supports old context and clears after saving',()=>{
  const ui=controls({theme:()=>({selected:'selection',background:'background'})}),view=diffView({hunks:[{header:'@@',lines:[{side:'context',oldLine:7,newLine:10,text:'shared'}]}]},{comparisonId:'c',newPath:'a',side:'old',startLine:7,endLine:7});view.inlineEditor=null;
  const row=()=>descendants(ui.diffPane(view)).find(n=>n.kind==='virtual').renderRows()[0];assert.equal(row().values.bg,'selection');view.target=null;assert.equal(row().values.bg,'background');
+});
+
+test('large diffs keep rows virtual and do not prepare retained entities',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:Array.from({length:10000},(_,i)=>({side:'new',newLine:i+1,text:'code'}))}]},null);
+ view.prepareDiffRows=()=>assert.fail('eager per-row entities defeat virtualization');
+ const root=controls().diffPane(view,{timer:{after(){assert.fail('no row creation timer');}}});
+ assert.ok(descendants(root).some(n=>n.kind==='virtual'));assert.equal(view.diffRows.length,10000);
+});
+
+test('history columns follow the panel width rather than the wide review window',()=>{
+ const commit={oid:'a'.repeat(40),parents:[],subject:'Visible subject',author:'Narrow panel author',timestamp:0,refs:[]};
+ const view={id:'narrow-history',width:1400,historyPaneWidth:280,controller:{state:{history:[commit],comparison:null}},selectCommit(){}};
+ const ui=controls(),root=ui.historyPane(view),rows=descendants(root).find(n=>n.kind==='virtual').renderRows();
+ assert.ok(!rows.flatMap(descendants).some(n=>n.nodes?.includes(commit.author)));
+ let notified=0;root.handlers.on_size_change({width:1000},{notify(){notified++;}});assert.equal(view.historyPaneWidth,1000);assert.equal(notified,1);
+ const wide=descendants(ui.historyPane(view)).find(n=>n.kind==='virtual').renderRows();assert.ok(wide.flatMap(descendants).some(n=>n.nodes?.includes(commit.author)));
 });

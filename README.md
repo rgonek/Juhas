@@ -67,8 +67,9 @@ preserving the selected commit, file and unsaved comment. Pane management uses H
 2. Stay in **Commit** to inspect individual commits, or choose **All changes**
    for the final result. Choose a base branch if one has not been configured.
 3. Choose **Uncommitted** for working files, or enable **Include uncommitted**
-   in All changes to review commits and later fixes together. Click the code,
-   write feedback and save with **Enter** (**Shift+Enter** adds a new line). Comments can come from
+   in All changes to review commits and later fixes together. Drag over code to select
+   and copy it. Click **+** to comment on a line, or drag from **+** to choose a range.
+   Save with **Ctrl/⌘+Enter**; Enter adds a new line. Comments can come from
    several commits and still go into one review.
 4. Choose **Submit review**. Check the recipient and message, then **Send review**
    or **Copy**. Unsaved comments offer an explicit Save / Skip / Back choice.
@@ -85,7 +86,7 @@ original revisions and line ranges; outdated feedback is marked rather than
 silently moved to another line. Full code quotes and Git headers are optional.
 
 Visible reviews check for changes every 15 seconds without jumping away from
-your selected commit/file. Unchanged sources reuse cached data. Viewed markers,
+your selected commit/file. Unchanged sources reuse cached data. Text selection,
 find in loaded code, optional wrapping and All files support longer reviews.
 General feedback needs no file anchor.
 

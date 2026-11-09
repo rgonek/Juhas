@@ -5,9 +5,10 @@ import * as comments from '../mods/juhas/comments.js';
 import * as models from '../mods/juhas/review-ui.js';
 import * as submission from '../mods/juhas/submit.js';
 import {Controller} from '../mods/juhas/controller.js';
+import {DiffSelection} from '../mods/juhas/diff-selection.js';
 function fixture(data=new Map()){
  const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];let serial=0;
- const deps={...comments,...models,...submission,DiffRow:class{},theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
+ const deps={...comments,...models,...submission,DiffSelection,DiffRow:class{},theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
  const Native=new Function('View',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},...Object.values(deps)),v=Object.create(Native.prototype);
  const patch={hunks:[{header:'@@',lines:[{side:'old',oldLine:1,newLine:null,text:'before'},{side:'new',oldLine:null,newLine:1,text:'after'},{side:'context',oldLine:2,newLine:2,text:'shared'}]}]};
  const comparison={id:'c',repoKey:'r',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40)},files=[{id:'a',newPath:'a',oldPath:'a'},{id:'b',newPath:'b',oldPath:'b'}],saved={drafts:[],submittedBatches:[]};
@@ -107,4 +108,23 @@ test('diff interaction entities are created after render and reused until their 
  v.prepareDiffRows(rows,()=>null,cx,false);assert.equal(created,0);callback(cx);assert.equal(created,1);assert.ok([...v.diffRowViews.values()][0].signature.length<1000);
  v.prepareDiffRows(rows,()=>null,cx,false);callback(cx);assert.equal(created,1);
  v.prepareDiffRows([],()=>null,cx,false);callback(cx);assert.equal(released,1);
+});
+
+test('range gestures open the real composer with the exact old-side quote',()=>{
+ const {v,cx}=fixture();v.commitCommentRange({fileId:'a',comparisonId:'c',side:'old',startLine:1,endLine:2,quote:'before\nshared'},cx);
+ assert.equal(v.target.side,'old');assert.equal(v.target.startLine,1);assert.equal(v.target.endLine,2);assert.equal(v.target.quote,'before\nshared');assert.equal(v.panel,'comment');assert.equal(v.selectedStart,null);
+});
+test('range gestures cannot replace unsaved text or attach to changed source',()=>{
+ const {v,cx}=fixture();v.selectLine('h0l1',cx);v.inputs.comment.set_value('keep me');const previous=v.target;
+ v.commitCommentRange({fileId:'a',comparisonId:'c',side:'old',startLine:1,endLine:2,quote:'before\nshared'},cx);assert.equal(v.target,previous);assert.equal(v.inputs.comment.value(),'keep me');
+ v.cancelComment(cx);v.commitCommentRange({fileId:'a',comparisonId:'c',side:'old',startLine:1,endLine:2,quote:'stale source'},cx);assert.equal(v.target,null);assert.match(v.message,/Source changed/);
+});
+test('modified copy keystrokes cannot invoke the plain c file-comment shortcut',()=>{
+ const {v,cx}=fixture();cx.stop_propagation=()=>{};let comments=0;v.fileComment=()=>comments++;v.panel=null;v.key({key:'c',modifiers:{control:true}},cx);v.key({key:'c',modifiers:{platform:true}},cx);assert.equal(comments,0);v.key({key:'c',modifiers:{}},cx);assert.equal(comments,1);
+});
+test('an awaited range cannot reopen a closed or superseded presentation',async()=>{
+ for(const change of [v=>v.closed=true,v=>v.diffMode='unified',v=>v.hideTests=true,v=>v.allFiles=false,v=>v.fileActionVersion=1]){
+  const {v,cx}=fixture();v.allFiles=true;let release;v.controller.selectFile=async id=>{await new Promise(resolve=>release=resolve);v.controller.state.file=v.controller.state.files.find(file=>file.id===id);};
+  v.commitCommentRange({fileId:'b',comparisonId:'c',side:'old',startLine:1,endLine:2,quote:'before\nshared'},cx);change(v);release();await v.pending;assert.equal(v.target,undefined);
+ }
 });

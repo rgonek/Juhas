@@ -6,13 +6,14 @@ import {layoutGraph} from '../mods/juhas/graph.js';
 import * as comments from '../mods/juhas/comments.js';
 import {formatCommitTime} from '../mods/juhas/commit-time.js';
 import * as reading from '../mods/juhas/reading.js';
+import * as selection from '../mods/juhas/selection.js';
 import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from '../mods/juhas/review-ui.js';
 import {fileReviewKey,setFileReviewed} from '../mods/juhas/progress.js';
 function controls(overrides={}){
  let layout=false;
- const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
- const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,...comments,...reading,formatCommitTime,fileRows,splitRows,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
- Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
+ const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args.length===2?args[1]:args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
+ const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,...comments,...reading,...selection,formatCommitTime,fileRows,splitRows,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
+ Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {sourceText,virtualList,optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
 test('native Select and Combobox own their open state and dismiss an open list on an outside press',()=>{
@@ -68,9 +69,9 @@ test('hiding test files removes their diff rows and the single-file editor witho
  view.allFiles=true;view.allFileSections=[{file,comparison:{id:'c'},patch,collapsed:false}];ui.diffPane(view);assert.deepEqual(view.diffRows,[]);
  view.hideTests=false;ui.diffPane(view);assert.ok(view.diffRows.some(row=>row.kind==='file-header'));assert.ok(view.diffRows.some(row=>row.text==='test code'));
 });
-test('wrapping uses native measured rows and retains pure exact source snapshots',()=>{
+test('wrapping uses retained measurements and retains pure exact source snapshots',()=>{
  const source='const x = "😀 long line";',view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:source}]}]},null);view.readingOptions={wrap:true};view.controller.state.file.newPath='a.ts';
- const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='measured');assert.ok(list);list.renderRows();assert.equal(view.patchRows[1].text,source);assert.equal(Object.hasOwn(list,'sizes'),false);
+ const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='virtual');assert.ok(list);list.renderRows();assert.equal(view.patchRows[1].text,source);assert.equal(Object.hasOwn(list,'sizes'),true);
  assert.ok(descendants(root).some(n=>n?.identity==='diff-wrap'));
 });
 test('all-files native clicks carry exact section provenance and headers never become comments',()=>{
@@ -92,7 +93,7 @@ test('a selected line in one all-files section never highlights another comparis
 });
 test('split wrapping measures one aligned native pair and keeps source syntax/match decorations',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'old',oldLine:1,text:'const x = "old😀";'},{side:'new',newLine:1,text:'const x = "new😀";'}]}]},null);view.diffMode='split';view.readingOptions={wrap:true};view.controller.state.file.newPath='a.ts';view.findMatches=[{side:'new',line:1,start:11,end:14}];
- const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='measured'),rows=list.renderRows(),pair=rows[0];assert.equal(rows.length,1);assert.equal(pair.values.min_h,22);assert.ok(Object.hasOwn(pair.values,'items_stretch'));assert.equal(Object.hasOwn(pair.values,'h'),false);assert.ok(descendants(pair).some(n=>n?.nodes?.includes('new')));assert.ok(descendants(pair).some(n=>n&&Object.hasOwn(n.values||{},'underline')));
+ const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='virtual'),rows=list.renderRows(),pair=rows[0];assert.equal(rows.length,1);assert.equal(pair.values.min_h,22);assert.ok(Object.hasOwn(pair.values,'items_stretch'));assert.equal(Object.hasOwn(pair.values,'h'),false);assert.ok(descendants(pair).some(n=>n?.nodes?.includes('new')));assert.ok(descendants(pair).some(n=>n&&Object.hasOwn(n.values||{},'underline')));
 });
 test('loaded-source find and comment navigation use guarded existing callbacks outside layout',()=>{
  const view=diffView({hunks:[]},null),calls=[];view.inputs={find:{retained:true}};view.searchOpen=true;view.findMatches=[{side:'new',line:1,start:0,end:1}];view.findIndex=0;view.moveFind=(direction)=>calls.push(['find',direction]);view.navigateComment=direction=>calls.push(['comment',direction]);
@@ -101,18 +102,18 @@ test('loaded-source find and comment navigation use guarded existing callbacks o
 });
 test('wrapped source clicks do not create a comment',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'wrapped code'}]}]},null),calls=[];view.readingOptions={wrap:true};view.selectLine=(...args)=>calls.push(args);
- const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='measured');list.handlers.on_item_click('h0l0',{});
+ const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='virtual');list.handlers.on_item_click('h0l0',{});
  assert.deepEqual(calls,[]);
 });
 test('saved general feedback has a review label without a fabricated file anchor',()=>{
  const view=diffView({hunks:[]},null);view.controller.state.repo={key:'repo'};view.controller.session=()=>({drafts:[{id:'general',scope:'general',repoKey:'repo',comparisonId:'c',body:'Review feedback'}]});
  const root=controls().draftsPane(view,{});assert.ok(descendants(root).some(n=>n?.nodes?.includes('General review')));
 });
-test('measured rows embed the growing retained editor without registering callbacks during layout',()=>{
- const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(Object.hasOwn(list,'sizes'),false);assert.equal(root.nodes[0].nodes.at(-1).identity,'select-code');
+test('variable-height rows embed the growing editor without callbacks during layout',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(Object.hasOwn(list,'sizes'),true);assert.equal(root.nodes[0].nodes.at(-1).identity,'select-code');
 });
 test('binary and mode-only file comments still display the same inline editor',()=>{
- for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(Object.hasOwn(list,'sizes'),false);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
+ for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(Object.hasOwn(list,'sizes'),true);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
 });
 test('a hidden review keeps its diff and file scroll handles detached',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);view.diffScroll={name:'diff'};view.filesScroll={name:'files'};view.reviewIsVisible=()=>false;view.controller.state.repo={key:'r'};view.controller.state.files=[{id:'a',newPath:'a.js',status:'M'}];view.isFileReviewed=()=>false;
@@ -206,8 +207,8 @@ test('live font changes keep diff rows, comments and editor allocations in step 
  for(const size of [14,28,12])for(const mode of ['unified','split']){
   base=size;const scale=size/14,view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'first'},{side:'new',newLine:2,text:'second'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:2});
   view.diffMode=mode;view.controller.session=()=>({drafts:[{id:'saved',comparisonId:'c',newPath:'a',side:'new',endLine:1,body:'note\nsecond line'}]});
-  const list=descendants(ui.diffPane(view)).find(n=>n.kind==='measured'),rows=list.renderRows();
-  assert.equal(Object.hasOwn(list,'sizes'),false);
+  const list=descendants(ui.diffPane(view)).find(n=>n.kind==='virtual'),rows=list.renderRows();
+  assert.equal(Object.hasOwn(list,'sizes'),true);
   assert.ok(rows.some(row=>row.values.min_h===comments.INLINE_EDITOR_HEIGHT*scale&&row.values.max_h===comments.INLINE_EDITOR_MAX_HEIGHT*scale));
   assert.ok(rows.some(row=>row.values.text_size===`${size/16}rem`));
   assert.ok(rows.some(row=>row.values.h===comments.commentHeight('note\nsecond line')*scale));
@@ -273,4 +274,27 @@ test('comment anchors highlight only their split column and use the current them
 test('unified anchor highlight supports old context and clears after saving',()=>{
  const ui=controls({theme:()=>({selected:'selection',background:'background'})}),view=diffView({hunks:[{header:'@@',lines:[{side:'context',oldLine:7,newLine:10,text:'shared'}]}]},{comparisonId:'c',newPath:'a',side:'old',startLine:7,endLine:7});view.inlineEditor=null;
  const row=()=>descendants(ui.diffPane(view)).find(n=>n.kind==='virtual').renderRows()[0];assert.equal(row().values.bg,'selection');view.target=null;assert.equal(row().values.bg,'background');
+});
+
+
+test('virtual row factories receive only the row, never map index or source array',()=>{
+ const calls=[],ui=controls(),root=ui.virtualList('args',[{id:'one'},{id:'two'}],22,(...args)=>{calls.push(args);return {};},()=>{});descendants(root).find(n=>n.kind==='virtual').renderRows();assert.deepEqual(calls,[[{id:'one'}],[{id:'two'}]]);
+});
+
+
+test('empty lines and end-of-line space have exact native selection hit targets',()=>{
+ const ui=controls(),calls=[],interaction={selected:()=>false,down:(glyph)=>calls.push(glyph),move:(glyph)=>calls.push(glyph)};
+ for(const text of ['', 'abc']){const root=ui.sourceText({text},'a.js',{},false,[],[],'',interaction),tail=root.nodes.at(-1);assert.ok(tail.handlers.on_mouse_down);tail.handlers.on_mouse_down({},{});assert.deepEqual(calls.at(-1),{start:text.length,end:text.length});assert.ok('flex_1' in root.values);assert.ok('flex_1' in tail.values);}
+});
+test('wrapping keeps a scrollable virtual list and uses retained row height measurements',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'long code'}]}]},null);view.readingOptions={wrap:true};view.diffScroll={name:'retained'};view.diffSelection={heights:new Map([['h0l0',66]]),marked:()=>false};
+ const list=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');assert.ok(list);assert.deepEqual(list.sizes,[66]);assert.equal(list.values.track_scroll,view.diffScroll);
+});
+test('selecting a newline also highlights the remaining source-cell space',()=>{
+ const ui=controls(),interaction={selected:(start,end)=>start===3&&end===4,down(){},move(){}};
+ const root=ui.sourceText({text:'abc'},'a.js',{selection:'selected-newline'},false,[],[],'',interaction);assert.equal(root.nodes.at(-1).values.bg,'selected-newline');
+});
+test('pathological single lines cannot allocate unbounded character handlers',()=>{
+ const interaction={selected:()=>false,down(){},move(){}},root=controls().sourceText({text:'x'.repeat(20000)},'a.js',{},false,[],[],'',interaction);
+ assert.ok(descendants(root).filter(n=>n.handlers?.on_mouse_down).length<10);assert.match(root.values.tooltip,/8192/);
 });

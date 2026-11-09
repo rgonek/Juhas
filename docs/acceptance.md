@@ -104,3 +104,38 @@ Review follow-up: the full suite passed 145 tests with no failures/skips. Determ
 Final focused verification passed 50 tests, plus a real-Git scenario asserting one commit in Commit mode, two commits in the final branch comparison and one in an exclusive manual range. Optional count failures retain the review comparison and expose the count error; browsing filters do not reduce the submission batch. The in-memory view-cache generation was bumped for the added summary fields; durable session/selection schema remains compatible.
 
 History loading follow-up: 31 focused tests and one isolated real-Git history concurrency/pagination test passed, plus the mod check. Native synthetic rendering confirmed a loader in the fixed History header and matching 29 px History/Files rows with a continuous graph. The loader uses Lucide loader-circle and native SVG spin; transient/error/pagination/stale-response states have controlled tests. The temporary overlay and its owned layout block were removed. No real feedback or checkpoint operation ran.
+
+## Mod-only source selection (2026-11-09)
+
+Source gestures now use retained DiffRow views with grapheme hit targets and
+source-indexed ranges. Split selection locks file/side; Unified copies displayed
+source rows. Gutters, diff markers and saved comments are excluded from copying.
+Double-click selects words, triple-click selects lines; Shift-click extends.
+Dragging from + selects a side-locked source range and opens the real composer
+only on release, preserving unsaved drafts and checking the quote against the
+loaded source again before opening.
+
+Native Windows acceptance used the production renderer with synthetic patches
+and an in-memory review store. Actual pointer/key probes confirmed selection
+through saved comments, Ctrl+C reaching a clipboard-safe source capture, a
+new-side 2-5 comment gesture, a growing six-line textarea, and saving all six
+lines as one comment for that source range. No real review feedback was sent.
+Native captures also confirmed wrapped long lines remain aligned after composer
+insertion and edge dragging scrolls the virtual list while extending selection.
+
+The installed runtime ignores track_scroll on its measured list. Wrap/editor
+modes therefore use the variable-height virtual list with intrinsic source-cell
+and editor measurements. The heights of a split pair are the max of its two
+source cells. Layout/source epochs reject old events, motion batches preserve
+gesture boundaries, and source changes/close/focus loss cancel live drags.
+
+Final scoped checks: 96 passed. Full suite: 408 passed, 3 failed (411 total).
+The remaining three failures are the previously reproduced diff-navigation
+baseline failures; this is not a full verification pass. Source/acceptance native
+checks passed with no mod errors. Pure-model probes on 20,000 synthetic rows
+completed successfully; these are not native UI performance measurements.
+
+For a single source line above 8192 UTF-16 code units, intra-line hit targets
+fall back to the existing Select/copy viewer to bound native handler allocation.
+Selection spanning that line still copies its full original source. Theme
+colors are used throughout. Cross-platform interactive acceptance is separate.

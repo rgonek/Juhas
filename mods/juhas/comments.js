@@ -28,4 +28,4 @@ export function composerRows(rows,target,editId=null){
 }
 export const INLINE_EDITOR_HEIGHT=112;
 export const INLINE_EDITOR_MAX_HEIGHT=184;
-export function commentHeight(value){return 71+21*(Math.min(6,Math.max(1,String(value||'').split(/\r?\n/).length))-1);}
+export function commentHeight(value){return 38+21*(Math.min(6,Math.max(1,String(value||'').split(/\r?\n/).length))-1);}

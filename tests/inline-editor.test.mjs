@@ -7,7 +7,7 @@ import * as submission from '../mods/juhas/submit.js';
 import {Controller} from '../mods/juhas/controller.js';
 function fixture(data=new Map()){
  const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];let serial=0;
- const deps={...comments,...models,...submission,uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
+ const deps={...comments,...models,...submission,DiffRow:class{},theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
  const Native=new Function('View',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},...Object.values(deps)),v=Object.create(Native.prototype);
  const patch={hunks:[{header:'@@',lines:[{side:'old',oldLine:1,newLine:null,text:'before'},{side:'new',oldLine:null,newLine:1,text:'after'},{side:'context',oldLine:2,newLine:2,text:'shared'}]}]};
  const comparison={id:'c',repoKey:'r',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40)},files=[{id:'a',newPath:'a',oldPath:'a'},{id:'b',newPath:'b',oldPath:'b'}],saved={drafts:[],submittedBatches:[]};
@@ -70,11 +70,41 @@ function nativeEditorFixture({modern=true}={}){
 }
 
 test('comment editor keeps Enter for newlines and binds Ctrl/Cmd Enter only inside its own context',()=>{
- const f=nativeEditorFixture();assert.equal(f.input.rows,2);assert.deepEqual(f.input.growth,[2,5]);assert.equal(f.input.submitOnEnter,false);assert.equal(f.events.has('submit'),false);
- assert.deepEqual(f.bindings,[{keystroke:'ctrl-enter',action:'juhas.comment.submit',context:'JuhasComment'},{keystroke:'cmd-enter',action:'juhas.comment.submit',context:'JuhasComment'}]);
+ const f=nativeEditorFixture();assert.equal(f.input.rows,2);assert.deepEqual(f.input.growth,[2,5]);assert.equal(f.input.submitOnEnter,false);assert.equal(f.events.has('submit'),true);
+ assert.deepEqual(f.bindings,['JuhasComment','JuhasComment > Input','JuhasComment > Textarea'].flatMap(context=>[{keystroke:'ctrl-enter',action:'juhas.comment.submit',context},{keystroke:'cmd-enter',action:'juhas.comment.submit',context}]));
  f.editor.submit(f.cx);assert.equal(f.saves(),1);f.owner.busy=true;f.editor.submit(f.cx);assert.equal(f.saves(),1);assert.equal(f.stops(),2);
 });
 
 test('older textarea hosts retain multiline editing and the explicit comment action',()=>{
- const f=nativeEditorFixture({modern:false});assert.equal(f.events.has('submit'),false);assert.equal(f.bindings.length,2);f.editor.submit(f.cx);assert.equal(f.saves(),1);
+ const f=nativeEditorFixture({modern:false});assert.equal(f.events.has('submit'),true);assert.equal(f.bindings.length,6);f.editor.submit(f.cx);assert.equal(f.saves(),1);
+});
+
+
+test('native textarea submit saves through the same guarded action',()=>{
+ const f=nativeEditorFixture();f.events.get('submit')({},f.cx);assert.equal(f.saves(),1);f.owner.busy=true;f.events.get('submit')({},f.cx);assert.equal(f.saves(),1);
+});
+
+
+test('retained split actions preserve the clicked context side and reject a stale viewport',()=>{
+ const {v,cx}=fixture();v.diffChangeKey=()=> 'source';const context=v.patchRows.find(row=>row.side==='context');
+ v.diffRowAction({source:'stale',operation:'select',row:context,side:'old'},cx);assert.equal(v.target,undefined);
+ v.diffRowAction({source:'source',operation:'select',row:{id:'pair',kind:'pair',old:context,next:context},side:'old'},cx);assert.equal(v.target.side,'old');assert.equal(v.target.startLine,2);
+});
+
+test('retained trash actions delete only their saved source and preserve an unsaved edit',()=>{
+ const {v,cx,saved}=fixture();v.diffChangeKey=()=> 'source';v.controller.removeComment=id=>saved.drafts=saved.drafts.filter(d=>d.id!==id);
+ const draft={id:'saved',repoKey:'r',comparisonId:'c',body:'original'};saved.drafts.push(draft);const action={source:'source',operation:'delete',row:{kind:'comment',draft}};
+ v.editId='saved';v.target=draft;v.inputs.comment.set_value('unsaved edit');v.diffRowAction(action,cx);assert.equal(saved.drafts.length,1);assert.match(v.message,/Save or cancel/);
+ v.target=null;v.editId=null;v.diffRowAction({...action,row:{kind:'comment',draft:{...draft,comparisonId:'another'}}},cx);assert.equal(saved.drafts.length,1);
+ v.diffRowAction(action,cx);assert.equal(saved.drafts.length,0);
+});
+
+
+test('diff interaction entities are created after render and reused until their rows leave',()=>{
+ const {v}=fixture();v.diffChangeKey=()=> 'source';let callback,created=0,released=0;
+ const cx={timer:{after:(_delay,fn)=>callback=fn},new:()=>{created++;return {release(){released++;}};},notify(){}};
+ const rows=[{kind:'line',id:'one',text:'code',hunk:{lines:new Array(10000).fill('unused')}}];
+ v.prepareDiffRows(rows,()=>null,cx,false);assert.equal(created,0);callback(cx);assert.equal(created,1);assert.ok([...v.diffRowViews.values()][0].signature.length<1000);
+ v.prepareDiffRows(rows,()=>null,cx,false);callback(cx);assert.equal(created,1);
+ v.prepareDiffRows([],()=>null,cx,false);callback(cx);assert.equal(released,1);
 });

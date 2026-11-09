@@ -29,7 +29,7 @@ test('file row cache identity changes when comments are deleted without changing
  const ui=controls(),first=descendants(ui.filesPane(view)).find(n=>n.kind==='virtual'),before=first.keyAt(0);
  saved.drafts=[];const next=descendants(ui.filesPane(view)).find(n=>n.kind==='virtual');assert.notEqual(next.keyAt(0),before);
 });
-test('large review pane reads one session and keeps viewed and comment counts repo-scoped',()=>{
+test('large review pane reads one session and keeps comment counts repo-scoped',()=>{
  const comparison={id:'source',repoKey:'r'},files=Array.from({length:2000},(_,i)=>({id:`f${i}`,newPath:`src/f${i}.js`,status:'M',oldOid:`old${i}`,newOid:`new${i}`}));
  const drafts=Array.from({length:500},(_,i)=>({id:`r${i}`,repoKey:'r',comparisonId:'source',newPath:i===0?'src/f0.js':`src/f${i}.js`,body:'note'})).concat(Array.from({length:500},(_,i)=>({id:`other${i}`,repoKey:'other',comparisonId:'other-source',newPath:'src/f0.js',body:'other'})));
  const reviewedFiles=Object.fromEntries(files.map(file=>[fileReviewKey(comparison,file),Date.now()]));let reads=0;
@@ -37,7 +37,7 @@ test('large review pane reads one session and keeps viewed and comment counts re
  const ui=controls(),root=ui.filesPane(view),list=descendants(root).find(n=>n.kind==='virtual');
  assert.equal(reads,1);assert.equal(list.sizes,29);assert.equal(filterDrafts(drafts,{repoKey:'r'}).length,500);assert.equal(filterDrafts(drafts,{repoKey:'other'}).length,500);
  const first=list.renderRows()[0];assert.ok(descendants(first).some(n=>n.kind==='div'&&n.nodes?.includes('1')));
- const sectionNode=descendants(root).find(n=>n.kind==='div'&&n.nodes?.includes('Files · 2000/2000 viewed'));assert.ok(sectionNode);
+ const sectionNode=descendants(root).find(n=>n.kind==='div'&&n.nodes?.includes('Files · 2000'));assert.ok(sectionNode);
 });
 test('reviewed-file updates preserve the 2,000-entry cap and replace an existing key',()=>{
  const comparison={id:'source',repoKey:'r'},file={oldPath:'a',newPath:'a',status:'M',oldOid:'old',newOid:'new'},reviewedFiles=Object.fromEntries(Array.from({length:2000},(_,i)=>[`entry-${i}`,i]));
@@ -76,7 +76,7 @@ test('wrapping uses native measured rows and retains pure exact source snapshots
 test('all-files native clicks carry exact section provenance and headers never become comments',()=>{
  const view=diffView({hunks:[]},null),calls=[];view.allFiles=true;view.requestAllFiles=(id)=>calls.push(['header',id]);view.selectFileLine=(row,id)=>calls.push(['source',row.text,id,row.comparisonId]);view.allFileSections=[{file:{id:'other',newPath:'other.ts'},comparison:{id:'exact'},patch:{hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]}}];
  const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='virtual');list.renderRows();list.handlers.on_item_click('file:other',{});list.handlers.on_item_click('file:other:h0l0',{});
- assert.deepEqual(calls,[['header','other'],['source','code','other','exact']]);
+ assert.deepEqual(calls,[['header','other']]);
 });
 test('All files displays its section headers before an individual file is selected',()=>{
  const view=diffView(null,null);view.controller.state.file=null;view.allFiles=true;view.allFileSections=[{file:{id:'other',newPath:'other.ts'},comparison:{id:'c'},collapsed:true}];
@@ -99,10 +99,10 @@ test('loaded-source find and comment navigation use guarded existing callbacks o
  const root=controls().diffPane(view);for(const id of ['find-previous','find-next'])descendants(root).find(n=>n?.identity===id).handlers.on_click({},{});
  view.controller.state.repo={key:'r'};for(const id of ['comment-previous','comment-next'])descendants(controls().draftsPane(view,{})).find(n=>n?.identity===id).handlers.on_click({},{});assert.deepEqual(calls,[['find',-1],['find',1],['comment',-1],['comment',1]]);assert.ok(descendants(root).some(n=>n?.nodes?.includes('1/1 · loaded context only')));
 });
-test('wrapped source rows route measured-list clicks to the displayed code',()=>{
+test('wrapped source clicks do not create a comment',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'wrapped code'}]}]},null),calls=[];view.readingOptions={wrap:true};view.selectLine=(...args)=>calls.push(args);
  const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='measured');list.handlers.on_item_click('h0l0',{});
- assert.equal(calls[0][3].newLine,9);assert.equal(calls[0][3].text,'wrapped code');
+ assert.deepEqual(calls,[]);
 });
 test('saved general feedback has a review label without a fabricated file anchor',()=>{
  const view=diffView({hunks:[]},null);view.controller.state.repo={key:'repo'};view.controller.session=()=>({drafts:[{id:'general',scope:'general',repoKey:'repo',comparisonId:'c',body:'Review feedback'}]});
@@ -121,9 +121,9 @@ test('a hidden review keeps its diff and file scroll handles detached',()=>{
  view.reviewIsVisible=()=>true;const shown=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');const shownFiles=descendants(controls().filesPane(view)).find(n=>n.kind==='virtual');
  assert.equal(shown.values.track_scroll.name,'diff');assert.equal(shownFiles.values.track_scroll.name,'files');
 });
-test('queued diff clicks keep their displayed line snapshot and cannot target another file',()=>{
+test('plain diff clicks never open a comment, including stale viewports',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'shown code'}]}]},null),calls=[];view.diffChangeKey=()=>view.controller.state.file.newPath;view.selectLine=(...args)=>calls.push(args);const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='virtual');
- list.handlers.on_item_click('h0l0',{});assert.equal(calls[0][3].newLine,9);assert.equal(calls[0][3].text,'shown code');view.controller.state.file={newPath:'another'};list.handlers.on_item_click('h0l0',{});assert.equal(calls.length,1);
+ list.handlers.on_item_click('h0l0',{});assert.deepEqual(calls,[]);view.controller.state.file={newPath:'another'};list.handlers.on_item_click('h0l0',{});assert.deepEqual(calls,[]);
 });
 test('action controls use native Button selection, accessible labels and one activation callback',()=>{
  const ui=controls(),calls=[],button=ui.button('save','Save',(e,cx)=>calls.push(cx),{active:true});assert.equal(button.kind,'Button');assert.equal(button.values.selected,true);assert.equal(button.values.accessibility_label,'Save');button.handlers.on_click({},'context');assert.deepEqual(calls,['context']);
@@ -186,7 +186,7 @@ test('diff file heading uses the shared row style and shows file-list totals, in
  Object.assign(view.controller.state.file,{additions:null,deletions:null});row=header();assert.ok(!row.nodes.some(n=>n.nodes?.includes('+null')||n.nodes?.includes('−null')));
 });
 
-test('large file pane reads session once and calculates progress once per file',()=>{let reads=0,checks=0;const files=Array.from({length:1000},(_,i)=>({id:String(i),newPath:`group-${i%10}/file${i}`,status:'M'})),session={drafts:[]};const view={id:'large',fileTree:true,controller:{state:{repo:{key:'r'},files},session:()=>{reads++;return session;}},isFileReviewed:(_f,s)=>{checks++;assert.equal(s,session);return false;},selectFile(){}};const ui=controls(),root=ui.filesPane(view),nodes=descendants(root),list=nodes.find(n=>n.kind==='virtual'),rows=list.renderRows();assert.equal(reads,1);assert.equal(checks,files.length);assert.ok(nodes.some(n=>n.nodes?.includes(`Files · 0/${files.length} viewed`)));assert.ok(nodes.some(n=>n.kind==='Toggle'&&n.identity==='file-tree'&&n.values.pressed));assert.equal(rows.length,fileRows(files,true).length);assert.equal(checks,files.length);});
+test('large file pane reads session once without calculating viewed progress',()=>{let reads=0,checks=0;const files=Array.from({length:1000},(_,i)=>({id:String(i),newPath:`group-${i%10}/file${i}`,status:'M'})),session={drafts:[]};const view={id:'large',fileTree:true,controller:{state:{repo:{key:'r'},files},session:()=>{reads++;return session;}},isFileReviewed:(_f,s)=>{checks++;assert.equal(s,session);return false;},selectFile(){}};const ui=controls(),root=ui.filesPane(view),nodes=descendants(root),list=nodes.find(n=>n.kind==='virtual'),rows=list.renderRows();assert.equal(reads,1);assert.equal(checks,0);assert.ok(nodes.some(n=>n.nodes?.includes(`Files · ${files.length}`)));assert.ok(nodes.some(n=>n.kind==='Toggle'&&n.identity==='file-tree'&&n.values.pressed));assert.equal(rows.length,fileRows(files,true).length);assert.equal(checks,0);});
 
 test('All files header preparation snapshots session once for a large range',()=>{let reads=0,created=0,notified=0;const saved={reviewedFiles:{}};const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1],Native=new Function('View','FileHeader','reviewedState','class Juhas extends View'+source+'\nreturn Juhas;')(class{},class{},(session,_comparison,file)=>Boolean(session.reviewedFiles[file.id])),v=Object.create(Native.prototype);v.allFiles=true;v.controller={state:{comparison:{id:'c'}},session:()=>{reads++;return structuredClone(saved);}};v.allFileSections=Array.from({length:1000},(_,i)=>({file:{id:String(i)},comparison:{id:'c'},collapsed:true}));const cx={new(){created++;return {release(){}};},notify(){notified++;}};v.prepareFileHeaders(cx);assert.equal(created,1000);assert.equal(reads,1);v.prepareFileHeaders(cx);assert.equal(created,1000);assert.equal(reads,2);assert.equal(notified,0);saved.reviewedFiles[0]=true;v.prepareFileHeaders(cx);assert.equal(reads,3);assert.equal(notified,1);v.controller.state.files=[{id:"0",additions:5,deletions:2}];v.prepareFileHeaders(cx);assert.equal(v.allFileSections[0].file.additions,5);assert.equal(v.allFileSections[0].collapsed,true);assert.equal(notified,2);});
 
@@ -248,5 +248,29 @@ test('searchable selectors use the Select root and a content-sized menu rather t
 test('paired branch row keeps the native remote switch outside its selection button',()=>{
  const local={fullName:'refs/heads/topic'},remote={fullName:'refs/remotes/origin/topic'},choice={id:local.fullName,name:'topic',fullName:local.fullName,local,remote},calls=[];
  const root=controls().optionList('branches',[choice],0,()=>{},()=>calls.push('select'),{selected:'',remoteColumn:true,onRemote:(item,value)=>calls.push([item.name,value])});
- const control=descendants(root).find(n=>n.kind==='Switch');assert.ok(control);assert.equal(control.values.checked,false);assert.ok(!descendants(descendants(root).find(n=>n.kind==='Button')).includes(control));let stopped=0;control.handlers.on_change(true,{stop_propagation(){stopped++;}});assert.equal(stopped,1);assert.deepEqual(calls,[['topic',true]]);
+ assert.ok(!descendants(root).some(n=>n.kind==='svg'&&n.identity==='mods/juhas/icons/check.svg'));const control=descendants(root).find(n=>n.kind==='Switch');assert.ok(control);assert.equal(control.values.checked,false);assert.ok(!descendants(descendants(root).find(n=>n.kind==='Button')).includes(control));let stopped=0;control.handlers.on_change(true,{stop_propagation(){stopped++;}});assert.equal(stopped,1);assert.deepEqual(calls,[['topic',true]]);
+});
+
+
+test('remote-only branch explains its checkmark without a switch',()=>{
+ const remote={fullName:'refs/remotes/origin/topic'},choice={id:remote.fullName,name:'origin/topic',fullName:remote.fullName,local:null,remote};
+ const nodes=descendants(controls().optionList('branches',[choice],0,()=>{},()=>{},{remoteColumn:true}));
+ assert.ok(!nodes.some(n=>n.kind==='Switch'));
+ const mark=nodes.find(n=>n.kind==='svg'&&n.identity==='mods/juhas/icons/check.svg');assert.ok(mark);const holder=nodes.find(n=>n.values?.id==='branches-remote-only-'+remote.fullName);assert.ok(holder);assert.equal(holder.values.w,28);assert.equal(holder.values.h,16);assert.ok('items_center' in holder.values);assert.ok('justify_center' in holder.values);assert.ok(descendants(holder).includes(mark));assert.match(holder.values.tooltip,/no local branch/);assert.match(holder.values.tooltip,/last fetched/);
+});
+
+
+test('comment anchors highlight only their split column and use the current theme',()=>{
+ for(const selected of ['light-selection','dark-selection'])for(const side of ['old','new']){
+ const colors={selected,background:'background',ansi1:'removed',ansi2:'added',accent:'accent'},ui=controls({theme:()=>colors});
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'context',oldLine:7,newLine:10,text:'shared'}]}]},{comparisonId:'c',newPath:'a',side,startLine:side==='old'?7:10,endLine:side==='old'?7:10});view.inlineEditor=null;view.diffMode='split';
+ const root=ui.diffPane(view),list=descendants(root).find(n=>n.kind==='virtual'),pair=list.renderRows()[0];
+ assert.equal(pair.nodes[0].values.bg,side==='old'?selected:'background');assert.equal(pair.nodes[2].values.bg,side==='new'?selected:'background');
+ view.target.newPath='another-file';const other=descendants(ui.diffPane(view)).find(n=>n.kind==='virtual').renderRows()[0];assert.equal(other.nodes[0].values.bg,'background');assert.equal(other.nodes[2].values.bg,'background');
+ }
+});
+
+test('unified anchor highlight supports old context and clears after saving',()=>{
+ const ui=controls({theme:()=>({selected:'selection',background:'background'})}),view=diffView({hunks:[{header:'@@',lines:[{side:'context',oldLine:7,newLine:10,text:'shared'}]}]},{comparisonId:'c',newPath:'a',side:'old',startLine:7,endLine:7});view.inlineEditor=null;
+ const row=()=>descendants(ui.diffPane(view)).find(n=>n.kind==='virtual').renderRows()[0];assert.equal(row().values.bg,'selection');view.target=null;assert.equal(row().values.bg,'background');
 });

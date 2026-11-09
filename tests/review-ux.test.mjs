@@ -35,7 +35,7 @@ test('all-files header width follows the viewport and controls retain their own 
  const node=()=>{let p;const values={};p=new Proxy({values},{get:(t,k)=>k in t?t[k]:(...a)=>{if(k==='when'){if(a[0])a[1](p);}else values[k]=a[0];return p;}});return p;};
  const deps={currentBranchFits,uiMetrics:()=>typography(14,16),div:node,svg:node,fileStatus:node,h_flex:node,popover:(_id,_label,open,_change,content)=>{if(open)content();return node();},theme:()=>({}),text:node,button:(id,label,action)=>{controls.push({id,action});return node();},toggle:(id,label,checked,action)=>{controls.push({id,action});return node();}};
  const Native=new Function('View',...Object.keys(deps),'class FileHeader extends View'+source+'\nreturn FileHeader;')(class{},...Object.values(deps)),header=new Native(),owner={width:600,isFileReviewed:()=>false,headerAction:a=>actions.push(a),allFileSections:[{file:{id:'two',newPath:'two'},comparison:{id:'source'},collapsed:true}]};
- header.init({owner,fileId:'two',comparisonId:'source'});assert.equal(header.render().values.w,600);controls.find(c=>c.id==='viewed-two').action(true,{notify(){},stop_propagation(){}});assert.deepEqual(actions,[{kind:'viewed',fileId:'two',comparisonId:'source',checked:true}]);
+ header.init({owner,fileId:'two',comparisonId:'source'});assert.equal(header.render().values.w,600);assert.ok(!controls.some(c=>c.id==='viewed-two'));controls.find(c=>c.id==='comment-two').action(null,{stop_propagation(){}});assert.deepEqual(actions,[{kind:'comment',fileId:'two',comparisonId:'source'}]);
 });
 test('native panes and review tabs omit the heading while the sidebar retains placement controls',()=>{
  const element=(id)=>{let p;const data={nodes:[]};if(id)data.id=id;p=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...a)=>{if(k==='id')t.id=a[0];else if(k==='child')t.nodes.push(a[0]);else if(k==='children')t.nodes.push(...a[0]);else if(k==='when'){if(a[0])a[1](p);}return p;}});return p;};
@@ -95,4 +95,22 @@ test('branch filtering hides Automatic while preserving both versions of a match
 });
 test('ambiguous automatic bases show candidates first and searching can choose another branch',()=>{
  const {v,nodes,setQuery}=fixture();v.controller.state.automaticChoice={ref:null,reason:'Several bases',candidates:[{ref:'refs/heads/feature/other'}]};assert.deepEqual(v.filteredReferences().map(r=>r.name),['feature/other']);setQuery('xyz');assert.deepEqual(v.filteredReferences().map(r=>r.name),['dev/XYZ-123']);
+});
+
+
+test('remote switch stages the reference until the row is chosen',()=>{
+ const {v,nodes,cx}=fixture();v.controller.state.refs=[{name:'topic',fullName:'refs/heads/topic'},{name:'origin/topic',fullName:'refs/remotes/origin/topic'}];v.panel='refs';v.refIndex=0;
+ let chosen;v.chooseReference=(...args)=>chosen=args;
+ v.referencePicker(false);const options=nodes.find(n=>n[0]==='refs');options[2].onRemote(options[1][0],true,cx);
+ assert.equal(v.panel,'refs');assert.equal(chosen,undefined);assert.equal(v.controller.base(),'');assert.equal(v.filteredReferences()[0].fullName,'refs/remotes/origin/topic');
+ v.chooseReferenceChoice(false,cx);assert.equal(chosen[0],'refs/remotes/origin/topic');
+ options[2].onRemote(options[1][0],false,cx);assert.equal(v.filteredReferences()[0].fullName,'refs/heads/topic');
+});
+
+
+test('fetch keeps the branch picker, query, pending remote choice and comparison',async()=>{
+ const {v,cx}=fixture();v.panel='refs';v.pendingRemoteChoices={topic:true};v.inputs.refQuery.set_value('topic');const comparison=v.controller.state.comparison;
+ v.controller.fetch=async()=>{};v.work=(_cx,action)=>action(cx);v.fetch(cx);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(v.panel,'refs');assert.equal(v.inputs.refQuery.value(),'topic');assert.deepEqual(v.pendingRemoteChoices,{topic:true});assert.equal(v.controller.state.comparison,comparison);assert.equal(v.fetching,false);
+ const {v:picker,nodes}=fixture();picker.referencePicker(false);assert.ok(nodes.some(n=>n[0]==='button'&&n[1]==='fetch-branches'));
 });

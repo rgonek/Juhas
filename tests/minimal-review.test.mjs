@@ -63,11 +63,10 @@ test('file rows expose icon actions and preserve their own source independently 
  const source=readFileSync(new URL('../mods/juhas/file-header.js',import.meta.url),'utf8').split('export default class FileHeader extends View')[1];
  const Native=new Function('View',...Object.keys(deps),'class FileHeader extends View'+source+'\nreturn FileHeader;')(class{},...Object.values(deps)),header=new Native(),file={id:'file',newPath:'src/example.js',status:'A',additions:12,deletions:0};
  const owner={width:600,isFileReviewed:()=>false,headerAction:action=>actions.push(action),allFileSections:[{file,comparison:{id:'original'},collapsed:true}]};
- header.init({owner,fileId:'file',comparisonId:'original'});const root=header.render();assert.equal(root.values.w,600);assert.ok(controls.has('viewed-file')&&controls.has('comment-file'));assert.ok(!controls.has('file-options-file'));assert.ok(!controls.has('path-file'),'the path is part of the one clickable row');assert.equal(controls.get('viewed-file').pressed,false);assert.notEqual(typeof controls.get('viewed-file').node.label,'string');assert.notEqual(typeof controls.get('comment-file').node.label,'string');
+ header.init({owner,fileId:'file',comparisonId:'original'});const root=header.render();assert.equal(root.values.w,600);assert.ok(!controls.has('viewed-file')&&controls.has('comment-file'));assert.ok(!controls.has('file-options-file'));assert.ok(!controls.has('path-file'),'the path is part of the one clickable row');assert.notEqual(typeof controls.get('comment-file').node.label,'string');
  let stopped=0;const clickCx={stop_propagation(){stopped++;}};controls.get('section-file').action(null,clickCx);assert.equal(stopped,1);assert.deepEqual(actions.pop(),{kind:'toggle',fileId:'file',comparisonId:'original'});
  header.hovered=true;header.render();let copied;controls.get('copy-path-file').action(null,{write_to_clipboard:value=>copied=value,stop_propagation(){}});assert.equal(copied,'src/example.js');
- controls.get('viewed-file').action(true,clickCx);assert.equal(stopped,2);assert.deepEqual(actions.pop(),{kind:'viewed',fileId:'file',comparisonId:'original',checked:true});owner.isFileReviewed=()=>true;header.render();assert.equal(controls.get('viewed-file').pressed,true);
- controls.get('comment-file').action(null,clickCx);assert.equal(stopped,3);assert.deepEqual(actions.pop(),{kind:'comment',fileId:'file',comparisonId:'original'});
+ controls.get('comment-file').action(null,clickCx);assert.equal(stopped,2);assert.deepEqual(actions.pop(),{kind:'comment',fileId:'file',comparisonId:'original'});
 });
 
 test('test-file visibility recognizes common projects and languages without matching production names',()=>{
@@ -123,6 +122,6 @@ test('current branch remains visible whenever the names and fixed controls fit',
  assert.equal(currentBranchFits(760,'ui/simplify-review','main',13,'58 files'),true);assert.equal(currentBranchFits(400,'topic','main',13,''),true);assert.equal(currentBranchFits(320,'feature/a-very-long-branch-name','epics/a-long-base',13,''),false);
 });
 
-test('reset-viewed is absent and layout choices are offered only when a panel is visible',()=>{
- const {view,controls,render}=fixture();view.allFiles=true;view.panel='reviewMore';render();assert.ok(!controls.has('reset-viewed'));assert.ok(!controls.has('workspace-layout'));view.showHistory=true;controls.clear();render();assert.ok(controls.has('workspace-layout'));view.showHistory=false;view.allFiles=false;controls.clear();render();assert.ok(controls.has('workspace-layout'));
+test('review toolbar omits the more menu and layout choices',()=>{
+ const {view,controls,render}=fixture();view.allFiles=true;view.panel='reviewMore';render();assert.ok(!controls.has('reset-viewed'));assert.ok(!controls.has('workspace-layout'));view.showHistory=true;controls.clear();render();assert.ok(!controls.has('workspace-layout'));assert.ok(!controls.has('review-more'));view.showHistory=false;view.allFiles=false;controls.clear();render();assert.ok(!controls.has('workspace-layout'));assert.ok(!controls.has('review-more'));
 });

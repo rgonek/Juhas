@@ -6,7 +6,8 @@ import {INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 export default class InlineEditor extends View {
  init(p,cx){this.p=p;this.handle=cx.focus_handle();p.input.set_rows(2);p.input.set_auto_grow(2,5);
   p.input.set_submit_on_enter?.(false);
-  cx.bind_keys([{keystroke:'ctrl-enter',action:'juhas.comment.submit',context:'JuhasComment'},{keystroke:'cmd-enter',action:'juhas.comment.submit',context:'JuhasComment'}]);
+  cx.bind_keys(['JuhasComment','JuhasComment > Input','JuhasComment > Textarea'].flatMap(context=>[{keystroke:'ctrl-enter',action:'juhas.comment.submit',context},{keystroke:'cmd-enter',action:'juhas.comment.submit',context}]));
+  p.input.on('submit',(_event,cx)=>this.submit(cx));
  }
  submit(cx){cx.stop_propagation();if(!this.p.owner.busy)this.p.save();}
  render(){const type=uiMetrics();const p=this.p,t=theme();

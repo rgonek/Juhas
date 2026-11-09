@@ -64,6 +64,6 @@ test('delayed layout restore never records the old expanded state in the new spa
 
 test('Fetch updates references from a local remote and preserves the checked-out branch',async t=>{
  const local=fixture(t),remote=fixture(t),head=local.commit('local');const remoteHead=remote.commit('remote');local.git('remote','add','origin',remote.root);
- const data=new Map(),controller=new Controller({run,store:{get:k=>data.get(k),set:(k,v)=>data.set(k,v)}});await controller.openRepo(null,local.root);await controller.selectScope({kind:'commit',commit:head});await controller.fetch();
+ const data=new Map(),controller=new Controller({run,store:{get:k=>data.get(k),set:(k,v)=>data.set(k,v)}});await controller.openRepo(null,local.root);await controller.selectScope({kind:'commit',commit:head});const comparison=controller.state.comparison,files=controller.state.files,patch=controller.state.patch;await controller.fetch();assert.equal(controller.state.comparison,comparison);assert.equal(controller.state.files,files);assert.equal(controller.state.patch,patch);
  assert.equal(controller.state.refs.find(r=>r.fullName==='refs/remotes/origin/trunk').oid,remoteHead);assert.equal(local.git('rev-parse','HEAD'),head);assert.equal(local.git('branch','--show-current'),'trunk');assert.equal(controller.state.comparison.targetOid,head);assert.equal(local.git('status','--porcelain'),'');
 });

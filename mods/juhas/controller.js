@@ -126,7 +126,7 @@ export class Controller {
  removeComment(id){return this.mutate(s=>({...s,drafts:s.drafts.filter(d=>d.id!==id)}));}
  async markSeen(){const c=this.state.comparison,repo=this.state.repo;if(!c)throw new Error('Choose a comparison');if(c.mutableTarget||!c.targetOid)throw new Error('Checkpoint requires a committed target');const branch=(await this.run(repo,['symbolic-ref','--short','-q','HEAD'])).stdout.trim();if(!branch||branch!==this.state.branch)throw new Error('Branch context changed or detached; refresh before marking seen');if(!await isAncestor(this.run,repo,c.targetOid,'HEAD'))throw new Error('Selected commit is outside the current branch');const checkpoint=await markSeen(this.run,repo,c,branch);this.mutate(s=>({...s,checkpoints:[...s.checkpoints,checkpoint]}));return checkpoint;}
  async lastCheckpoint(){return lastCheckpoint(this.run,this.state.repo,this.state.branch,this.session().checkpoints);}
- async fetch(){const repo=this.state.repo;if(!repo)return;await git(this.run,repo,['fetch','--all','--prune']);await this.refresh();}
+ async fetch(){const repo=this.state.repo,version=this.automaticVersion;if(!repo)return;await git(this.run,repo,['fetch','--all','--prune']);const refs=await listRefs(this.run,repo);if(this.state.repo!==repo||this.automaticVersion!==version)return;this.state.refs=refs;this.onChange();}
  async refresh({preserveComposer=false}={}){
   if(this.refreshPromise)return this.refreshPromise;
   const repo=this.state.repo;if(!repo)return;const run=withGitBudget(this.run);

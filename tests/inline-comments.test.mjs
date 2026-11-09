@@ -14,7 +14,7 @@ test('new and edited composers occupy the exact end-line anchor without breaking
  assert.equal(composerRows(rows,{side:'new',endLine:99}),rows);assert.equal(composerRows([],{side:null})[0].kind,'editor');
 });
 test('saved comment heights are compact, respect explicit lines and remain bounded',()=>{
- assert.equal(commentHeight('one'),68);assert.equal(commentHeight('one\ntwo'),86);assert.equal(commentHeight('one\r\ntwo'),86);assert.equal(commentHeight('line\n'.repeat(50)),158);
+ assert.equal(commentHeight('one'),38);assert.equal(commentHeight('one\ntwo'),59);assert.equal(commentHeight('one\r\ntwo'),59);assert.equal(commentHeight('line\n'.repeat(50)),143);
 });
 
 test('both source sides can annotate a shared context line without losing their original anchors',()=>{

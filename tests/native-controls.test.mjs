@@ -289,6 +289,7 @@ test('empty lines and end-of-line space have exact native selection hit targets'
 test('wrapping keeps a scrollable virtual list and uses retained row height measurements',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'long code'}]}]},null);view.readingOptions={wrap:true};view.diffScroll={name:'retained'};view.diffSelection={heights:new Map([['h0l0',66]]),marked:()=>false};
  const list=descendants(controls().diffPane(view)).find(n=>n.kind==='virtual');assert.ok(list);assert.deepEqual(list.sizes,[66]);assert.equal(list.values.track_scroll,view.diffScroll);
+ const row=list.renderRows()[0];assert.ok('overflow_hidden' in row.values);assert.ok('h_full' in row.values);
 });
 test('selecting a newline also highlights the remaining source-cell space',()=>{
  const ui=controls(),interaction={selected:(start,end)=>start===3&&end===4,down(){},move(){}};

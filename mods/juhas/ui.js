@@ -218,7 +218,8 @@ export function diffPane(view,cx){const type=uiMetrics();
  // Native measured lists ignore track_scroll. Feed retained row measurements
  // back into the variable-height virtual list so wrapping and gestures share a handle.
  const heights=rows.map(r=>view.diffSelection?.heights.get(r.id)??(r.kind==='editor'?type.px(INLINE_EDITOR_HEIGHT):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22)));
- body=virtualList(id,rows,heights,renderRow,click,scroller,null,range=>{if(view.diffSelection)view.diffSelection.visibleRange={start:range.start,end:range.end};});}
+ // Clip to the allocated row while intrinsic wrapping measurements settle.
+ body=virtualList(id,rows,heights,row=>renderRow(row).h_full().overflow_hidden(),click,scroller,null,range=>{if(view.diffSelection)view.diffSelection.visibleRange={start:range.start,end:range.end};});}
  const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
   .on_size_change((size,cx)=>{if(view.diffWidth!==size.width){view.diffWidth=size.width;view.prepareFileHeaders?.(cx);}})

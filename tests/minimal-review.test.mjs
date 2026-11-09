@@ -11,7 +11,7 @@ function fixture(){
  deps.selector=deps.popover;const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
  const Native=new Function('View','isTestFile','currentBranchFits',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},isTestFile,currentBranchFits,...Object.values(deps));
  const view=Object.create(Native.prototype),state={repo:{key:'repo'},branch:'feature/topic',files:[],history:[],refs:[],comparison:{id:'comparison',scope:{kind:'branch'},targetOid:'abcdef0123456789'}};
- Object.assign(view,{id:'review',role:'pane',contextProps:{},config:{},inputs:{},deferSync(){},baseChoice:()=>({ref:'refs/heads/main'}),hasUnsavedComment:()=>false,footer:()=>null,rememberLoadedView(){},controller:{base:()=>'',state,session:()=>({drafts:[]})}});
+ Object.assign(view,{diffViewport:element('diff-content'),id:'review',role:'pane',contextProps:{},config:{},inputs:{},deferSync(){},baseChoice:()=>({ref:'refs/heads/main'}),hasUnsavedComment:()=>false,footer:()=>null,rememberLoadedView(){},controller:{base:()=>'',state,session:()=>({drafts:[]})}});
  const cx={notify(){}},walk=node=>node?[node,...(node.nodes||[]).flatMap(walk)]:[];
  return {view,state,controls,cx,render:()=>walk(view.render(cx))};
 }

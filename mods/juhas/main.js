@@ -1,3 +1,4 @@
+import DiffViewport from './diff-viewport.js';
 import {View,div,svg} from 'gpui-kit';
 import {h_flex,v_flex,InputState,TextareaState,Textarea,Editor,EditorState,h_resizable,v_resizable,resizable_panel,VirtualListScrollHandle} from 'gpui-base';
 import {exec,shared,setShared,props,focused,spaces,panes,terminals,theme,run,appHome,nextCommand,readTextFile,agents,layout} from 'herdr';
@@ -12,7 +13,7 @@ import FileHeader from './file-header.js';
 import DiffRow from './diff-row.js';
 import {DiffSelection} from './diff-selection.js';
 import {buildBatch,createSubmitter,updateBatch,detectRecipient,agentRecipients,isLiveTerminal,MAX_REVIEW_BYTES} from './submit.js';
-import {uiMetrics,button,field,text,section,historyPane,filesPane,diffPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover,selector,optionList,draftsPane,historyLoadingIndicator} from './ui.js';
+import {uiMetrics,button,field,text,section,historyPane,filesPane,nativeFrame,virtualList,checkbox,toggle,buttonGroup,popover,selector,optionList,draftsPane,historyLoadingIndicator} from './ui.js';
 import {expandReview,collapseReview,openReview} from './presentation.js';
 import {rangeSelection,changeGroups,stepChange,splitRows,patchCode,isTestFile,currentBranchFits,branchChoices} from './review-ui.js';
 import {reviewContext,resolveRepositoryScope,allowedRepository,contextStorageKey} from './context.js';
@@ -45,13 +46,14 @@ export default class Juhas extends View {
   this.readingOptions={wrap:false};this.findQuery='';this.findMatches=[];this.findIndex=-1;this.allFiles=true;this.showHistory=false;this.allFileSections=[];
   for(const key of ['refQuery','fileQuery','recipientQuery'])this.inputs[key].on('change',(_e,cx)=>{if(key==='refQuery')this.refIndex=0;cx.notify();});
   this.inputs.find.on('change',(_e,cx)=>this.setFindQuery(this.inputs.find.value(),cx));
+  this.diffViewport=cx.new(DiffViewport,{owner:this});
   this.inlineEditor=cx.new(InlineEditor,{owner:this,input:this.inputs.comment,save:()=>this.headerAction({kind:'save-comment'}),cancel:()=>this.headerAction({kind:'cancel-comment'})});
   this.inputs.folder.on('submit',(_e,cx)=>this.openFolder(this.inputs.folder.value(),cx));
   this.headerQueue=[];cx.spawn(async cx=>{for(;;){const action=await this.nextHeaderAction();if(!action||this.closed)return;if(action.kind==='controller-change'){this.controllerChangeQueued=false;if(this.allFiles&&this.allFilesKey===this.controller?.state.comparison?.id)this.prepareFileHeaders(cx);cx.notify();continue;}if(action.kind==='save-comment'){this.saveComment(cx);continue;}if(action.kind==='cancel-comment'){this.cancelComment(cx);continue;}if(action.kind==='diff-selection'){this.diffSelection?.handle(action.event,cx);continue;}if(action.kind==='diff-row'){this.diffRowAction(action,cx);continue;}if(action.comparisonId!==this.controller.state.comparison?.id)continue;if(action.kind==='toggle')this.requestAllFiles(action.fileId,cx);if(action.kind==='viewed')this.markReviewedFile(action.fileId,action.checked,cx);if(action.kind==='context')this.toggleFileContext(action.fileId,cx);if(action.kind==='comment')this.commentOnFile(action.fileId,cx);this.prepareFileHeaders(cx);cx.notify();}});
   if(this.role!=='bar'){this.activateContext(this.currentContext(),cx);this.setupRefresh(cx);if(p.isReviewTab){let attempts=0;this.tabRegistration=cx.timer.every(100,()=>{if(this.closed||this.registerReviewTab()||++attempts>=30){this.tabRegistration?.cancel();this.tabRegistration=null;}});}}
   cx.spawn(async cx=>{for(;;){const command=await nextCommand();const name=typeof command==='string'?command:command.name;if(name==='preview')this.preview(cx);if(name==='branch'){this.allChangesFrom='branch';this.applyScope('branch',cx);}if(name==='base')this.setReferencePicker(false,true,cx);if(name==='branches')this.setReferencePicker(true,this.panel!=='historyRefs',cx);if(name==='details'){this.detailsOpen=!this.detailsOpen;if(this.detailsOpen)this.work(cx,cx=>this.controller.loadDetails());cx.notify();}if(name==='history')this.toggleHistory(!this.showHistory,cx);if(name==='sources'){this.panel=this.panel==='compareFrom'?null:'compareFrom';this.choosingCommitBase=false;cx.notify();}if(name==='uncommitted')this.chooseReviewSource('uncommitted',cx);if(name==='commit')this.chooseReviewSource('commit',cx);if(name==='all-files')this.toggleAllFiles(!this.allFiles,cx);if(name==='search')this.toggleSearch(!this.searchOpen,cx);if(name==='diff-mode')this.setDiffMode(this.diffMode==='split'?'unified':'split',cx);if(name==='next-change')this.navigateChange(1,cx);if(name==='previous-change')this.navigateChange(-1,cx);if(name==='tree'){this.fileTree=!this.fileTree;cx.notify();}if(name==='whole-file'&&this.controller.state.file)this.toggleFileContext(this.controller.state.file.id,cx);if(name==='comments')this.setUpperView(this.upperView==='comments'?'changes':'comments',cx);if(name==='refresh')this.refreshContext(cx);if(name==='full')this.full();if(name==='terminal')this.terminal();if(name==='sidebar')this.returnToSidebar(cx);if(name==='next-file')this.moveFile(1,cx);if(name==='previous-file')this.moveFile(-1,cx);if(name==='next-commit')this.moveCommit(1,cx);if(name==='previous-commit')this.moveCommit(-1,cx);}});
  }
- close(){this.diffSelection?.close();this.selectionHandle?.release();for(const item of this.diffRowViews?.values()||[])item.entity.release();this.tabRegistration?.cancel();this.headerWake?.(null);for(const item of this.fileHeaderViews?.values()||[])item.release();this.closed=true;this.refreshScheduler?.close();this.diffScroll?.release();this.filesScroll?.release();this.copyEditor?.release();this.inlineEditor?.release();}
+ close(){this.diffSelection?.close();this.selectionHandle?.release();for(const item of this.diffRowViews?.values()||[])item.entity.release();this.tabRegistration?.cancel();this.headerWake?.(null);for(const item of this.fileHeaderViews?.values()||[])item.release();this.closed=true;this.refreshScheduler?.close();this.diffScroll?.release();this.filesScroll?.release();this.copyEditor?.release();this.inlineEditor?.release();this.diffViewport?.release();}
  setupRefresh(cx){
   const coordinator=globalThis[Symbol.for('juhas.refreshCoordinator.v1')]??=createRefreshCoordinator();
   this.refreshScheduler=createRefreshScheduler({timer:cx.timer,coordinator,visible:()=>!this.busy&&this.reviewIsVisible(),key:()=>JSON.stringify([this.id,this.activeContext?.key,this.controller.state.repo?.key]),refresh:cx=>this.poll(cx),onError:(error,cx)=>{if(!this.closed){this.message=error.message;cx.notify();}}});this.refreshScheduler.start();
@@ -78,7 +80,7 @@ export default class Juhas extends View {
  nextHeaderAction(){if(this.headerQueue.length)return Promise.resolve(this.headerQueue.shift());return new Promise(resolve=>this.headerWake=resolve);}
  controllerChanged(){if(this.closed||this.controllerChangeQueued)return;this.controllerChangeQueued=true;this.headerAction({kind:'controller-change'});}
  headerAction(action){if(this.headerWake){const wake=this.headerWake;this.headerWake=null;wake(action);}else (this.headerQueue??=[]).push(action);}
- prepareFileHeaders(cx){if(!this.allFiles||!cx?.new)return;const key=this.controller.state.comparison?.id;if(this.fileHeadersKey!==key){for(const item of this.fileHeaderViews?.values()||[])item.release();this.fileHeaderViews=new Map();this.fileHeaderSignatures=new Map();this.fileHeadersKey=key;}const session=this.controller.session(),files=new Map((this.controller.state.files||[]).map(file=>[file.id,file]));for(const section of this.allFileSections||[]){if(section.comparison?.id===key&&files.has(section.file.id))section.file=files.get(section.file.id);const p={owner:this,fileId:section.file.id,comparisonId:key},signature=JSON.stringify([section.collapsed,section.loading,section.limited,section.file.additions,section.file.deletions,section.file.binary,section.patch?.fullContext,this.isFileReviewed(section.file,session),this.busy,this.diffWidth||this.width]);if(!this.fileHeaderViews.has(section.file.id))this.fileHeaderViews.set(section.file.id,cx.new(FileHeader,p));else if(this.fileHeaderSignatures.get(section.file.id)!==signature)cx.notify(this.fileHeaderViews.get(section.file.id));this.fileHeaderSignatures.set(section.file.id,signature);}}
+ prepareFileHeaders(cx){if(this.diffViewport)cx.notify(this.diffViewport);if(!this.allFiles||!cx?.new)return;const key=this.controller.state.comparison?.id;if(this.fileHeadersKey!==key){for(const item of this.fileHeaderViews?.values()||[])item.release();this.fileHeaderViews=new Map();this.fileHeaderSignatures=new Map();this.fileHeadersKey=key;}const session=this.controller.session(),files=new Map((this.controller.state.files||[]).map(file=>[file.id,file]));for(const section of this.allFileSections||[]){if(section.comparison?.id===key&&files.has(section.file.id))section.file=files.get(section.file.id);const p={owner:this,fileId:section.file.id,comparisonId:key},signature=JSON.stringify([section.collapsed,section.loading,section.limited,section.file.additions,section.file.deletions,section.file.binary,section.patch?.fullContext,this.isFileReviewed(section.file,session),this.busy,this.diffWidth||this.width]);if(!this.fileHeaderViews.has(section.file.id))this.fileHeaderViews.set(section.file.id,cx.new(FileHeader,p));else if(this.fileHeaderSignatures.get(section.file.id)!==signature)cx.notify(this.fileHeaderViews.get(section.file.id));this.fileHeaderSignatures.set(section.file.id,signature);}}
  markFileReviewed(checked,cx){const {comparison,file}=this.controller.state;if(!comparison||!file)return;this.controller.mutate(s=>setFileReviewed(s,comparison,file,checked));cx.notify();}
  moveUnreviewed(direction,cx){const s=this.controller.state,next=nextUnreviewed(this.visibleFiles(),this.controller.session(),s.comparison,s.file?.id,direction);if(next)this.selectFile(next.id,cx);else{this.message='No more unreviewed files';cx.notify();}}
  setFindQuery(query,cx){this.findQuery=query;this.findIndex=-1;if(this.allFiles){this.findMatches=[];for(const section of this.allFileSections||[]){if(section.collapsed||!section.patch||this.hideTests&&isTestFile(section.file))continue;const matches=findInPatch(section.patch,query);const remaining=10000-this.findMatches.length;this.findMatches.push(...matches.slice(0,remaining).map(m=>({...m,fileId:section.file.id})));if(matches.limited||matches.length>remaining)this.findMatches.limited=true;}}else this.findMatches=query&&!(this.hideTests&&isTestFile(this.controller.state.file))?findInPatch(this.controller.state.patch,query):[];cx?.notify();}
@@ -87,7 +89,7 @@ export default class Juhas extends View {
  navigateComment(direction,cx){if(this.hasUnsavedComment()){this.message='Save or cancel the current comment first';cx.notify();return;}const drafts=this.controller.session().drafts.filter(d=>d.repoKey===this.controller.state.repo?.key),current=drafts.findIndex(d=>d.id===(this.commentCursor||this.editId)),index=current<0?(direction>0?0:drafts.length-1):current+direction;if(index<0||index>=drafts.length){this.message='No more comments';cx.notify();return;}this.commentCursor=drafts[index].id;this.openComment(drafts[index],cx);}
  revealSelectedSection(){if(!this.allFiles)return;const s=this.controller.state;if(this.allFilesKey!==s.comparison?.id)this.rebuildAllSections();const section=this.allFileSections?.find(section=>section.file.id===s.file?.id);if(section){section.collapsed=false;section.patch=s.patch;section.limited=false;}}
  rebuildAllSections(){const s=this.controller.state;this.allFilesKey=s.comparison?.id;this.allFileSections=s.files.map(file=>({file,comparison:s.comparison,patch:file.id===s.file?.id?s.patch:null,collapsed:file.id!==s.file?.id}));}
- toggleAllFiles(pressed,cx){this.allFiles=pressed;if(pressed)this.rebuildAllSections();this.prepareFileHeaders(cx);this.setFindQuery(this.findQuery||'',cx);this.rememberLoadedView();}
+ toggleAllFiles(pressed,cx){this.allFiles=pressed;if(pressed)this.rebuildAllSections();this.prepareFileHeaders(cx);this.setFindQuery(this.findQuery||'',cx);this.rememberLoadedView();this.controllerChanged();}
  visibleFiles(){const files=this.controller.state.files||[];return this.hideTests?files.filter(file=>!isTestFile(file)):files;}
  setHideTests(hidden,cx){this.hideTests=hidden;this.changeCursor=null;this.setFindQuery(this.findQuery||'',cx);this.rememberLoadedView();cx.notify();}
  anyFileExpanded(){return (this.allFileSections||[]).some(section=>!section.collapsed&&(!this.hideTests||!isTestFile(section.file)));}
@@ -137,7 +139,7 @@ export default class Juhas extends View {
   const s=this.controller.state;if(!s.patch||s.patch.binary||s.patch.modeOnly)return;
   if(this.hasUnsavedComment()){this.message='Save or cancel the current comment first';cx.notify();return;}
   this.syncCodeFont();
-  this.copyEditor.set_value(patchCode(s.patch,side));this.copySide=side;this.copySource=this.diffChangeKey();this.copyPath=s.file?.newPath;this.panel='copy-code';cx.notify();
+  this.copyEditor.set_value(patchCode(s.patch,side));this.copySide=side;this.copySource=this.diffChangeKey();this.copyPath=s.file?.newPath;this.panel='copy-code';this.controllerChanged();cx.notify();
  }
  diffChangeKey(){const s=this.controller.state;return JSON.stringify([s.comparison?.id,s.file?.id,this.diffMode,Boolean(this.hideTests)]);}
  setDiffMode(mode,cx){this.diffMode=mode;this.changeCursor=null;cx.notify();}
@@ -507,7 +509,8 @@ export default class Juhas extends View {
   const message=this.compactMessage();if(message)notices.push({title:message,detail:message});
   return notices;
  }
- render(cx){const type=uiMetrics();
+ deferDiffViewport(cx){if(!this.diffViewport||!cx?.timer||this.diffViewportQueued)return;this.diffViewportQueued=true;cx.timer.after(1,cx=>{this.diffViewportQueued=false;if(!this.closed)cx.notify(this.diffViewport);});}
+ render(cx){this.deferDiffViewport(cx);const type=uiMetrics();
   if(this.role==='bar')return this.renderBar();this.deferSync(cx);const s=this.controller.state,t=theme();let session;
   try{session=this.controller.session();}catch(e){return text(e.message).p(type.px(20));}
   const switching=this.followContext&&this.currentContext().key!==this.activeContext?.key;
@@ -576,12 +579,12 @@ export default class Juhas extends View {
    else upper.child(this.compact?filesPane(this):h_resizable(`${this.id}-history-files-${(this.width||0)>=900?'wide':'narrow'}`).size_full()
     .child(resizable_panel().size(Math.min(480,Math.max(180,(this.width||520)*0.5))).size_range(180).child(historyPane(this,cx)))
     .child(resizable_panel().size_range(160).child(filesPane(this))));
-   if(this.upperView!=='comments'&&this.allFiles&&!this.showHistory)workspace.child(diffPane(this,cx));
+   if(this.upperView!=='comments'&&this.allFiles&&!this.showHistory)workspace.child(this.diffViewport);
    else workspace.child(this.workspaceLayout==='sidebar'?h_resizable(`${this.id}-files-sidebar`).size_full().min_w(0)
     .child(resizable_panel().size(340).size_range(200).child(upper))
-    .child(resizable_panel().size_range(240).child(diffPane(this,cx))):v_resizable(`${this.id}-lists-diff`).flex_1().min_h(0).w_full()
+    .child(resizable_panel().size_range(240).child(this.diffViewport)):v_resizable(`${this.id}-lists-diff`).flex_1().min_h(0).w_full()
     .child(resizable_panel().size(this.compact?170:230).size_range(100).child(upper))
-    .child(resizable_panel().size_range(100).child(diffPane(this,cx))));
+    .child(resizable_panel().size_range(100).child(this.diffViewport)));
   }
   root.child(workspace);const foot=this.footer(cx);if(foot)root.child(foot);return root;
  }

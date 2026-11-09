@@ -1,5 +1,20 @@
 # Performance
 
+## Diff viewport notification regression (2026-11-09)
+
+In the native All files view, expanding README.md completed its Git read in
+roughly 100–330 ms, but the loading snapshot stayed visible until another
+interaction. Wrapped selectable lines also painted into adjacent rows while
+the virtual list retained their old heights. Native screenshots reproduced
+both symptoms; counting row entities alone did not explain the loading delay.
+
+The diff now has a retained viewport with an explicit notification target.
+Patch completion, intrinsic height measurements and selection edge scrolling
+invalidate that viewport. Rows clip their paint to their allocated height while
+measurements settle. Unified/split rendering, wrapping and source selection/copy
+were exercised in the running Windows app. This is scoped interactive evidence,
+not a measured input-to-frame p95 guarantee.
+
 Initial read-only baseline on a local development repository, 30 warm samples, separate first sample, Git child-process time included:
 
 | Operation | First sample | Warm p95 |

@@ -43,7 +43,7 @@ export class DiffSelection {
   if(event.type==='row-move'){if(event.bounds)this.lastRow={id:event.rowId,bounds:event.bounds};this.scrollTop=null;if(this.drag?.kind!=='comment'||event.rowId===this.drag.end)return;}
   if(event.type==='move'&&this.drag?.kind!=='text')return;
   if(event.type==='copy'){if(!this.owner.inputFocused){const text=this.text();if(text)cx.write_to_clipboard(text);}return;}
-  if(event.type==='measure'){this.measurementQueued=false;cx.notify();return;}
+  if(event.type==='measure'){this.measurementQueued=false;cx.notify(this.owner.diffViewport);return;}
   const before=this.snapshot();
   if(event.type==='clear'){this.stop();this.selection=null;}
   else if(event.type==='cancel'||event.type==='leave'){this.stop();}
@@ -77,7 +77,7 @@ export class DiffSelection {
   if(top==null){top=this.model.rowIndices.get(this.lastRow.id);if(top==null)return;let remaining=this.lastRow.bounds.y-bounds.y;while(top>0&&remaining>0){top--;remaining-=this.height(top);}}
   const visible=this.visibleRange,requested=visible?(direction>0?visible.end:visible.start-1):top+direction;
   const nextTop=Math.max(0,Math.min(this.rows.length-1,requested));if(nextTop===top||visible&&(direction>0?visible.end>=this.rows.length:visible.start<=0))return;
-  this.scrollTop=nextTop;this.owner.diffScroll?.scroll_to_item(nextTop,'top');cx.notify();
+  this.scrollTop=nextTop;this.owner.diffScroll?.scroll_to_item(nextTop,'top');cx.notify(this.owner.diffViewport);
   let index=nextTop,height=0;while(!visible&&index+1<this.rows.length&&height+this.height(index)<p.y-bounds.y){height+=this.height(index);index++;}
   const candidates=this.model.entries.filter(e=>e.displayIndex<=index);
   if(this.drag.kind==='comment'){const match=[...candidates].reverse().find(e=>commentSelection(this.model,this.drag.start,this.drag.side,e.rowId));if(match)this.moveComment(match.rowId);}

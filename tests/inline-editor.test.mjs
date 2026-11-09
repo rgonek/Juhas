@@ -6,9 +6,10 @@ import * as models from '../mods/juhas/review-ui.js';
 import * as submission from '../mods/juhas/submit.js';
 import {Controller} from '../mods/juhas/controller.js';
 import {DiffSelection} from '../mods/juhas/diff-selection.js';
+import {findInPatch} from '../mods/juhas/reading.js';
 function fixture(data=new Map()){
  const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];let serial=0;
- const deps={...comments,...models,...submission,DiffSelection,DiffRow:class{},theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
+ const deps={...comments,...models,...submission,findInPatch,DiffSelection,DiffRow:class{},FileHeader:class{},theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
  const Native=new Function('View',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},...Object.values(deps)),v=Object.create(Native.prototype);
  const patch={hunks:[{header:'@@',lines:[{side:'old',oldLine:1,newLine:null,text:'before'},{side:'new',oldLine:null,newLine:1,text:'after'},{side:'context',oldLine:2,newLine:2,text:'shared'}]}]};
  const comparison={id:'c',repoKey:'r',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40)},files=[{id:'a',newPath:'a',oldPath:'a'},{id:'b',newPath:'b',oldPath:'b'}],saved={drafts:[],submittedBatches:[]};
@@ -108,6 +109,27 @@ test('diff interaction entities are created after render and reused until their 
  v.prepareDiffRows(rows,()=>null,cx,false);assert.equal(created,0);callback(cx);assert.equal(created,1);assert.ok([...v.diffRowViews.values()][0].signature.length<1000);
  v.prepareDiffRows(rows,()=>null,cx,false);callback(cx);assert.equal(created,1);
  v.prepareDiffRows([],()=>null,cx,false);callback(cx);assert.equal(released,1);
+});
+
+test('an async file expansion invalidates the diff viewport explicitly after the patch arrives',async()=>{
+ const {v}=fixture(),viewport={id:'diff-viewport'},notified=[];let complete,task;
+ v.allFiles=true;v.diffViewport=viewport;v.isFileReviewed=()=>false;
+ const comparison=v.controller.state.comparison,file=v.controller.state.files[0];
+ v.allFileSections=[{file,comparison,collapsed:true}];
+ v.controller.readFilePatch=()=>new Promise(resolve=>complete=resolve);
+ const cx={notify:entity=>notified.push(entity),new:()=>({release(){}}),spawn:fn=>task=fn(cx)};
+ v.requestAllFiles(file.id,cx);notified.length=0;
+ const patch={hunks:[{lines:[{side:'new',newLine:1,text:'loaded'}]}]};complete(patch);await task;
+ assert.equal(v.allFileSections[0].patch,patch);assert.equal(v.allFileSections[0].loading,false);
+ assert.ok(notified.includes(viewport),'A child task must invalidate the viewport, not rely on ambient notify ownership');
+});
+
+test('viewport controls also refresh the parent when they change the workspace layout or open the copy viewer',()=>{
+ const {v,cx}=fixture();v.toggleAllFiles(true,cx);
+ assert.ok(v.headerQueue?.some(action=>action.kind==='controller-change'),'File mode changes must rebuild the parent workspace');
+ v.headerQueue=[];v.controllerChangeQueued=false;v.syncCodeFont=()=>false;v.copyEditor={set_value(){}};
+ v.openCodeCopy('new',cx);assert.equal(v.panel,'copy-code');
+ assert.ok(v.headerQueue.some(action=>action.kind==='controller-change'),'The copy viewer lives in the parent');
 });
 
 test('range gestures open the real composer with the exact old-side quote',()=>{

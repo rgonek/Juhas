@@ -25,9 +25,9 @@ Description:
 
 Suggested topics: herdr-mod, herdr, gpui, git, code-review, coding-agents.
 
-Use preview.png as the README and repository preview. It combines an illustration
-with the actual native Juhas view using synthetic data. The separate
-docs/images/review.png contains the same native screenshot without the artwork.
+Use preview.png as the README and repository preview. It is an illustrated
+cover focused on a sample diff and inline feedback, composed for gallery thumbnails.
+docs/images/review.png is the actual native screenshot of the current interface.
 Neither image contains real project paths, agent messages or unrelated spaces.
 
 For community discovery, publish a GitHub repository tagged herdr-mod. Include

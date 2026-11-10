@@ -37,7 +37,7 @@ After installing Juhas, ask the user whether to install the bundled `mods/juhas/
 
 Keep Git access in the controller/domain modules and slow work in native async tasks. Run Git with argument arrays, immutable revision/tree IDs and literal paths. Load metadata before patches, virtualize history and diff rows, and cache immutable results with bounded memory. Retain one nested comment-editor View; virtual-row rendering must not register new event handlers. Submission uses `hc send` with the exact edited preview.
 
-Personal base rules belong in the Herdr-home `juhas.json`. Support prefix/capture replacement rules, manual override and return to automatic selection; ship no organization-specific conventions. Keep `git-review.v1.*` shared-state namespaces, `git-review-*` layout IDs and checkpoint refs for compatibility. The illustrated preview includes an actual native screenshot with synthetic data.
+Personal base rules belong in the Herdr-home `juhas.json`. Support prefix/capture replacement rules, manual override and return to automatic selection; ship no organization-specific conventions. Keep `git-review.v1.*` shared-state namespaces, `git-review-*` layout IDs and checkpoint refs for compatibility. The illustrated preview highlights a sample diff and feedback; docs/images/review.png shows the actual current native interface with synthetic data.
 
 ## Watch out
 

@@ -6,9 +6,9 @@ Review commits one by one, see a branch's combined changes, or inspect
 uncommitted work. Comment beside the code, then send your feedback to the
 coding agent in one review.
 
-![A shepherd and sheep beside a native Juhas review with sample code](preview.png)
+![Juhas code review cover with a sample diff, inline feedback and a sheep illustration](preview.png)
 
-*A native Juhas review with sample data, presented alongside an illustration.*
+*Illustrated cover with a close-up of sample code and feedback. See the native screenshot below for the current interface.*
 
 ## Review workflow
 
@@ -21,7 +21,7 @@ coding agent in one review.
   edit or copy the message, then send it to your agent when you're ready.
 
 Use the sidebar for a quick look, or open beside/below the agent or in a dedicated review tab with Git
-history, a file list or tree, and a full-width Unified or Split diff. Resize the
+history, a file list or tree, and a full-width Unified or Split diff. Toggle Comments, Files and History independently; place each panel above, left or right of the diff. Resize the
 panels to fit the code, and use change navigation to move through the diff.
 Filter changed files by path without changing the open diff. Search review recipients by name, terminal address or directory. Loading indicators show when Git is still working.
 
@@ -31,7 +31,7 @@ rules are yours to configure, with no built-in team conventions.
 
 ## A closer look
 
-![A native Juhas review with sample history, changed files and an inline comment](docs/images/review.png)
+![A native Juhas Changes view with a compact toolbar, sample diff and inline comment](docs/images/review.png)
 
 *A real native review view, using sample code and comments.*
 
@@ -64,11 +64,11 @@ preserving the selected commit, file and unsaved comment. Pane management uses H
 ## Your first review
 
 1. Open **Juhas** in the project you want to review. Use the sidebar actions to open beside the agent, below it, or in a new tab.
-2. Stay in **Commit** to inspect individual commits, or choose **All changes**
-   for the final result. Choose a base branch if one has not been configured.
+2. Start in **Changes** for the branch diff, or choose **Commit** to inspect individual commits
+   one by one. Confirm the inferred base branch or choose another when needed.
 3. Choose **Uncommitted** for working files, or enable **Include uncommitted**
-   in All changes to review commits and later fixes together. Click the code,
-   write feedback and save with **Enter** (**Shift+Enter** adds a new line). Comments can come from
+   in Changes to review commits and later fixes together. Click the code,
+   write feedback and choose **Comment** or press **Ctrl/⌘+Enter** to save (**Enter** adds a new line). Comments can come from
    several commits and still go into one review.
 4. Choose **Submit review**. Check the recipient and message, then **Send review**
    or **Copy**. Unsaved comments offer an explicit Save / Skip / Back choice.

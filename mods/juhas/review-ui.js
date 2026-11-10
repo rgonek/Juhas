@@ -61,9 +61,17 @@ export function filterDrafts(drafts,{repoKey,status='all',source='all'}={}){retu
 // Prefer the configured upstream; otherwise pair a unique same-name remote.
 export function branchChoices(refs,selected=''){
  const remotes=refs.filter(r=>r.fullName.startsWith('refs/remotes/')&&!r.symref),used=new Set(),choices=[];
+ const byFullName=new Map(),byBranch=new Map();
+ for(const remote of remotes){
+  if(!byFullName.has(remote.fullName))byFullName.set(remote.fullName,remote);
+  const name=remote.fullName.slice('refs/remotes/'.length).split('/').slice(1).join('/');
+  const match=byBranch.get(name);
+  if(match){match.count++;if(!match.origin&&remote.name==='origin/'+name)match.origin=remote;}
+  else byBranch.set(name,{first:remote,count:1,origin:remote.name==='origin/'+name?remote:null});
+ }
  for(const local of refs.filter(r=>r.fullName.startsWith('refs/heads/'))){
-  const matches=remotes.filter(r=>r.fullName.slice('refs/remotes/'.length).split('/').slice(1).join('/')===local.name);
-  const remote=remotes.find(r=>r.fullName===local.upstream)||(matches.length===1?matches[0]:matches.find(r=>r.name==='origin/'+local.name))||null;
+  const match=byBranch.get(local.name);
+  const remote=byFullName.get(local.upstream)||(match?.count===1?match.first:match?.origin)||null;
   if(remote)used.add(remote.fullName);const value=remote?.fullName===selected?remote:local;
   choices.push({...value,id:local.fullName,name:local.name,local,remote});
  }

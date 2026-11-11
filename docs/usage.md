@@ -127,7 +127,7 @@ in existing headers, preserve loaded rows and distinguish pagination from
 history refreshes.
 
 
-The comment editor starts at two text lines, grows natively to five and then scrolls. Its diff row uses measured layout while open. Enter saves through the native textarea submit event; Shift+Enter inserts a line break. Older hosts insert a line break before reporting Enter submission, so that inserted line break remains in the saved text. Newer hosts exposing submit-on-enter avoid that extra break. No ancestor keyboard override or host upgrade is used.
+The comment editor starts at two text lines, grows natively to five and then scrolls. Opening or closing it keeps the existing diff scroll surface. In the default unwrapped view, its retained native height updates the virtual row allocation; wrapped source continues to use measured layout. History, Files, saved comments and horizontal diff scrolling have independent retained scroll handles. Enter saves through the native textarea submit event; Shift+Enter inserts a line break. Older hosts insert a line break before reporting Enter submission, so that inserted line break remains in the saved text. Newer hosts exposing submit-on-enter avoid that extra break. No ancestor keyboard override or host upgrade is used.
 
 Opening in a new tab immediately hides the originating legacy sidebar; a native Juhas pane is closed after the review tab is confirmed. Registration identifies the newly created tab instead of trusting the focused tab during init. If tab creation fails, the original view remains available.
 

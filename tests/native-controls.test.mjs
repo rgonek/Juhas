@@ -15,6 +15,27 @@ function controls(overrides={}){
  Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
+test('opening, growing and closing a comment keeps the same diff scroll surface',()=>{
+ for(const allFiles of [false,true])for(const wrap of [false,true])for(const mode of ['unified','split']){
+  const ui=controls(),view=diffView({hunks:[{header:'@@',lines:Array.from({length:1000},(_,i)=>({side:'new',newLine:i+1,text:'code'}))}]},null);
+  view.readingOptions={wrap};view.diffMode=mode;view.diffScroll={};view.allFiles=allFiles;
+  view.allFileSections=[{file:view.controller.state.file,comparison:view.controller.state.comparison,patch:view.controller.state.patch}];
+  const surface=()=>descendants(ui.diffPane(view)).find(n=>['virtual','measured'].includes(n.kind));
+  const before=surface();view.target={comparisonId:'c',newPath:'a',side:'new',endLine:900};
+  const opened=surface();assert.equal(opened.kind,before.kind);assert.equal(opened.identity,before.identity);
+  if(!wrap){view.inlineEditorHeight=180;const grown=surface();assert.equal(grown.identity,before.identity);assert.equal(grown.sizes[view.diffRows.findIndex(row=>row.kind==='editor')],180);}
+  view.target=null;assert.equal(surface().identity,before.identity);
+ }
+});
+
+test('history, saved comments and horizontal diff retain their own scroll handles',()=>{
+ const ui=controls(),view=diffView({hunks:[]},null);view.historyScroll={};view.commentsScroll={};view.horizontalScroll={};
+ view.controller.state.history=[];view.controller.state.repo={key:'r'};
+ assert.equal(descendants(ui.historyPane(view,{})).find(n=>n.kind==='virtual').values.track_scroll,view.historyScroll);
+ assert.ok(descendants(ui.draftsPane(view,{})).some(n=>n?.values?.track_scroll===view.commentsScroll));
+ assert.ok(descendants(ui.diffPane(view)).some(n=>n?.values?.track_scroll===view.horizontalScroll));
+});
+
 test('native Select and Combobox own their open state and dismiss an open list on an outside press',()=>{
  const ui=controls(),changes=[],cx={};const choose=(open,eventCx)=>changes.push([open,eventCx]);
  const select=ui.selector('source','Changes',false,choose,()=>ui.button('option','Changes',()=>{}));assert.equal(select.kind,'Select');assert.equal(select.values.open,false);select.handlers.on_open_change(true,cx);assert.deepEqual(changes.pop(),[true,cx]);
@@ -110,11 +131,11 @@ test('saved general feedback has a review label without a fabricated file anchor
  const view=diffView({hunks:[]},null);view.controller.state.repo={key:'repo'};view.controller.session=()=>({drafts:[{id:'general',scope:'general',repoKey:'repo',comparisonId:'c',body:'Review feedback'}]});
  const root=controls().draftsPane(view,{});assert.ok(descendants(root).some(n=>n?.nodes?.includes('General review')));
 });
-test('measured rows embed the growing retained editor without registering callbacks during layout',()=>{
- const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(Object.hasOwn(list,'sizes'),false);assert.ok(!descendants(root).some(n=>n.identity==='select-code'));
+test('virtual rows embed the growing retained editor without registering callbacks during layout',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(list.sizes[1],comments.INLINE_EDITOR_HEIGHT);assert.ok(!descendants(root).some(n=>n.identity==='select-code'));
 });
 test('binary and mode-only file comments still display the same inline editor',()=>{
- for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='measured'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(Object.hasOwn(list,'sizes'),false);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
+ for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(list.sizes[1],comments.INLINE_EDITOR_HEIGHT);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
 });
 test('a hidden review keeps its diff and file scroll handles detached',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);view.diffScroll={name:'diff'};view.filesScroll={name:'files'};view.reviewIsVisible=()=>false;view.controller.state.repo={key:'r'};view.controller.state.files=[{id:'a',newPath:'a.js',status:'M'}];view.isFileReviewed=()=>false;
@@ -208,8 +229,8 @@ test('live font changes keep diff rows, comments and editor allocations in step 
  for(const size of [14,28,12])for(const mode of ['unified','split']){
   base=size;const scale=size/14,view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'first'},{side:'new',newLine:2,text:'second'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:2});
   view.diffMode=mode;view.controller.session=()=>({drafts:[{id:'saved',comparisonId:'c',newPath:'a',side:'new',endLine:1,body:'note\nsecond line'}]});
-  const list=descendants(ui.diffPane(view)).find(n=>n.kind==='measured'),rows=list.renderRows();
-  assert.equal(Object.hasOwn(list,'sizes'),false);
+  const list=descendants(ui.diffPane(view)).find(n=>n.kind==='virtual'),rows=list.renderRows();
+  assert.equal(list.sizes.at(-1),comments.INLINE_EDITOR_HEIGHT*scale);
   assert.ok(rows.some(row=>row.values.min_h===comments.INLINE_EDITOR_HEIGHT*scale&&row.values.max_h===comments.INLINE_EDITOR_MAX_HEIGHT*scale));
   assert.ok(rows.some(row=>row.values.text_size===`${size/16}rem`));
   assert.ok(rows.some(row=>row.values.h===comments.commentHeight('note\nsecond line')*scale));

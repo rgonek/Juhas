@@ -83,3 +83,14 @@ test('older textarea hosts retain multiline editing and the explicit comment act
 test('native textarea submit saves through the same guarded action',()=>{
  const f=nativeEditorFixture();f.events.get('submit')({},f.cx);assert.equal(f.saves(),1);f.owner.busy=true;f.events.get('submit')({},f.cx);assert.equal(f.saves(),1);
 });
+
+test('native editor height changes wake the owner through its action queue once per size',()=>{
+ const source=readFileSync(new URL('../mods/juhas/inline-editor.js',import.meta.url),'utf8').split('export default class InlineEditor extends View')[1];
+ let resize;const element=new Proxy({},{get:(_target,key)=>(...args)=>{if(key==='on_size_change')resize=args[0];return element;}});
+ const deps={uiMetrics:()=>({px:n=>n}),theme:()=>({}),v_flex:()=>element,h_flex:()=>element,div:()=>element,Textarea:{new:()=>element},text:()=>element,button:()=>element,...comments};
+ const Native=new Function('View',...Object.keys(deps),'class InlineEditor extends View'+source+'\nreturn InlineEditor;')(class{},...Object.values(deps));
+ const actions=[],owner={headerAction:action=>actions.push(action)},editor=new Native();editor.p={owner,input:{}};editor.render();
+ resize({height:112.2});assert.equal(owner.inlineEditorHeight,113);assert.deepEqual(actions,[{kind:'editor-size'}]);
+ resize({height:112.8});resize({height:0});assert.equal(actions.length,1);
+ resize({height:180});assert.equal(owner.inlineEditorHeight,180);assert.equal(actions.length,2);
+});

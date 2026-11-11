@@ -90,7 +90,7 @@ export function draftsPane(view,cx){const type=uiMetrics();
    .child(popover('draft-source',source==='all'?'All comparisons':sourceLabel(sources.find(d=>d.comparisonId===source)||{}),Boolean(view.draftSourcePicker),(open,cx)=>{view.draftSourcePicker=open;cx.notify();},()=>v_flex().size_full().min_h(0)
     .child(button('draft-source-all','All comparisons',(_e,cx)=>choose('all',cx)))
     .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar().children(sources.map(d=>button(`draft-source-${d.id}`,sourceLabel(d),(_e,cx)=>choose(d.comparisonId,cx),{active:source===d.comparisonId,tooltip:`${d.baseOid||'empty'} → ${d.targetOid||'working tree'}`})))),{tooltip:'Filter saved comments by source comparison; Submit review still includes all saved comments'})))
-  .child(v_flex().flex_1().min_h(0).min_w(0).overflow_y_scrollbar()
+  .child(v_flex().id(`${view.id}-saved-comments`).flex_1().min_h(0).min_w(0).overflow_y_scrollbar().when(Boolean(view.commentsScroll),e=>e.track_scroll(view.commentsScroll))
    .when(!visible.length,e=>e.child(text('No saved comments match these filters.',true).p(type.px(10))))
    .children(visible.map(d=>h_flex().gap(6).px(8).py(type.px(4)).items_center()
     .child(v_flex().flex_1().min_w(0).tooltip(`${d.scope==='general'?'General review':d.newPath||d.oldPath}\n${sourceLabel(d)}\n${d.body}`)
@@ -119,7 +119,7 @@ export function historyPane(view,cx){const type=uiMetrics();
    .child(text(ref.current?'\u2713':ref.tag?'\u25c7':'\u2442',true)).child(text(ref.label).min_w(0).truncate().text_ellipsis_middle()))).when(refs.length>1,e=>e.child(text(`+${refs.length-1}`,true).flex_none().tooltip(refs.slice(1).map(ref=>ref.full).join('\n'))))))
   .child(div().flex_1().min_w(0).truncate().text_size(type.body).text_color(c.parents.length>1?t.muted:t.foreground).child(c.subject))
   .when(width>=type.px(900),e=>e.child(div().w(75).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(c.author)))
-  .when(width>=type.px(720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx));
+  .when(width>=type.px(720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx),view.reviewIsVisible?.()===false?null:view.historyScroll);
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  return v_flex().size_full().min_w(0).min_h(0).on_size_change((size,cx)=>{const width=Math.round(size.width);if(view.historyPaneWidth!==width){view.historyPaneWidth=width;cx.notify();}}).child(h_flex().h(type.px(34)).flex_none().items_center().gap(4)
   .child(section(view.historyRef==='all'?'Git history · all branches':view.historyFull?'Git history':s.featureBaseOid?'Git history · branch':'Git history · HEAD').flex_1().min_w(0).truncate())
@@ -208,10 +208,11 @@ export function diffPane(view,cx){const type=uiMetrics();
   if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
- const measured=wrap||rows.some(row=>row.kind==='editor'),id=`${view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':measured?'-editor':''}-${type.body}`;
+ const measured=wrap,id=`${view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}-${type.body}`;
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
- // A growing retained editor has no fixed row height; let the native list measure it.
- body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22)),renderRow,click,scroller);}
+ // Keep the scroll surface when a composer opens. Its retained view reports
+ // its intrinsic height; only wrapped source needs native measured rows.
+ body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?Math.max(type.px(INLINE_EDITOR_HEIGHT),Math.min(type.px(INLINE_EDITOR_MAX_HEIGHT),view.inlineEditorHeight||0)):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22)),renderRow,click,scroller);}
  const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
   .on_size_change((size,cx)=>{if(view.diffWidth!==size.width){view.diffWidth=size.width;view.prepareFileHeaders?.(cx);}})
@@ -236,5 +237,5 @@ export function diffPane(view,cx){const type=uiMetrics();
    .child(text(`${(view.findMatches||[]).length?Math.max(0,(view.findIndex??-1)+1):0}/${(view.findMatches||[]).length}${view.findMatches?.limited?'+ (limit)':''} · loaded context only`,true))
    .child(button('close-search','×',(_e,cx)=>view.toggleSearch?.(false,cx),{tooltip:'Close search (Escape)'}))))
   .when(Boolean(s.patch&&!s.patch.complete),e=>e.child(text(`Incomplete: ${s.patch.reason}`).p(type.px(8)).text_color(t.ansi1)))
-  .child(div().flex_1().min_h(0).min_w(0).w_full().overflow_hidden().child(div().id(`${view.id}-diff-horizontal`).size_full().min_w(0).overflow_x_scrollbar().child(div().min_w(minWidth).w_full().h_full().child(body))));
+  .child(div().flex_1().min_h(0).min_w(0).w_full().overflow_hidden().child(div().id(`${view.id}-diff-horizontal`).size_full().min_w(0).overflow_x_scrollbar().when(Boolean(view.horizontalScroll),e=>e.track_scroll(view.horizontalScroll)).child(div().min_w(minWidth).w_full().h_full().child(body))));
 }

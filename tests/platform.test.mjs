@@ -4,7 +4,19 @@ import {mkdirSync,writeFileSync,symlinkSync,realpathSync} from 'node:fs';
 import {basename,join,resolve} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fixture,gitTool} from './helpers/repos.mjs';
-import {readDirectories} from '../mods/juhas/platform.js';
+import {readDirectories,readWorkspacePaths} from '../mods/juhas/platform.js';
+
+test('workspace discovery lists only files directly in the project directory',async t=>{
+ const f=fixture(t),file=join(f.root,'project ż.code-workspace');
+ mkdirSync(join(f.root,'sub'));
+ writeFileSync(file,'{}');writeFileSync(join(f.root,'sub','hidden.code-workspace'),'{}');
+ writeFileSync(join(f.root,'code-workspace'),'{}');
+ const exec=async(command,args,options)=>{
+  const result=spawnSync(command,args,{cwd:options?.cwd,encoding:'utf8'});
+  return {code:result.status??1,stdout:result.stdout||'',stderr:result.stderr||''};
+ };
+ assert.deepEqual(await readWorkspacePaths(exec,resolve('.'),f.root),[file]);
+});
 
 test('native directory discovery handles spaces and Unicode and lists only immediate directories',async t=>{
  const f=fixture(t),child=join(f.root,"child [one] ' ż");mkdirSync(child);mkdirSync(join(child,'nested'));writeFileSync(join(f.root,'ordinary.txt'),'file');

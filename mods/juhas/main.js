@@ -4,7 +4,7 @@ import {exec,shared,setShared,props,focused,spaces,panes,terminals,theme,run,app
 import {Controller} from './controller.js';
 import {createRunner,uid,fingerprint,utf8Bytes} from './git.js';
 import {createCache} from './cache.js';
-import {readDirectories} from './platform.js';
+import {readDirectories,readWorkspacePaths} from './platform.js';
 import {resolveConfig,suggestBases,selectBase,readLocalConfig} from './config.js';
 import {commentTarget,annotatePatch,composerRows,measuredCommentRows} from './comments.js';
 import InlineEditor from './inline-editor.js';
@@ -176,7 +176,7 @@ export default class Juhas extends View {
   if(!pane){const candidates=record?.previousTabIds?live.filter(p=>!record.previousTabIds.includes(p.tab)):live.filter(p=>p.tab!==this.contextProps.reviewContext?.tabId&&space.tabs.some(t=>t.id===p.tab&&t.name===`Review · ${String(this.contextProps.folder||'').replace(/\\/g,'/').split('/').at(-1)}`));if(candidates.length===1)pane=candidates[0];}
   if(!pane)return false;
   // Discovery may resolve a parent folder to its repository after the tab opens.
-  const repo=this.controller.state.repo,canonicalKey=repo?reviewTabKey(repo,space.id):key;
+  const repo=this.controller.state.repo,canonicalKey=repo&&!record?.tabId?reviewTabKey(repo,space.id):key;
   if(canonicalKey!==key){
    const existing=shared(canonicalKey);
    if(liveReviewTab(existing,spaces(),panes())){
@@ -204,8 +204,9 @@ export default class Juhas extends View {
   if(liveReviewTab(record,spaces(),panes())){setShared(key,{...record,sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':origin?.paneId?'pane':record.sourcePresentation||'sidebar'});setShared(contextStorageKey('selection',record.sessionId,record.context),shared(this.selectionKey));run('tab.select',{id:record.tabId});this.closeReviewOrigin(origin);return;}
   if(record?.opening&&Date.now()-record.opening<5000)return;
   const p={...reviewTabProps(repo,this.activeContext,this.sessionId),config:this.contextProps?.config},selectionKey=contextStorageKey('selection',this.sessionId,p.reviewContext);
+  p.reviewContext.folder=this.activeContext?.folder||repo.root;
   setShared(selectionKey,shared(this.selectionKey));for(const kind of ['composer','review']){const previous=shared(contextStorageKey(kind,this.sessionId,this.activeContext));if(previous)setShared(contextStorageKey(kind,this.sessionId,p.reviewContext),previous);}
-  const snapshot=this.viewSnapshots().get(this.selectionKey);if(snapshot)this.viewSnapshots().set(selectionKey,{...snapshot,policy:{...snapshot.policy,repos:[repo],kind:'single',canSwitch:false}});
+  const snapshot=this.viewSnapshots().get(this.selectionKey);if(snapshot)this.viewSnapshots().set(selectionKey,snapshot);
   setShared(key,{opening:Date.now(),sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':'pane',origin,previousTabIds:spaces().find(space=>space.id===this.activeContext?.spaceId)?.tabs?.map(tab=>tab.id)||[]});run('tab.new',{name:`Review · ${repo.root.replace(/\\/g,'/').split('/').at(-1)}`,space:this.activeContext?.spaceId,folder:repo.root,mod:'juhas',props:p});if(origin?.sidebar)this.closeReviewOrigin(origin);
  }
  returnToSidebar(cx){
@@ -257,9 +258,7 @@ export default class Juhas extends View {
   const controller=this.controller;
   this.work(cx,async cx=>{
    await this.loadConfig();
-   const scopeKey=JSON.stringify([context.machine,context.folder,this.config.maxDepth,this.config.maxRepos]);
-   if(!scopeCache.has(scopeKey)){const pending=resolveRepositoryScope(controller.run,(machine,path)=>readDirectories(exec,appHome(),machine,path),context,{maxDepth:this.config.maxDepth,maxRepos:this.config.maxRepos});scopeCache.set(scopeKey,pending);pending.catch(()=>scopeCache.delete(scopeKey));if(scopeCache.size>32)scopeCache.delete(scopeCache.keys().next().value);}
-   const policy=await scopeCache.get(scopeKey);if(this.activeContext?.key!==context.key)return;this.policy={...policy,ready:true};
+   const policy=await this.repositoryScope(controller,context);if(this.activeContext!==context||this.closed)return;this.policy={...policy,ready:true};
    const rawSelection=shared(this.selectionKey)||shared(`git-review.v1.selection.${this.sessionId}`),selection=this.supportedSelection(rawSelection)?rawSelection:null;
    const repo=allowedRepository(policy,selection?.root)||policy.repos[0];if(!repo)return;
    await controller.openRepo(context.machine,repo.root,{repo,loadHistory:false});if(this.activeContext?.key!==context.key)return;
@@ -271,6 +270,22 @@ export default class Juhas extends View {
    const oldComposer=shared(`git-review.v1.composer.${this.sessionId}`);if(shared(this.composerKey)==null&&oldComposer?.target?.repoKey===repo.key)setShared(this.composerKey,oldComposer);
    this.publish();this.registerReviewTab();
   });
+ }
+ repositoryScope(controller,context,reload=false){
+  const key=JSON.stringify([context.machine,context.folder,this.config.maxDepth,this.config.maxRepos]);
+  if(reload||!scopeCache.has(key)){
+   const readWorkspaceFiles=async (_machine,root)=>{
+    const paths=await readWorkspacePaths(exec,appHome(),root);
+    return Promise.all(paths.map(async path=>{
+     try{return {path,text:await readTextFile(path)};}catch{return {path,text:null};}
+    }));
+   };
+   const pending=resolveRepositoryScope(controller.run,(machine,path)=>readDirectories(exec,appHome(),machine,path),context,{maxDepth:this.config.maxDepth,maxRepos:this.config.maxRepos,readWorkspaceFiles});
+   scopeCache.set(key,pending);
+   pending.catch(()=>{if(scopeCache.get(key)===pending)scopeCache.delete(key);});
+   if(scopeCache.size>32)scopeCache.delete(scopeCache.keys().next().value);
+  }
+  return scopeCache.get(key);
  }
  async loadConfig(){
   this.localConfigPromise??=readLocalConfig(readTextFile,appHome()+'/juhas.json',appHome()+'/git-review.json').catch(error=>{this.localConfigPromise=null;throw error;});
@@ -375,10 +390,31 @@ export default class Juhas extends View {
   this.restoringComposer=true;try{for(const [key,value] of Object.entries(snapshot.fields))this.inputs[key]?.set_value(value);}finally{this.restoringComposer=false;}
   this.seenSelection=JSON.stringify(selected);this.restoreBase();cx.notify();return true;
  }
- refreshContext(cx){this.presentationLoads?.delete(this.controller);this.presentationSignature=null;this.localConfigPromise=null;scopeCache.clear();this.viewSnapshots().set(this.selectionKey,null);return cx.spawn(async cx=>{try{await this.loadConfig();await this.poll(cx);}catch(error){this.message=error.message;cx.notify();}});}
+ refreshContext(cx){
+  const context=this.activeContext,controller=this.controller;
+  if(!context||this.busy)return;
+  const version=this.discoveryVersion=(this.discoveryVersion||0)+1;
+  const current=()=>!this.closed&&this.activeContext===context&&this.controller===controller&&this.discoveryVersion===version;
+  this.presentationLoads?.delete(controller);this.presentationSignature=null;this.localConfigPromise=null;
+  this.viewSnapshots().set(this.selectionKey,null);
+  return cx.spawn(async cx=>{
+   try{
+    await this.loadConfig();
+    if(!current())return;
+    const policy=await this.repositoryScope(controller,context,true);
+    if(!current())return;
+    this.policy={...policy,ready:true};
+    cx.notify();
+    if(!allowedRepository(policy,controller.state.repo?.root)&&policy.repos.length&&!this.hasUnsavedComment()){
+     await this.switchRepository(policy.repos[0],cx);
+    }else await this.poll(cx);
+   }catch(error){if(current()){this.message=error.message;cx.notify();}}
+  });
+ }
  publish(){const s=this.controller.state;if(!s.repo||(this.followContext&&!this.activeContext))return;if(this.inputs.find){if(this.allFiles&&this.allFilesKey!==s.comparison?.id)this.rebuildAllSections();const findSource=JSON.stringify([s.comparison?.id,s.file?.id,this.allFiles]);if(this.findSource!==findSource){this.findSource=findSource;this.setFindQuery(this.findQuery||'');}}const selection={root:s.repo.root,machine:s.repo.machine,scope:s.comparison?.scope,comparison:s.comparison,fileId:s.file?.id,allChangesFrom:this.allChangesFrom||'branch',includeWorking:Boolean(this.includeWorking),manualCommitBase:this.manualCommitBase||null,version:uid()};this.seenSelection=JSON.stringify(selection);setShared(this.selectionKey,selection);this.rememberLoadedView();}
  sync(cx){if(this.role==='bar'||this.busy)return;const rawSelection=shared(this.selectionKey),selected=this.supportedSelection(rawSelection)?rawSelection:null;const key=JSON.stringify(selected);if(!selected||key===this.seenSelection)return;this.seenSelection=key;
   if(this.policy?.ready&&!allowedRepository(this.policy,selected.root))return;
+  if(this.controller.state.repo?.root!==selected.root&&this.hasUnsavedComment())return;
   if(this.restoreLoadedView(selected,cx))return;
   this.work(cx,async cx=>{if(this.controller.state.repo?.root!==selected.root){this.resetRepositoryFields();await this.controller.openRepo(selected.machine,selected.root);}this.includeWorking=Boolean(selected.includeWorking||selected.scope?.includeWorking);this.allChangesFrom=selected.allChangesFrom==='commit'||selected.scope?.kind==='range'&&!selected.scope.includeBase?'commit':'branch';this.manualCommitBase=selected.manualCommitBase||(selected.scope?.kind==='range'&&!selected.scope.includeBase?selected.scope.base:null);this.lastAppliedFrom=this.allChangesFrom;if(selected.comparison&&(selected.comparison.id!==this.controller.state.comparison?.id||JSON.stringify(selected.comparison.scope)!==JSON.stringify(this.controller.state.comparison?.scope)))await this.controller.selectResolved(selected.comparison);else if(!selected.comparison&&selected.scope&&JSON.stringify(selected.scope)!==JSON.stringify(this.controller.state.comparison?.scope))await this.controller.selectScope(selected.scope);if(selected.fileId&&selected.fileId!==this.controller.state.file?.id)await this.controller.selectFile(selected.fileId);this.inputs.folder.set_value(selected.root);this.restoreBase();if(this.controller.setHistoryBase)await this.updateFeatureHistory();});
  }
@@ -393,7 +429,44 @@ export default class Juhas extends View {
   cx.timer.after(1,cx=>{this.syncQueued=false;if(this.closed)return;if(this.followContext&&this.currentContext().key!==this.activeContext?.key){this.activateContext(this.currentContext(),cx);return;}this.sync(cx);this.syncComposer(cx);if(codeFontChanged&&this.syncCodeFont())cx.notify();});
  }
  resetRepositoryFields(){this.historyRef='HEAD';this.historyFull=false;this.allChangesFrom='branch';this.lastAppliedFrom='branch';this.manualCommitBase=null;this.rangeAnchor=null;this.rangePicking=false;this.commitAnchor=null;for(const key of ['target','query','author','path','fileQuery','recipientQuery'])this.inputs[key]?.set_value(key==='target'?'HEAD':'');}
- openFolder(folder,cx){if(!this.policy?.canSwitch||!allowedRepository(this.policy,folder)){this.message='Repository selection is limited to the active project directory';cx.notify();return;}this.work(cx,async cx=>{this.resetRepositoryFields();await this.controller.openRepo(this.activeContext?.machine||null,folder);this.inputs.folder.set_value(folder);this.restoreBase();await this.updateFeatureHistory();await this.selectInitialScope();this.publish();});}
+ openFolder(folder,cx){
+  if(this.busy)return;
+  const repo=allowedRepository(this.policy,folder);
+  if(!this.policy?.canSwitch||!repo){this.message='Repository selection is limited to the active project directory';cx.notify();return;}
+  if(repo.key===this.controller.state.repo?.key){this.panel=null;cx.notify();return;}
+  if(this.hasUnsavedComment()){this.message='Save or cancel the current comment before switching repositories';cx.notify();return;}
+  return this.switchRepository(repo,cx);
+ }
+ switchRepository(repo,cx){
+  const context=this.activeContext,previous=this.controller;
+  const key=root=>JSON.stringify([context.key,root]);
+  const fields=['target','query','author','path','fileQuery','recipientQuery','find'];
+  const options=['historyRef','historyFull','allChangesFrom','includeWorking','manualCommitBase','hideTests'];
+  this.repositoryViews??=new Map();
+  const old=previous.state.repo;
+  if(old)this.repositoryViews.set(key(old.key),{controller:previous,
+   options:Object.fromEntries(options.map(name=>[name,this[name]])),
+   fields:Object.fromEntries(fields.map(name=>[name,this.inputs[name]?.value()]))});
+  const saved=this.repositoryViews.get(key(repo.key));
+  const controller=saved?.controller||new Controller({run:previous.run,store,sessionId:this.sessionId,cache,onChange:()=>this.controllerChanged()});
+  return this.work(cx,async cx=>{
+   if(!saved)await controller.openRepo(repo.machine,repo.root,{repo,loadHistory:false});
+   if(this.closed||this.activeContext!==context||this.controller!==previous)return;
+   this.controller=controller;
+   this.target=null;this.selectedStart=null;this.editId=null;this.composerComparison=null;this.batch=null;this.panel=null;
+   this.restoringComposer=true;
+   try{this.inputs.comment?.set_value('');this.resetRepositoryFields();}finally{this.restoringComposer=false;}
+   this.includeWorking=false;this.hideTests=false;
+   this.inputs.folder.set_value(repo.root);
+   if(saved){
+    Object.assign(this,saved.options);this.lastAppliedFrom=this.allChangesFrom;
+    for(const [name,value] of Object.entries(saved.fields))if(value!==undefined)this.inputs[name]?.set_value(value);
+   }
+   this.restoreBase();
+   if(!saved){await this.updateFeatureHistory();if(this.controller===controller)await this.selectInitialScope();}
+   if(this.controller===controller&&!this.closed)this.publish();
+  });
+ }
  filters(){return {ref:this.historyRef,exclude:!this.historyFull&&this.historyRef==='HEAD'?this.controller.state.featureBaseOid:null,remotes:this.remotes,query:this.inputs.query.value(),author:this.inputs.author.value(),path:this.inputs.path.value()};}
  selectCommit(oid,cx){
   this.handle.focus();this.selectedStart=null;this.pendingScope=null;
@@ -563,7 +636,6 @@ export default class Juhas extends View {
   const size=(size,cx)=>{if(this.height!==size.height||this.width!==size.width){this.height=size.height;this.width=size.width;this.prepareFileHeaders(cx);cx.notify();}};
   if(switching&&!s.repo)return nativeFrame(this.id,{framed:this.role==='sidebar'}).when(this.role==='sidebar',e=>e.child(header)).child(text('Reading active project…',true).p(type.px(14)));
   if(this.panel==='submit')return nativeFrame(this.id,{framed:this.role==='sidebar'}).on_size_change(size).when(this.role==='sidebar',e=>e.child(header)).child(h_flex().min_h(type.px(42)).flex_none().px(14).py(type.px(8)).items_center().child(text(`Review · ${this.batch?.draftIds.length||0} ${this.batch?.draftIds.length===1?'comment':'comments'}`).font_semibold().text_size(type.heading))).when(Boolean(this.message),e=>e.child(text(this.message,true).px(14).py(type.px(4)))).when(Boolean(this.omittedComposer&&this.hasUnsavedComment()),e=>e.child(text('Unsaved comment omitted; its text is retained.',true).px(14).py(type.px(4)))).child(this.footer(cx));
-  const repositoryPicker=popover('context-repos',`${String(s.repo?.root||this.activeContext?.folder||'Repositories').replace(/\\/g,'/').split('/').filter(Boolean).at(-1)} ▾`,this.panel==='repos',(open,cx)=>{this.panel=open?'repos':null;cx.notify();},()=>v_flex().size_full().min_h(0).child(section('Repositories')).child(v_flex().flex_1().min_h(0).overflow_y_scrollbar().children((this.policy?.repos||[]).map(repo=>button(repo.key,text(repo.root).max_w(340).min_w(0).truncate().text_ellipsis_start(),(_e,cx)=>{this.panel=null;this.openFolder(repo.root,cx);},{active:repo.key===s.repo?.key,tooltip:repo.root}).justify_start()))),{tooltip:s.repo?.root||'Choose repository'});
   const mode=s.pendingScope?(s.pendingScope.kind==='commit'?'commit':s.pendingScope.kind==='working-tree'?'uncommitted':'all'):this.reviewMode(),from=this.allChangesFrom||'branch',comparison=s.comparison,advancedRange=comparison?.scope.kind==='range'&&comparison.scope.includeBase;
   const sourceLabel=mode==='uncommitted'?'Uncommitted':mode==='commit'?'Commit':advancedRange?'Range':from==='commit'?'Since commit':'Changes';
   const targetLabel=s.branch&&s.branch!=='(detached)'?s.branch:comparison?.targetOid?.slice(0,8)||'HEAD';
@@ -572,8 +644,23 @@ export default class Juhas extends View {
   const baseLabel=from==='branch'?`Base: ${baseName} · ${this.baseChoice()?.reason||this.baseSource||'automatic'}`:`Base: ${this.manualCommitBase?.slice(0,8)||'choose commit'} · manual`;
   const showCurrent=currentBranchFits(this.width?Math.max(1,this.width-type.px(narrow?280:430)):undefined,targetLabel,from==='branch'?baseName:this.manualCommitBase?.slice(0,8),type.fontSize,'');
   const notices=this.reviewNotices();
+  const repoName=repo=>repo?.name||repo?.root?.replace(/\\/g,'/').split('/').filter(Boolean).at(-1)||'Repository';
+  const activeRepo=(this.policy?.repos||[]).find(repo=>repo.key===s.repo?.key)||s.repo;
+  const repoLabel=text(repoName(activeRepo)).min_w(0).max_w(type.px(tight?240:144)).truncate().text_ellipsis_middle();
+  const repositoryControl=()=>this.policy?.canSwitch
+   ?selector('context-repos',h_flex().min_w(0).items_center().gap(4).child(repoLabel).child('▾'),this.panel==='repos',(open,cx)=>{
+    if(open||this.panel==='repos'){this.panel=open?'repos':null;cx.notify();}
+   },()=>v_flex().min_h(0).max_h(type.px(240)).overflow_y_scrollbar().children(this.policy.repos.map(repo=>
+    button(repo.key,v_flex().min_w(0)
+     .child(text(repoName(repo)).truncate())
+     .child(text(repo.root,true).text_size(type.caption).truncate().text_ellipsis_start()),
+    (_event,cx)=>this.openFolder(repo.root,cx),{active:repo.key===s.repo?.key,tooltip:repo.root}).w_full().justify_start()
+   )),{tooltip:s.repo?.root||'Choose repository',width:type.px(320)})
+   :repoLabel.tooltip(s.repo?.root||'Repository');
   const scope=v_flex().px(8).pt(8).pb(6).gap(5)
+   .when(tight&&Boolean(s.repo),e=>e.child(h_flex().id('repository-toolbar').min_w(0).items_center().child(repositoryControl())))
    .child(h_flex().id('review-toolbar').min_h(type.px(34)).min_w(0).gap(4).items_center()
+    .when(!tight&&Boolean(s.repo),e=>e.child(repositoryControl()))
     .child(h_flex().id('comparison-baseline').flex_1().min_w(0).items_center().gap(4)
      .child(selector('compare-from',tight?h_flex().gap(2).items_center().child(svg('mods/juhas/icons/all-files.svg').size(15)).child(svg('mods/juhas/icons/chevron-down.svg').size(10)):`${sourceLabel} ▾`,this.panel==='compareFrom',(open,cx)=>{if(open||this.panel==='compareFrom'){this.panel=open?'compareFrom':null;this.choosingCommitBase=false;if(open)this.sourceChoice=this.reviewMode()==='commit'?2:this.reviewMode()==='uncommitted'?1:this.allChangesFrom==='commit'?3:0;cx.timer?.after(1,()=>{if(!this.closed&&this.panel==='compareFrom')this.scopeListFocus?.focus();});}cx.notify();},()=>this.compareFromPicker(),{tooltip:'Choose which changes to review · '+sourceLabel,width:240,height:this.choosingCommitBase?300:200,triggerFocus:this.scopeTriggerFocus,listFocus:this.scopeListFocus,context:'JuhasSourcePicker',onMove:(delta,cx)=>this.moveSourceChoice(delta,cx),onChoose:cx=>this.chooseSourceChoice(cx)}))
      .when(mode==='all'&&!advancedRange,e=>e
@@ -583,7 +670,6 @@ export default class Juhas extends View {
      .when(mode==='commit',e=>e.child(button('choose-review-commit',comparison?.targetOid?.slice(0,8)||'HEAD',(_e,cx)=>this.toggleHistory(true,cx),{tooltip:'Choose a commit in Git history'})))
      .when(mode==='all'&&!advancedRange,e=>e.child(toggle('include-working',svg('mods/juhas/icons/file-pen-line.svg').size(15),Boolean(this.includeWorking),(checked,cx)=>{this.includeWorking=checked;this.applyAllChanges(cx);},{tooltip:'Include uncommitted changes'}).w(28).px(0))))
 
-    .when(Boolean(this.policy?.canSwitch),e=>e.child(repositoryPicker))
      .when(Boolean(notices.length),e=>e.child(popover('review-status',`${notices[0].title.length>28?notices[0].title.slice(0,27)+'…':notices[0].title}${notices.length>1?' · +'+(notices.length-1):''}`,this.panel==='reviewStatus',(open,cx)=>{if(open||this.panel==='reviewStatus')this.panel=open?'reviewStatus':null;cx.notify();},()=>v_flex().size_full().min_h(0).overflow_y_scrollbar().p(type.px(10)).gap(8).children(notices.map(n=>text(n.detail))),{tooltip:notices.map(n=>n.detail).join('\n')})))
      .when(Boolean(s.branchChanged),e=>e.child(button('adopt-branch','Review current branch',(_e,cx)=>this.reviewCurrentBranch(cx),{tooltip:`Checkout changed to ${s.branchChanged?.current}; original review retained until you choose to switch` })))
      .when(Boolean(s.newHead),e=>e.child(button('review-latest',narrow?svg('mods/juhas/icons/refresh.svg').size(15):'Newer version',(_e,cx)=>this.reviewLatest(cx),{tooltip:`Open latest HEAD ${s.newHead}; the selected source stays pinned until you choose to switch`})))
@@ -601,6 +687,9 @@ export default class Juhas extends View {
    .when(Boolean(s.refreshError),e=>e.child(text(`Refresh failed · ${s.refreshError} · previous view retained`,true).px(10).py(type.px(4))))
    ;
   const workspace=v_flex().flex_1().min_h(0).min_w(0);
+  const discoveryNotes=[...(this.policy?.warnings||[])];
+  if(this.policy?.complete===false&&!this.activeContext?.machine)discoveryNotes.push('Repository search was limited');
+  if(discoveryNotes.length)root.child(text(discoveryNotes.length===1?discoveryNotes[0]:`${discoveryNotes.length} repository discovery notices`,true).px(10).truncate().tooltip(discoveryNotes.join('\n')));
   if(!s.repo)workspace.child(text(this.busy?'Reading repositories in the active directory…':'No Git repositories found in the active directory.').p(type.px(14)));
   else if(s.empty&&!s.comparison?.mutableTarget)workspace.child(text('This repository has no commits yet; choose Uncommitted.').p(type.px(16)));
   else {

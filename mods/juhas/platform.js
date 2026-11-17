@@ -7,3 +7,12 @@ export async function readDirectories(exec,appHome,machine,root){
  const pattern=root.replace(/[\\*?\[\]]/g,'\\$&');const r=await exec('find',[root,'-path',pattern,'-o','-prune','-type','d','-print0']);if(r.code!==0)throw new Error(r.stderr||'Cannot list directories');
  return r.stdout.split('\0').filter(Boolean).map(path=>({path,isDirectory:true,isLink:false}));
 }
+export async function readWorkspacePaths(exec,appHome,root){
+ const windows=/^[a-z]:[\\/]|^[\\/]{2}/i.test(root);
+ const result=windows
+  ?await exec('powershell.exe',['-NoProfile','-NonInteractive','-File',`${appHome}/mods/juhas/helpers/list-directories.ps1`,'-Root',root,'-Workspaces'])
+  :await exec('find',['.','!','-name','.','-prune','-type','f','-name','*.code-workspace','-print0'],{cwd:root});
+ if(result.code!==0)throw new Error(result.stderr||'Cannot list workspace files');
+ return windows?result.stdout.split(/\r?\n/).filter(Boolean)
+  :result.stdout.split('\0').filter(Boolean).map(path=>root.replace(/\/$/,'')+'/'+path.slice(2));
+}

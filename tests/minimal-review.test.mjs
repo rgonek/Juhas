@@ -134,6 +134,22 @@ test('review toolbar keeps baseline on the left and panel refresh summary submit
 test('compact counts use at most three digits and promote a rounded 1000 to the next suffix',()=>{
  const {view}=fixture();for(const [value,want] of [[0,'0'],[999,'999'],[1000,'1k'],[1234,'1.23k'],[12345,'12.3k'],[123456,'123k'],[999499,'999k'],[999500,'1M'],[1000000,'1M'],[123456789,'123M'],[Number.MAX_SAFE_INTEGER,'9.01Q']]){const result=view.compactCount(value);assert.equal(result,want);assert.ok(result.replace(/\D/g,'').length<=3);}assert.equal(view.compactCount(null),'…');
 });
+test('repository selection precedes comparison and has its own row in a narrow pane',()=>{
+ const {view,state,render}=fixture();
+ const a={key:'a',root:'/workspace/a',name:'Primary'},b={key:'b',root:'/workspace/b'};
+ state.repo=a;view.policy={repos:[a,b],canSwitch:true};
+ for(const width of [900,450]){
+  view.width=width;
+  const nodes=render(),toolbar=nodes.find(n=>n.id==='review-toolbar');
+  const repoRow=nodes.find(n=>n.id==='repository-toolbar');
+  const container=width===450?repoRow:toolbar;
+  assert.ok(container);
+  assert.equal(container.nodes[0].id,'context-repos');
+  assert.equal(Boolean(repoRow),width===450);
+ }
+ view.policy={repos:[a],canSwitch:false};
+ assert.ok(!render().some(n=>n.id==='context-repos'));
+});
 test('summary click shows colored compact line counts and tooltip keeps exact complete totals',()=>{
  const {view,state,controls,cx,render}=fixture();state.comparison.commitCount=20;state.files=[{additions:123456,deletions:1200},{additions:90,deletions:34},{binary:true,additions:null,deletions:null}];
  render();let summary=controls.get('review-summary');assert.ok(summary);assert.match(summary.options.tooltip,/3 files/);assert.match(summary.options.tooltip,/20 commits/);assert.match(summary.options.tooltip,/123,546/);assert.match(summary.options.tooltip,/1,234/);assert.ok(summary.options.tooltip.includes('\n'));

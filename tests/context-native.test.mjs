@@ -36,4 +36,21 @@ test('choosing another repository in a parent context resets ref and search cont
  view.activateContext({key:'parent',spaceId:'parent',folder:a.parent,machine:null},cx);await view.pending;assert.equal(view.policy.canSwitch,true);const next=view.policy.repos.find(r=>r.root!==view.controller.state.repo.root);
  view.inputs.target.set_value('commit-from-first-repo');view.inputs.query.set_value('old search');view.historyRef='old-branch';view.openFolder(next.root,cx);await view.pending;
  assert.equal(view.controller.state.repo.root,next.root);assert.equal(view.inputs.target.value(),'HEAD');assert.equal(view.inputs.query.value(),'');assert.equal(view.historyRef,'HEAD');
+ const first=view.policy.repos.find(r=>r.root!==next.root);
+ view.target={repoKey:next.key,newPath:'file.txt'};view.inputs.comment.set_value('unsaved');
+ view.openFolder(first.root,cx);await view.pending;
+ assert.equal(view.controller.state.repo.root,next.root);assert.equal(view.inputs.comment.value(),'unsaved');
+ view.target=null;view.inputs.comment.set_value('');
+ view.openFolder(first.root,cx);await view.pending;
+ assert.equal(view.controller.state.repo.root,first.root);assert.equal(view.inputs.query.value(),'old search');assert.equal(view.historyRef,'old-branch');
+});
+test('refresh discovers a new nested repository while retaining the selected source',async t=>{
+ const a=fixture(t);a.commit('first');
+ const {view}=nativeView(),cx={notify(){},spawn(fn){return fn(this);}};
+ view.activateContext({key:'root',spaceId:'root',folder:a.root,machine:null},cx);await view.pending;
+ assert.equal(view.policy.canSwitch,false);
+ const comparison=view.controller.state.comparison.id;
+ a.git('worktree','add','-b','nested',a.root+'/nested');
+ await view.refreshContext(cx);
+ assert.equal(view.policy.canSwitch,true);assert.equal(view.controller.state.comparison.id,comparison);
 });

@@ -1,4 +1,5 @@
 import {resolveRepo,discoverRepos} from './repositories.js';
+import {workspaceFolders} from './workspace.js';
 export function reviewContext(props={},focus={},spaces=[],panes=[]){
  props=props||{};focus=focus||{};spaces=spaces||[];panes=panes||[];
  const space=spaces.find(s=>s.active)||spaces.find(s=>s.id===focus.space);const tab=space?.tabs?.find(t=>t.active)?.id||focus.tab;
@@ -14,7 +15,28 @@ export function allowedRepository(scope,root){return scope?.repos?.find(r=>pathK
 export async function resolveRepositoryScope(run,readDirectories,context,limits={}){
  if(!context.folder)return {repos:[],canSwitch:false,complete:true,kind:'empty'};
  const own=await resolveRepo(run,context.machine,context.folder);
- if(own)return {repos:[own],canSwitch:false,complete:true,kind:'single'};
- const found=await discoverRepos(run,readDirectories,context.machine,context.folder,limits);
- return {...found,canSwitch:found.repos.length>1,kind:found.repos.length?'parent':'empty'};
+ const folder=own?.root||context.folder;
+ const found=context.machine
+  ?{repos:own?[own]:[],complete:Boolean(own)}
+  :await discoverRepos(run,readDirectories,context.machine,folder,{...limits,own});
+ const warnings=[];
+ if(!context.machine&&limits.readWorkspaceFiles&&!limits.signal?.aborted&&found.repos.length===(own?1:0)){
+  try{
+   const files=await limits.readWorkspaceFiles(context.machine,folder);
+   for(const file of [...files].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0)){
+    try{
+     for(const entry of workspaceFolders(file.text,file.path)){
+      if(limits.signal?.aborted||found.repos.length>=(limits.maxRepos??200)){found.complete=false;break;}
+      try{
+       if(!entry)throw new Error('Invalid folder entry');
+       const repo=await resolveRepo(run,context.machine,entry.path);
+       if(!repo)throw new Error('No Git repository');
+       if(!allowedRepository(found,repo.root))found.repos.push({...repo,name:entry.name});
+      }catch{warnings.push(`Skipped workspace folder: ${entry?.path||file.path}`);}
+     }
+    }catch{warnings.push(`Could not read workspace: ${file.path}`);}
+   }
+  }catch{warnings.push('Could not list workspace files');}
+ }
+ return {...found,warnings,canSwitch:found.repos.length>1,kind:found.repos.length>1||(!own&&found.repos.length)?'parent':own?'single':'empty'};
 }

@@ -22,3 +22,15 @@ test('a parent context exposes only repositories below that directory',async t=>
 test('parent with one repository has no repository switcher',async t=>{
  const a=fixture(t);a.commit('one');const scope=await resolveRepositoryScope(run,directories,{folder:a.parent,machine:null});assert.equal(scope.canSwitch,false);assert.equal(scope.repos.length,1);
 });
+test('a Git root exposes an independent nested worktree before workspace fallback',async t=>{
+ const a=fixture(t);a.commit('one');const folder=join(a.root,'projects');mkdirSync(folder);
+ const nested=join(folder,'nested');a.git('worktree','add','-b','nested',nested);
+ const scope=await resolveRepositoryScope(run,directories,{folder:a.root,machine:null},{readWorkspaceFiles:()=>{throw new Error('unexpected fallback');}});
+ assert.equal(scope.canSwitch,true);assert.equal(scope.repos.length,2);assert.ok(allowedRepository(scope,nested));
+});
+test('workspace fallback resolves named repositories and ignores invalid entries',async t=>{
+ const a=fixture(t),b=fixture(t);const root=b.git('rev-parse','--show-toplevel');
+ const text='{"folders":[/* repo */{"path":'+JSON.stringify(root)+',"name":"Other // repo"},{"path":"missing"},{"path":"."},]}';
+ const scope=await resolveRepositoryScope(run,directories,{folder:a.root,machine:null},{readWorkspaceFiles:async()=>[{path:join(a.root,'project.code-workspace'),text}]});
+ assert.equal(scope.canSwitch,true);assert.equal(allowedRepository(scope,root)?.name,'Other // repo');assert.equal(scope.warnings.length,1);
+});

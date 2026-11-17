@@ -81,7 +81,7 @@ test('older textarea hosts retain multiline editing and the explicit comment act
 
 
 test('native textarea submit saves through the same guarded action',()=>{
- const f=nativeEditorFixture();f.events.get('submit')({},f.cx);assert.equal(f.saves(),1);f.owner.busy=true;f.events.get('submit')({},f.cx);assert.equal(f.saves(),1);
+ const f=nativeEditorFixture();f.events.get('submit')({},f.cx);assert.equal(f.saves(),0);f.events.get('submit')({secondary:true},f.cx);assert.equal(f.saves(),1);f.owner.busy=true;f.events.get('submit')({secondary:true},f.cx);assert.equal(f.saves(),1);
 });
 
 test('native editor height changes wake the owner through its action queue once per size',()=>{

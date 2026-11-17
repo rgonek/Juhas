@@ -11,7 +11,7 @@ function fixture(){
 const walk=n=>[n,...(n.nodes||[]).flatMap(walk)];
 const leaves=n=>walk(n).filter(x=>['files','history','diff','comments'].includes(x.kind)).map(x=>x.kind);
 test('every independent panel placement renders one diff and exactly the visible panels',()=>{
- for(const files of [null,'top','left','right'])for(const history of [null,'top','left','right']){
+ for(const files of [null,'top','bottom','left','right'])for(const history of [null,'top','bottom','left','right']){
   const {view,cx}=fixture();Object.assign(view,{showFiles:files!==null,showHistory:history!==null,filePanelPosition:files,historyPanelPosition:history});
   const tree=view.reviewPanels(cx);assert.deepEqual(leaves(tree).sort(),['diff',...(files?['files']:[]),...(history?['history']:[])].sort(),`${files}/${history}`);
   for(const group of walk(tree).filter(n=>['horizontal','vertical'].includes(n.kind))){assert.ok(group.nodes.length>=2);assert.ok(group.nodes.every(n=>n.kind==='panel'&&n.values.size_range>0));}
@@ -40,7 +40,7 @@ test('unchanged layout keeps native resize identities independent of diff select
 });
 
 test('Comments independently occupies every panel position while the diff stays visible',()=>{
- for(const files of [null,'top','left','right'])for(const history of [null,'top','left','right'])for(const comments of [null,'top','left','right']){
+ for(const files of [null,'top','bottom','left','right'])for(const history of [null,'top','bottom','left','right'])for(const comments of [null,'top','bottom','left','right']){
   const {view,cx}=fixture();Object.assign(view,{showFiles:files!==null,showHistory:history!==null,showComments:comments!==null,filePanelPosition:files,historyPanelPosition:history,commentPanelPosition:comments});
   assert.deepEqual(leaves(view.reviewPanels(cx)).sort(),['diff',...(files?['files']:[]),...(history?['history']:[]),...(comments?['comments']:[])].sort(),`${files}/${history}/${comments}`);
  }
@@ -49,4 +49,10 @@ test('Comments uses an icon split toggle and placement entries have icons and le
  const {view,cx,controls}=fixture();view.panelControl('comments',cx);const comments=controls.get('toggle-comments');assert.equal(comments.label.kind,'icon');assert.equal(comments.pressed,false);comments.action(true,cx);assert.equal(view.showComments,true);assert.equal(view.showHistory,false);
  controls.get('position-comments').content();for(const position of ['top','left','right']){const option=controls.get('position-comments-'+position);assert.ok(option.values.justify_start!==undefined);assert.ok(walk(option.label).some(n=>n.kind==='icon'&&n.identity.endsWith('panel-'+position+'.svg')));}
  controls.get('position-comments-right').action({},cx);assert.equal(view.commentPanelPosition,'right');assert.equal(view.showComments,true);
+});
+
+test('bottom panels follow the diff and share a horizontal group',()=>{
+ const {view,cx,controls}=fixture();Object.assign(view,{showHistory:true,showComments:true,filePanelPosition:'bottom',historyPanelPosition:'bottom',commentPanelPosition:'bottom'});
+ const tree=view.reviewPanels(cx);assert.equal(tree.kind,'vertical');assert.deepEqual(tree.nodes.map(n=>leaves(n)),[['diff'],['files','history','comments']]);assert.equal(tree.nodes[1].nodes[0].kind,'horizontal');
+ view.panelControl('files',cx);controls.get('position-files').content();assert.ok(controls.has('position-files-bottom'));
 });

@@ -21,7 +21,7 @@ coding agent in one review.
   edit or copy the message, then send it to your agent when you're ready.
 
 Use the sidebar for a quick look, or open beside/below the agent or in a dedicated review tab with Git
-history, a file list or tree, and a full-width Unified or Split diff. Toggle Comments, Files and History independently; place each panel above, left or right of the diff. Resize the
+history, a file list or tree, and a full-width Unified or Split diff. Toggle Comments, Files and History independently; place each panel above, below, left or right of the diff. View options are remembered globally across Juhas copies and app restarts; scroll positions remain separate for each view and space. Resize the
 panels to fit the code, and use change navigation to move through the diff.
 Filter changed files by path without changing the open diff. Search review recipients by name, terminal address or directory. Loading indicators show when Git is still working.
 

@@ -90,14 +90,14 @@ export function draftsPane(view,cx){const type=uiMetrics();
    .child(popover('draft-source',source==='all'?'All comparisons':sourceLabel(sources.find(d=>d.comparisonId===source)||{}),Boolean(view.draftSourcePicker),(open,cx)=>{view.draftSourcePicker=open;cx.notify();},()=>v_flex().size_full().min_h(0)
     .child(button('draft-source-all','All comparisons',(_e,cx)=>choose('all',cx)))
     .child(v_flex().flex_1().min_h(0).overflow_y_scrollbar().children(sources.map(d=>button(`draft-source-${d.id}`,sourceLabel(d),(_e,cx)=>choose(d.comparisonId,cx),{active:source===d.comparisonId,tooltip:`${d.baseOid||'empty'} → ${d.targetOid||'working tree'}`})))),{tooltip:'Filter saved comments by source comparison; Submit review still includes all saved comments'})))
-  .child(v_flex().id(`${view.id}-saved-comments`).flex_1().min_h(0).min_w(0).overflow_y_scrollbar().when(Boolean(view.commentsScroll),e=>e.track_scroll(view.commentsScroll))
+  .child(v_flex().id(`${view.scrollIdentity?.()||view.id}-saved-comments`).flex_1().min_h(0).min_w(0).overflow_y_scrollbar().when(Boolean(view.commentsScroll),e=>e.track_scroll(view.commentsScroll))
    .when(!visible.length,e=>e.child(text('No saved comments match these filters.',true).p(type.px(10))))
-   .children(visible.map(d=>h_flex().gap(6).px(8).py(type.px(4)).items_center()
+   .children(visible.map(d=>h_flex().id('saved-comment-'+d.id).on_hover((hovered,cx)=>{view.hoveredComment=hovered?d.id:null;cx.notify();}).gap(6).px(8).py(type.px(4)).items_center()
     .child(v_flex().flex_1().min_w(0).tooltip(`${d.scope==='general'?'General review':d.newPath||d.oldPath}\n${sourceLabel(d)}\n${d.body}`)
      .child(text(`${d.status==='outdated'?'[OUTDATED] ':''}${d.scope==='general'?'General review':`${d.newPath||d.oldPath} ${d.startLine??''}`}`,true).truncate().text_ellipsis_middle().tooltip(d.newPath||d.oldPath||'General review'))
      .child(text(d.body).truncate()).child(text(sourceLabel(d),true).text_size(type.caption)).when(Boolean(view.openComment)&&d.scope!=='general',e=>e.cursor_pointer().on_click((_e,cx)=>view.openComment(d,cx))))
     .when(Boolean(view.openComment)&&d.scope!=='general',e=>e.child(button(`open-code-${d.id}`,'Code',(_e,cx)=>view.openComment(d,cx),{tooltip:'Open the exact source of this comment'})))
-    .child(button(`edit-${d.id}`,'Edit',(_e,cx)=>view.editDraft(d,cx))).child(button(`delete-${d.id}`,'Delete',(_e,cx)=>{view.controller.removeComment(d.id);cx.notify();})))));
+    .child(button(`edit-${d.id}`,'Edit',(_e,cx)=>view.editDraft(d,cx))).child(button(`delete-${d.id}`,svg('mods/juhas/icons/trash.svg').size(14),(_e,cx)=>{cx.stop_propagation();view.controller.removeComment(d.id);cx.notify();},{tooltip:'Delete comment'}).opacity(view.hoveredComment===d.id?1:0)))));
 }
 export const LIST_ROW_HEIGHT=29;
 export function historyLoadingIndicator(state){const label=state.historyBaseLoading?'Resolving base...':state.historyLoadingMore?'Loading more commits...':'Loading Git history...';return h_flex().gap(4).flex_none().items_center().tooltip(label).accessibility_label(label).child(svg('mods/juhas/icons/loader-circle.svg').size(12).text_color(theme().muted).spin(900)).child(text(state.historyBaseLoading?'Base...':state.historyLoadingMore?'More...':'Loading...',true));}
@@ -112,7 +112,7 @@ export function historyPane(view,cx){const type=uiMetrics();
  const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows,width=view.historyPaneWidth??view.width??480;
  const first=s.history.findIndex(c=>c.oid===(view.commitAnchor||s.comparison?.scope.base)),last=s.history.findIndex(c=>c.oid===s.comparison?.targetOid);
  const selected=(c,i)=>view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
- const list=virtualList(`${view.id}-history`,s.history,type.px(LIST_ROW_HEIGHT),c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
+ const list=virtualList(`${view.scrollIdentity?.()||view.id}-history`,s.history,type.px(LIST_ROW_HEIGHT),c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
   .child(graphCell(rows[i]))
   .when(Boolean(refs.length),e=>e.child(h_flex().max_w(160).min_w(0).gap(3).items_center().children(refs.slice(0,1).map(ref=>h_flex().min_w(0).max_w(130).h(type.px(24)).px(4).gap(3).items_center().rounded(4).border_1().border_color(ref.current?t.accent:t.border).bg(ref.current?t.selected:t.chrome).tooltip(ref.full)
@@ -150,7 +150,7 @@ export function filesPane(view){const type=uiMetrics();
   .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
  .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(type.px(38)).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
  .when(!rows.length,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(type.px(10))))
- .child(virtualList(`${view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,s.file?.id===f.id])})),type.px(LIST_ROW_HEIGHT),f=>{
+ .child(virtualList(`${view.scrollIdentity?.()||view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,s.file?.id===f.id])})),type.px(LIST_ROW_HEIGHT),f=>{
   if(f.directory)return h_flex().h(type.px(LIST_ROW_HEIGHT)).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(type.body).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().text_ellipsis_middle().child(f.name)).child(div().flex_none().text_size(type.caption).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
   const count=counts.get(f.newPath)||0;return h_flex().h(type.px(LIST_ROW_HEIGHT)).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
    .child(fileStatus(f)).child(div().flex_1().min_w(0).truncate().when(view.fileTree,e=>e.text_ellipsis_middle()).when(!view.fileTree,e=>e.text_ellipsis_start()).text_size(type.body).text_color(t.foreground).child(view.fileTree?f.name:f.newPath))
@@ -171,7 +171,7 @@ function codeCell(row,side,t,wrap,path,changed=[],matches=[],selected=false){con
   .child(div().w(36).flex_none().text_right().text_color(selected?t.accent:t.dim).child(String(line??'')))
   .child(sourceText(row,path,t,wrap,changed,matches));
 }
-function commentCard(row,viewId,width='100%'){const type=uiMetrics(),t=theme();return h_flex().h(type.px(commentHeight(row.text))).w_full().max_w(width||'100%').min_w(0).px(12).py(type.px(6)).gap(10).items_center().border_l(2).border_color(t.accent).bg(t.raised).child(svg('mods/juhas/icons/comment.svg').size(14).flex_none().text_color(t.muted)).child(text(row.text).flex_1().min_w(0).max_h(type.px(commentHeight(row.text)-12)).overflow_y_scrollbar().whitespace_normal());}
+function commentCard(row,view,width='100%'){const type=uiMetrics();const retained=view.commentCards?.get(row.draft.id);if(retained)return div().h(type.px(commentHeight(row.text))).w_full().max_w(width||'100%').child(retained.view);return h_flex().h(type.px(commentHeight(row.text))).w_full().min_w(0).px(12).py(type.px(6)).bg(theme().raised).child(text(row.text).whitespace_normal());}
 export function diffPane(view,cx){const type=uiMetrics();
  const s=view.controller.state,t=theme(),hiddenSelected=Boolean(view.hideTests&&isTestFile(s.file)),drafts=view.controller.session().drafts,annotated=hiddenSelected?[]:annotatePatch(s.patch,drafts,s.comparison?.id,s.file?.newPath),split=view.diffMode==='split',wrap=Boolean(view.readingOptions?.wrap);
  const activeTarget=view.inlineEditor&&view.target?.comparisonId===s.comparison?.id&&view.target?.newPath===s.file?.newPath?view.target:null,composed=composerRows(annotated,activeTarget,view.editId);
@@ -193,7 +193,7 @@ export function diffPane(view,cx){const type=uiMetrics();
   if(row.kind==='file-header')return h_flex().h(type.px(34)).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(type.px(46)).p(type.px(12));
   if(row.kind==='comment'||row.kind==='editor'){
-   const height=row.kind==='editor'?type.px(INLINE_EDITOR_HEIGHT):(commentHeight(row.text)*type.scale),content=()=>row.kind==='editor'?div().min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT)).w_full().max_w(view.width||'100%').child(view.inlineEditor):commentCard(row,view.id,view.width);
+   const height=row.kind==='editor'?type.px(INLINE_EDITOR_HEIGHT):(commentHeight(row.text)*type.scale),content=()=>row.kind==='editor'?div().min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT)).w_full().max_w(view.width||'100%').child(view.inlineEditor):commentCard(row,view,view.width);
    if(!split||!row.draft?.side)return content();
    return h_flex().when(row.kind==='editor',e=>e.min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT))).when(row.kind!=='editor',e=>e.h(height)).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0));
   }
@@ -208,7 +208,7 @@ export function diffPane(view,cx){const type=uiMetrics();
   if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
- const measured=wrap,id=`${view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}-${type.body}`;
+ const measured=wrap,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}-${type.body}`;
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
  // Keep the scroll surface when a composer opens. Its retained view reports
  // its intrinsic height; only wrapped source needs native measured rows.
@@ -237,5 +237,5 @@ export function diffPane(view,cx){const type=uiMetrics();
    .child(text(`${(view.findMatches||[]).length?Math.max(0,(view.findIndex??-1)+1):0}/${(view.findMatches||[]).length}${view.findMatches?.limited?'+ (limit)':''} · loaded context only`,true))
    .child(button('close-search','×',(_e,cx)=>view.toggleSearch?.(false,cx),{tooltip:'Close search (Escape)'}))))
   .when(Boolean(s.patch&&!s.patch.complete),e=>e.child(text(`Incomplete: ${s.patch.reason}`).p(type.px(8)).text_color(t.ansi1)))
-  .child(div().flex_1().min_h(0).min_w(0).w_full().overflow_hidden().child(div().id(`${view.id}-diff-horizontal`).size_full().min_w(0).overflow_x_scrollbar().when(Boolean(view.horizontalScroll),e=>e.track_scroll(view.horizontalScroll)).child(div().min_w(minWidth).w_full().h_full().child(body))));
+  .child(div().flex_1().min_h(0).min_w(0).w_full().overflow_hidden().child(div().id(`${view.scrollIdentity?.()||view.id}-diff-horizontal`).size_full().min_w(0).overflow_x_scrollbar().when(Boolean(view.horizontalScroll),e=>e.track_scroll(view.horizontalScroll)).child(div().min_w(minWidth).w_full().h_full().child(body))));
 }

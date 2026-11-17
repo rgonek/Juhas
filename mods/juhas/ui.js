@@ -4,7 +4,7 @@ import {theme,settings} from 'herdr';
 import {typography} from './typography.js';
 import {layoutGraph} from './graph.js';
 import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from './review-ui.js';
-import {annotatePatch,composerRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
+import {annotatePatch,composerRows,measuredCommentRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 import {formatCommitTime} from './commit-time.js';
 import {decorateLine,intraline,multiFileRows} from './reading.js';
 export function uiMetrics(){const look=settings();return typography(look.ui_font_size,window.rem_size());}
@@ -208,11 +208,11 @@ export function diffPane(view,cx){const type=uiMetrics();
   if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
- const measured=wrap,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}-${type.body}`;
+ const measured=wrap,measuredRows=measured?measuredCommentRows(rows):null,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}-${type.body}`;
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
  // Keep the scroll surface when a composer opens. Its retained view reports
- // its intrinsic height; only wrapped source needs native measured rows.
- body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,rows.length,i=>rows[i].id,i=>renderRow(rows[i])).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?Math.max(type.px(INLINE_EDITOR_HEIGHT),Math.min(type.px(INLINE_EDITOR_MAX_HEIGHT),view.inlineEditorHeight||0)):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22)),renderRow,click,scroller);}
+ // its intrinsic height; wrapped annotations stay inside stable source items.
+ body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>r.kind==='editor'?Math.max(type.px(INLINE_EDITOR_HEIGHT),Math.min(type.px(INLINE_EDITOR_MAX_HEIGHT),view.inlineEditorHeight||0)):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22)),renderRow,click,scroller);}
  const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
   .on_size_change((size,cx)=>{if(view.diffWidth!==size.width){view.diffWidth=size.width;view.prepareFileHeaders?.(cx);}})

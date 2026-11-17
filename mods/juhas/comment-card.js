@@ -8,6 +8,8 @@ export default class CommentCard extends View {
  init(p){this.p=p;}
  render(){const {owner,id}=this.p,draft=owner.controller.session().drafts.find(d=>d.id===id),type=uiMetrics(),t=theme();if(!draft)return h_flex();
   return h_flex().id('comment-'+id).h(type.px(commentHeight(draft.body))).w_full().min_w(0).px(12).py(type.px(6)).gap(10).items_center().border_l(2).border_color(t.accent).bg(t.raised)
+   .on_mouse_down('left',(_e,cx)=>cx.stop_propagation())
+   .on_click((_e,cx)=>{cx.stop_propagation();owner.headerAction({kind:'edit-comment',id});})
    .on_hover((hovered,cx)=>{if(this.hovered!==hovered){this.hovered=hovered;cx.notify();}})
    .child(svg('mods/juhas/icons/comment.svg').size(14).flex_none().text_color(t.muted))
    .child(text(draft.body).flex_1().min_w(0).max_h(type.px(commentHeight(draft.body)-12)).overflow_y_scrollbar().whitespace_normal())

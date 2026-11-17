@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {measuredCommentRows} from '../mods/juhas/comments.js';
 function fixture(){
  const data=new Map(),source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
- const Native=new Function('View','shared','setShared','CommentCard','class Juhas extends View'+source+';return Juhas;')(class{},key=>data.get(key),(key,value)=>data.set(key,structuredClone(value)),class{});
+ const Native=new Function('View','shared','setShared','CommentCard','measuredCommentRows','class Juhas extends View'+source+';return Juhas;')(class{},key=>data.get(key),(key,value)=>data.set(key,structuredClone(value)),class{},measuredCommentRows);
  const view=()=>Object.assign(Object.create(Native.prototype),{allFiles:true,diffMode:'unified',readingOptions:{wrap:false},showFiles:true,showComments:false,filePanelPosition:'top'});
  return {view,data};
 }
@@ -24,4 +25,9 @@ test('retained cards are reconciled in a task and failed history requests do not
  const cx={timer:{after:(_delay,fn)=>tasks.push(fn)},notify(){},new(){created++;return {release(){}};}};
  v.deferPresentation(cx);assert.equal(created,0);assert.equal(tasks.length,1);tasks.shift()(cx);await v.pending;assert.equal(created,1);assert.equal(loads,1);
  v.busy=true;v.deferPresentation(cx);tasks.shift()(cx);v.busy=false;v.deferPresentation(cx);tasks.shift()(cx);await v.pending;assert.equal(loads,1);
+});
+
+test('wrapped navigation maps source rows and annotations to their measured source item',()=>{
+ const {view}=fixture(),v=view(),calls=[];v.diffRows=[{id:'one',kind:'line'},{id:'comment',kind:'comment'},{id:'editor',kind:'editor'},{id:'two',kind:'line'}];v.diffScroll={scroll_to_item:(...args)=>calls.push(args)};v.readingOptions={wrap:true};
+ for(const i of [0,1,2,3])v.scrollDiffToItem(i,'center');assert.deepEqual(calls,[[0,'center'],[0,'center'],[0,'center'],[1,'center']]);calls.length=0;v.readingOptions.wrap=false;v.scrollDiffToItem(3,'top');assert.deepEqual(calls,[[3,'top']]);
 });

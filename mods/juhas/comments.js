@@ -29,3 +29,16 @@ export function composerRows(rows,target,editId=null){
 export const INLINE_EDITOR_HEIGHT=112;
 export const INLINE_EDITOR_MAX_HEIGHT=184;
 export function commentHeight(value){return 38+21*(Math.min(6,Math.max(1,String(value||'').split(/\r?\n/).length))-1);}
+
+// Keep measured-list source items stable when annotations appear or disappear.
+// Herdr resets a measured list's native scroll when its item count changes.
+export function measuredCommentRows(rows){
+ const result=[],leading=[];
+ for(const row of rows){
+  if(row.kind==='comment'||row.kind==='editor'){
+   if(result.length)result.at(-1).after.push(row);else leading.push(row);
+  }else result.push({id:row.id,row,before:result.length?[]:leading.splice(0),after:[]});
+ }
+ if(leading.length)result.push({id:'diff-annotations',row:null,before:leading,after:[]});
+ return result;
+}

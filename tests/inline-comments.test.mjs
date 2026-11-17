@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {annotatePatch,composerRows,commentHeight} from '../mods/juhas/comments.js';
+import {annotatePatch,composerRows,commentHeight,measuredCommentRows} from '../mods/juhas/comments.js';
 import {splitRows,changeGroups} from '../mods/juhas/review-ui.js';
 test('saved line and file comments appear only at their exact comparison and side',()=>{
  const patch={hunks:[{header:'@@ -1 +1 @@',lines:[{side:'old',oldLine:1,newLine:null,text:'before'},{side:'new',oldLine:null,newLine:1,text:'after'}]}]};
@@ -20,4 +20,11 @@ test('saved comment heights are compact, respect explicit lines and remain bound
 test('both source sides can annotate a shared context line without losing their original anchors',()=>{
  const patch={hunks:[{header:'@@ -3 +5 @@',lines:[{side:'context',oldLine:3,newLine:5,text:'unchanged'}]}]},drafts=[{id:'old',comparisonId:'c',newPath:'file',side:'old',startLine:3,endLine:3,body:'Original-side note'},{id:'new',comparisonId:'c',newPath:'file',side:'new',startLine:5,endLine:5,body:'Modified-side note'}];
  const rows=annotatePatch(patch,drafts,'c','file');assert.deepEqual(rows.filter(row=>row.kind==='comment').map(row=>[row.draft.side,row.draft.endLine]),[['old',3],['new',5]]);
+});
+
+test('measured annotations preserve order and anchor identity without changing source rows',()=>{
+ const first={id:'line1',kind:'line'},second={id:'line2',kind:'line'},file={id:'file-comment',kind:'comment'},editor={id:'editor',kind:'editor'},saved={id:'saved',kind:'comment'};
+ const rows=[file,first,editor,saved,second],items=measuredCommentRows(rows);
+ assert.deepEqual(items.map(item=>item.id),['line1','line2']);assert.deepEqual(items[0].before,[file]);assert.deepEqual(items[0].after,[editor,saved]);assert.deepEqual(items.flatMap(item=>[...item.before,item.row,...item.after]),rows);
+ assert.deepEqual(measuredCommentRows([file]).map(item=>item.before),[[file]]);assert.deepEqual(measuredCommentRows([]),[]);assert.equal(Object.hasOwn(first,'after'),false);
 });

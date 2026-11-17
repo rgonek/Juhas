@@ -115,7 +115,7 @@ test('a selected line in one all-files section never highlights another comparis
 });
 test('split wrapping measures one aligned native pair and keeps source syntax/match decorations',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'old',oldLine:1,text:'const x = "old😀";'},{side:'new',newLine:1,text:'const x = "new😀";'}]}]},null);view.diffMode='split';view.readingOptions={wrap:true};view.controller.state.file.newPath='a.ts';view.findMatches=[{side:'new',line:1,start:11,end:14}];
- const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='measured'),rows=list.renderRows(),pair=rows[0];assert.equal(rows.length,1);assert.equal(pair.values.min_h,22);assert.ok(Object.hasOwn(pair.values,'items_stretch'));assert.equal(Object.hasOwn(pair.values,'h'),false);assert.ok(descendants(pair).some(n=>n?.nodes?.includes('new')));assert.ok(descendants(pair).some(n=>n&&Object.hasOwn(n.values||{},'underline')));
+ const root=controls().diffPane(view),list=descendants(root).find(n=>n?.kind==='measured'),rows=list.renderRows(),pair=rows[0].nodes[0];assert.equal(rows.length,1);assert.equal(pair.values.min_h,22);assert.ok(Object.hasOwn(pair.values,'items_stretch'));assert.equal(Object.hasOwn(pair.values,'h'),false);assert.ok(descendants(pair).some(n=>n?.nodes?.includes('new')));assert.ok(descendants(pair).some(n=>n&&Object.hasOwn(n.values||{},'underline')));
 });
 test('loaded-source find and comment navigation use guarded existing callbacks outside layout',()=>{
  const view=diffView({hunks:[]},null),calls=[];view.inputs={find:{retained:true}};view.searchOpen=true;view.findMatches=[{side:'new',line:1,start:0,end:1}];view.findIndex=0;view.moveFind=(direction)=>calls.push(['find',direction]);view.navigateComment=direction=>calls.push(['comment',direction]);
@@ -312,4 +312,16 @@ test('history columns follow the panel width rather than the wide review window'
  assert.ok(!rows.flatMap(descendants).some(n=>n.nodes?.includes(commit.author)));
  let notified=0;root.handlers.on_size_change({width:1000},{notify(){notified++;}});assert.equal(view.historyPaneWidth,1000);assert.equal(notified,1);
  const wide=descendants(ui.historyPane(view)).find(n=>n.kind==='virtual').renderRows();assert.ok(wide.flatMap(descendants).some(n=>n.nodes?.includes(commit.author)));
+});
+
+test('wrapped lists keep the same source item count through comment opening saving editing and deletion',()=>{
+ for(const allFiles of [false,true])for(const mode of ['unified','split']){
+  const ui=controls(),view=diffView({hunks:[{header:'@@',lines:Array.from({length:1000},(_,i)=>({side:'context',oldLine:i+1,newLine:i+1,text:'code'}))}]},null);
+  view.readingOptions={wrap:true};view.diffMode=mode;view.allFiles=allFiles;view.allFileSections=[{file:view.controller.state.file,comparison:view.controller.state.comparison,patch:view.controller.state.patch}];let drafts=[];view.controller.session=()=>({drafts});
+  const surface=()=>descendants(ui.diffPane(view)).find(n=>n.kind==='measured'),before=surface().renderRows().length;
+  const target={comparisonId:'c',newPath:'a',side:'new',startLine:900,endLine:900};view.target=target;assert.equal(surface().renderRows().length,before,'opening must not reset measured list count');
+  view.target=null;drafts=[{...target,id:'saved',body:'feedback'}];assert.equal(surface().renderRows().length,before,'saving must not reset measured list count');
+  view.target=target;view.editId='saved';assert.equal(surface().renderRows().length,before,'editing must not reset measured list count');
+  view.target=null;drafts=[];assert.equal(surface().renderRows().length,before,'deleting must not reset measured list count');
+ }
 });

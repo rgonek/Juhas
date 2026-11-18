@@ -17,9 +17,9 @@ export class Controller {
   this.automaticVersion=(this.automaticVersion||0)+1;this.automaticRequest=null;this.refreshGate.begin('repo');
   const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');this.state.historyLoading=false;this.state.historyLoadingMore=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;
   const repo=providedRepo||await resolveRepo(this.run,machine,folder);if(!this.gate.isCurrent(token))return;if(!repo)throw new Error('Folder is not inside a Git repository; use Discover to find nested repositories');
-  const [refs,branch]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD'])]);if(!this.gate.isCurrent(token))return;
+  const [refs,branch,head]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD']),this.run(repo,['rev-parse','--verify','HEAD'])]);if(!this.gate.isCurrent(token))return;
   this.state={...this.state,repo,automaticChoice:null,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null};
-  const head=await this.run(repo,['rev-parse','--verify','HEAD']);if(!this.gate.isCurrent(token))return;if(head.code!==0){this.state.empty=true;this.state.observedHead=null;return;}
+  if(head.code!==0){this.state.empty=true;this.state.observedHead=null;return;}
   this.state.empty=false;this.state.observedHead=head.stdout.trim();if(loadHistory)await this.loadHistory({},false,head.stdout.trim());
  }
  async loadHistory(filters={},more=false,resolvedHead=null){

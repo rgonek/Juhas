@@ -7,10 +7,12 @@ import {Controller} from '../mods/juhas/controller.js';
 import {createCache} from '../mods/juhas/cache.js';
 import {createRunner} from '../mods/juhas/git.js';
 import {resolveRepositoryScope,allowedRepository,contextStorageKey} from '../mods/juhas/context.js';
-function nativeView(){
+import {resolveRepo} from '../mods/juhas/repositories.js';
+function nativeView(list=directories){
  const data=new Map(),store={get:k=>data.get(k),set:(k,v)=>data.set(k,v)};let id=0;
  let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const deps={createCache,resolveConfig,selectBase,readLocalConfig,readTextFile:async()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});},shared:store.get,setShared:store.set,store,Controller,createRunner,cache:createCache(),exec:(_command,args,options)=>run({root:options.cwd},args),scopeCache:new Map(),resolveRepositoryScope,allowedRepository,contextStorageKey,readDirectories:(_exec,_home,machine,path)=>directories(machine,path),appHome:()=>'',uid:()=>String(++id)};
+ Object.assign(deps,{resolveRepo,readDirectories:(_exec,_home,machine,path)=>list(machine,path)});
  const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps));const view=Object.create(Native.prototype);
  view.contextProps={config:{baseRef:'refs/heads/trunk'}};view.config={maxDepth:3,maxRepos:20};view.contextViews=new Map();view.policy={repos:[],canSwitch:false};view.inputs={};view.role='sidebar';view.sessionId='initial';
  for(const key of ['folder','base','target','query','author','path','comment','note']){let value='';view.inputs[key]={value:()=>value,set_value:next=>value=next};}
@@ -27,6 +29,21 @@ test('switching projects replaces Git and comments; returning restores the corre
  assert.equal(view.allChangesFrom,'branch');assert.equal(view.lastAppliedFrom,'branch');assert.equal(view.manualCommitBase,null);
  view.activateContext(first,cx);assert.equal(view.controller,controllerA);assert.equal(view.controller.session().drafts[0].body,'Keep project A comment');assert.equal(view.allChangesFrom,'commit');assert.equal(view.lastAppliedFrom,'commit');assert.equal(view.manualCommitBase,'saved-baseline');await view.syncComposer(cx);assert.equal(view.inputs.comment.value(),'Unsaved A text');
  const pinned=view.controller.state.comparison.targetOid,next=a.commit('project A updated');await view.refreshContext(cx);assert.equal(view.controller.state.comparison.targetOid,pinned);assert.equal(view.controller.state.history[0].oid,next);
+});
+test('initial review is ready while nested repository discovery is still pending',async t=>{
+ const repo=fixture(t);repo.commit('base');repo.git('checkout','-b','feature');repo.commit('feature');
+ let release,shown;
+ const scan=new Promise(resolve=>{release=resolve;});
+ const firstReview=new Promise(resolve=>{shown=resolve;});
+ const {view}=nativeView(()=>scan);
+ const cx={notify(){if(view.controller.state.comparison)shown();}};
+ view.activateContext({key:'parallel',spaceId:'parallel',folder:repo.root,machine:null},cx);
+ try{
+  const timeout=AbortSignal.timeout(8000);
+  await Promise.race([firstReview,new Promise((_,reject)=>timeout.addEventListener('abort',()=>reject(new Error('Review waited for the scan')),{once:true}))]);
+  assert.equal(view.controller.state.comparison.scope.kind,'branch');
+ }finally{release([]);await view.pending;}
+ assert.equal(view.policy.ready,true);
 });
 test('single-repository context cannot be switched to another saved repository',async t=>{
  const a=fixture(t);a.commit('a');const {view}=nativeView(),cx={notify(){}};view.activateContext({key:'a',spaceId:'a',folder:a.root,machine:null},cx);await view.pending;const before=view.controller.state.repo.root;view.openFolder('/outside',cx);assert.equal(view.controller.state.repo.root,before);assert.match(view.message,/active project/);

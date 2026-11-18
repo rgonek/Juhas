@@ -1,5 +1,5 @@
 export function resolveConfig(global={},repo={},branch={}){
- const merged={baseRef:null,baseRules:[],pinnedRoots:[],maxDepth:3,maxRepos:200,view:'sidebar',showAdvanced:false,...global,...repo,...branch};
+ const merged={baseRef:null,baseRules:[],pinnedRoots:[],maxDepth:1,maxRepos:200,view:'sidebar',showAdvanced:false,...global,...repo,...branch};
  if(!Array.isArray(merged.baseRules)||!Array.isArray(merged.pinnedRoots))throw new Error('Invalid configuration');
  for(const rule of merged.baseRules){if(rule?.pattern!=null){if(typeof rule.pattern!=='string'||!rule.pattern||typeof rule.replacement!=='string')throw new Error('Invalid base rule: pattern and replacement must be strings');try{new RegExp(rule.pattern);}catch{throw new Error('Invalid base rule pattern');}}}
  return merged;

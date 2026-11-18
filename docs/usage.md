@@ -4,7 +4,7 @@ Start with the [quick introduction](../README.md) or use this guide for the full
 
 ## Review workflow
 
-1. Click **Juhas** beside **Files / Changes**. It follows the active project/tab directory. With multiple repositories, use the repository selector before **Changes**. On a narrow pane it appears above the comparison. The list shows added and removed lines in each repository's uncommitted changes and sorts by their sum, largest first. Juhas starts with the main repository when present and looks for separate Git repositories up to three levels below the project directory by default. If it finds no nested repositories, it reads the `folders` entries from `*.code-workspace` files in the project directory. Choose **Refresh** to look again.
+1. Click **Juhas** beside **Files / Changes**. It follows the active project/tab directory. With multiple repositories, use the repository selector before **Changes**. On a narrow pane it appears above the comparison. The list shows added and removed lines in each repository's uncommitted changes and sorts by their sum, largest first. Juhas starts with the main repository when present and checks its immediate subdirectories by default. If it finds no nested repositories, it reads the `folders` entries from `*.code-workspace` files in the project directory. Choose **Refresh** to look again.
 2. The sidebar provides **Open beside**, **Open below**, and **Open in new tab**. The first two split the source tab at its focused terminal (or first terminal), retaining the review session, selected comparison, loaded diff and unsaved comments, then hide the sidebar. A pane uses Herdr native split, resize, move, zoom and close controls; placement and sidebar-return buttons are omitted inside panes. **Open in new tab** opens or reuses a dedicated review tab for this repository/worktree in the current space: all changed files in one scrollable view. Git history is optional and hidden initially; History opens a resizable panel above, below or beside the diff. View options are shared across Juhas copies and remembered after restarting Herdr; scroll positions are kept separately for each view and space. The Files icon independently controls the file navigator in either diff mode. It keeps the source repository when another terminal changes directory. The Juhas toolbar button in the review tab transfers the review back to its source sidebar and closes the expanded review pane. History defaults to commits after the configured branch's merge-base, falling back to HEAD history if no base is resolved. Details and search stay available; full/all-branch browsing belongs to `showAdvanced` controls.
 3. Choose the source from the main picker:
 
@@ -59,7 +59,7 @@ Repository scope comes from the current Herdr context; base branches and optiona
     "role": "full",
     "sessionId": "my-review",
     "config": {
-      "maxDepth": 3,
+      "maxDepth": 1,
       "maxRepos": 200,
       "baseRules": [
         {"prefix": "feature/", "basePrefix": "integration/"}

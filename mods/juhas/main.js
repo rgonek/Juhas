@@ -5,6 +5,7 @@ import {Controller} from './controller.js';
 import {createRunner,uid,fingerprint,utf8Bytes} from './git.js';
 import {createCache} from './cache.js';
 import {readDirectories,readWorkspacePaths} from './platform.js';
+import {resolveRepo} from './repositories.js';
 import {workingLineCounts} from './working-observation.js';
 import {resolveConfig,suggestBases,selectBase,readLocalConfig} from './config.js';
 import {commentTarget,annotatePatch,composerRows,measuredCommentRows} from './comments.js';
@@ -259,31 +260,52 @@ export default class Juhas extends View {
   const controller=this.controller;
   this.work(cx,async cx=>{
    await this.loadConfig();
-   const policy=await this.repositoryScope(controller,context);if(this.activeContext!==context||this.closed)return;this.policy={...policy,ready:true};
    const rawSelection=shared(this.selectionKey)||shared(`git-review.v1.selection.${this.sessionId}`),selection=this.supportedSelection(rawSelection)?rawSelection:null;
-   const repo=allowedRepository(policy,selection?.root)||policy.repos[0];if(!repo)return;
+   const {primary,scope}=this.repositoryDiscovery(controller,context);
+   const current=()=>!this.closed&&this.activeContext===context&&this.controller===controller;
+   const discoveryVersion=this.discoveryVersion;
+   const currentDiscovery=()=>current()&&this.discoveryVersion===discoveryVersion;
+   const own=await primary;if(!current())return;
+   const immediate=own&&(!selection?.root||allowedRepository({repos:[own]},selection.root));
+   const acceptPolicy=policy=>{if(currentDiscovery()){this.policy={...policy,ready:true};this.rememberLoadedView();cx.notify();}};
+   let repo;
+   if(immediate){
+    repo=own;
+    this.policy={repos:[own],canSwitch:false,kind:'single'};
+    void scope.then(acceptPolicy,error=>{if(currentDiscovery()){this.message=error.message;cx.notify();}});
+   }else{
+    const policy=await scope;if(!current())return;
+    acceptPolicy(policy);
+    repo=allowedRepository(policy,selection?.root)||policy.repos[0];
+   }
+   if(!repo)return;
    await controller.openRepo(context.machine,repo.root,{repo,loadHistory:false});if(this.activeContext?.key!==context.key)return;
    this.inputs.folder.set_value(repo.root);this.restoreBase();
    this.includeWorking=Boolean(selection?.includeWorking||selection?.scope?.includeWorking);this.allChangesFrom=selection?.allChangesFrom==='commit'||selection?.scope?.kind==='range'&&!selection.scope.includeBase?'commit':'branch';this.manualCommitBase=selection?.manualCommitBase||(selection?.scope?.kind==='range'&&!selection.scope.includeBase?selection.scope.base:null);this.lastAppliedFrom=this.allChangesFrom;
-   await this.updateFeatureHistory();
-   if(allowedRepository(policy,selection?.root)&&selection?.scope){if(selection.comparison&&!refreshing)await controller.selectResolved(selection.comparison);else await controller.selectScope(selection.scope);if(selection.fileId)await controller.selectFile(selection.fileId);}
+   if(allowedRepository({repos:[repo]},selection?.root)&&selection?.scope){if(selection.comparison&&!refreshing)await controller.selectResolved(selection.comparison);else await controller.selectScope(selection.scope);if(selection.fileId)await controller.selectFile(selection.fileId);}
    else await this.selectInitialScope();
    const oldComposer=shared(`git-review.v1.composer.${this.sessionId}`);if(shared(this.composerKey)==null&&oldComposer?.target?.repoKey===repo.key)setShared(this.composerKey,oldComposer);
    this.publish();this.registerReviewTab();
+   cx.notify();
+   await this.updateFeatureHistory();
   });
  }
- repositoryScope(controller,context,reload=false){
+ repositoryScope(controller,context,reload=false){return this.repositoryDiscovery(controller,context,reload).scope;}
+ repositoryDiscovery(controller,context,reload=false){
   const key=JSON.stringify([context.machine,context.folder,this.config.maxDepth,this.config.maxRepos]);
   if(reload||!scopeCache.has(key)){
+   const listings=new Map();
    const readWorkspaceFiles=async (_machine,root)=>{
-    const paths=await readWorkspacePaths(exec,appHome(),root);
+    const paths=await readWorkspacePaths(exec,appHome(),root,{listings});
     return Promise.all(paths.map(async path=>{
      try{return {path,text:await readTextFile(path)};}catch{return {path,text:null};}
     }));
    };
-   const pending=resolveRepositoryScope(controller.run,(machine,path)=>readDirectories(exec,appHome(),machine,path),context,{maxDepth:this.config.maxDepth,maxRepos:this.config.maxRepos,readWorkspaceFiles});
-   scopeCache.set(key,pending);
-   pending.catch(()=>{if(scopeCache.get(key)===pending)scopeCache.delete(key);});
+   const primary=context.folder?resolveRepo(controller.run,context.machine,context.folder):Promise.resolve(null);
+   const scope=resolveRepositoryScope(controller.run,(machine,path)=>readDirectories(exec,appHome(),machine,path,{markersOnly:this.config.maxDepth===1,listings}),context,{maxDepth:this.config.maxDepth,maxRepos:this.config.maxRepos,readWorkspaceFiles,primary});
+   const entry={primary,scope};
+   scopeCache.set(key,entry);
+   scope.catch(()=>{if(scopeCache.get(key)===entry)scopeCache.delete(key);});
    if(scopeCache.size>32)scopeCache.delete(scopeCache.keys().next().value);
   }
   return scopeCache.get(key);

@@ -14,7 +14,7 @@ function pathKey(path){const normal=String(path||'').replace(/\\/g,'/').replace(
 export function allowedRepository(scope,root){return scope?.repos?.find(r=>pathKey(r.root)===pathKey(root))||null;}
 export async function resolveRepositoryScope(run,readDirectories,context,limits={}){
  if(!context.folder)return {repos:[],canSwitch:false,complete:true,kind:'empty'};
- const own=await resolveRepo(run,context.machine,context.folder);
+ const own=limits.primary===undefined?await resolveRepo(run,context.machine,context.folder):await limits.primary;
  const folder=own?.root||context.folder;
  const found=context.machine
   ?{repos:own?[own]:[],complete:Boolean(own)}

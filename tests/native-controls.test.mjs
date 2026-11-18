@@ -334,3 +334,27 @@ test('wrapped lists keep the same source item count through comment opening savi
   view.target=null;drafts=[];assert.equal(surface().renderRows().length,before,'deleting must not reset measured list count');
  }
 });
+
+test('file panel uses extension icons and status colors in both layouts',()=>{
+ const palette={ansi1:'red',ansi2:'green',ansi4:'blue',muted:'muted'};
+ const files=[
+  {id:'a',newPath:'EUZServices/CostCenters/ReplaceCostCenterAutoComponent.cs',status:'M'},
+  {id:'b',newPath:'EUZServices/CostCenters/config.json',status:'A'},
+  {id:'c',newPath:'EUZServices/CostCenters/old.md',status:'D'},
+ ];
+ const ui=controls({theme:()=>palette});
+ for(const fileTree of [true,false]){
+  const view={id:'files',fileTree,controller:{state:{files},session:()=>({drafts:[]})}};
+  const list=descendants(ui.filesPane(view)).find(node=>node.kind==='virtual');
+  const rows=list.renderRows(),nodes=rows.flatMap(descendants);
+  for(const [icon,stem,suffix,color] of [['C#','ReplaceCostCenterAutoComponent','.cs','blue'],['{}','config','.json','green'],['MD','old','.md','red']]){
+   assert.ok(nodes.some(node=>node.nodes?.includes(icon)));
+   assert.ok(nodes.some(node=>node.nodes?.includes(stem)&&Object.hasOwn(node.values,'truncate')));
+   assert.ok(nodes.some(node=>node.nodes?.includes(suffix)&&Object.hasOwn(node.values,'flex_none')));
+   assert.ok(nodes.some(node=>node.values?.text_color===color&&descendants(node).includes(stem)&&descendants(node).includes(suffix)));
+  }
+  assert.ok(nodes.some(node=>node.nodes?.includes('EUZServices/CostCenters')));
+  assert.ok(!nodes.includes('3 files'));
+  assert.ok(rows.some(row=>row.values.tooltip===files[0].newPath));
+ }
+});

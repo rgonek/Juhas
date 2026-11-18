@@ -75,7 +75,8 @@ export function optionList(id,items,index,move,choose,{height=196,rows=7,rowHeig
   .children(items.slice(start,start+rows).map(option));
 }
 export function text(value,dim=false){const type=uiMetrics();const t=theme();return div().text_size(type.body).line_height(type.lineHeight).text_color(dim?t.muted:t.foreground).child(value);}
-export function fileStatus(file,reviewed=false){const t=theme(),status=file.status||'M',color=status==='D'?t.ansi1:status==='A'?t.ansi2:t.ansi4||t.accent,icon={A:'added',D:'deleted',M:'modified',R:'renamed',C:'copied'}[status]||'modified';
+function fileStatusColor(status,t){return status==='D'?t.ansi1:status==='A'?t.ansi2:t.ansi4||t.accent;}
+export function fileStatus(file,reviewed=false){const t=theme(),status=file.status||'M',color=fileStatusColor(status,t),icon={A:'added',D:'deleted',M:'modified',R:'renamed',C:'copied'}[status]||'modified';
  return svg(reviewed?'mods/juhas/icons/check.svg':`mods/juhas/icons/file-${icon}.svg`).size(14).flex_none().text_color(color)
   .tooltip(`${status==='A'?'Added':status==='D'?'Deleted':status==='R'?'Renamed':status==='C'?'Copied':'Modified'}${reviewed?' · viewed':''}`);
 }
@@ -157,12 +158,30 @@ export function filesPane(view){const type=uiMetrics();
  .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(type.px(38)).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
  .when(!rows.length,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(type.px(10))))
  .child(virtualList(`${view.scrollIdentity?.()||view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,s.file?.id===f.id])})),type.px(LIST_ROW_HEIGHT),f=>{
-  if(f.directory)return h_flex().h(type.px(LIST_ROW_HEIGHT)).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(type.body).text_color(t.muted).tooltip(`${f.path} · ${f.fileCount} changed ${f.fileCount===1?'file':'files'}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(div().min_w(0).truncate().text_ellipsis_middle().child(f.name)).child(div().flex_none().text_size(type.caption).text_color(t.dim).child(`${f.fileCount} ${f.fileCount===1?'file':'files'}`));
+  if(f.directory)return h_flex().h(type.px(LIST_ROW_HEIGHT)).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(type.body).text_color(t.muted).tooltip(`${f.path}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(svg('mods/juhas/icons/folder.svg').size(14).flex_none()).child(div().min_w(0).truncate().text_ellipsis_middle().child(f.name));
   const count=counts.get(f.newPath)||0;return h_flex().h(type.px(LIST_ROW_HEIGHT)).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
-   .child(fileStatus(f)).child(div().flex_1().min_w(0).truncate().when(view.fileTree,e=>e.text_ellipsis_middle()).when(!view.fileTree,e=>e.text_ellipsis_start()).text_size(type.body).text_color(t.foreground).child(view.fileTree?f.name:f.newPath))
+   .child(fileRowLabel(f,view.fileTree,type,t))
    .when(f.additions!=null,e=>e.child(text('+'+f.additions).text_color(t.ansi2)).child(text('−'+f.deletions).text_color(t.ansi1)))
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
  },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){if(query.trim())return;view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);},view.reviewIsVisible?.()===false?null:view.filesScroll));
+}
+const fileTypeIcons=new Map(Object.entries({
+ cs:'C#',fs:'F#',vb:'VB',js:'JS',jsx:'JSX',mjs:'JS',cjs:'JS',ts:'TS',tsx:'TSX',
+ json:'{}',jsonc:'{}',md:'MD',mdx:'MD',css:'CSS',scss:'CSS',html:'<>',xml:'<>',
+ csproj:'<>',xaml:'<>',py:'PY',rs:'RS',go:'GO',sql:'SQL',ps1:'PS',sh:'SH',
+ yml:'YML',yaml:'YML',toml:'TOML',txt:'TXT',png:'IMG',jpg:'IMG',svg:'SVG',
+}));
+function fileRowLabel(file,tree,type,t){
+ const slash=file.newPath.lastIndexOf('/'),name=file.newPath.slice(slash+1),dot=name.lastIndexOf('.');
+ const suffix=dot>0&&dot<name.length-1?name.slice(dot):'',stem=suffix?name.slice(0,dot):name;
+ const icon=fileTypeIcons.get(suffix.slice(1).toLowerCase());
+ return h_flex().flex_1().min_w(0).gap(7).items_center()
+  .child(h_flex().w(type.px(28)).flex_none().justify_center().items_center().text_size(type.caption).text_color(t.muted)
+   .child(icon?div().font_semibold().child(icon):svg('mods/juhas/icons/single-file.svg').size(14)))
+  .child(h_flex().min_w(0).items_center().text_size(type.body).text_color(fileStatusColor(file.status,t))
+   .child(div().min_w(0).truncate().child(stem))
+   .when(Boolean(suffix),e=>e.child(div().flex_none().child(suffix))))
+  .when(!tree&&slash>=0,e=>e.child(div().flex_1().min_w(0).truncate().text_ellipsis_start().text_size(type.caption).text_color(t.muted).child(file.newPath.slice(0,slash))));
 }
 function sourceText(row,path,t,wrap,changed,matches,prefix=''){
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};

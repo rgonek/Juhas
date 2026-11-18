@@ -84,15 +84,24 @@ export function fileStatus(file,reviewed=false){const t=theme(),status=file.stat
 export function commitId(oid){const type=uiMetrics();return h_flex().gap(4).items_center().child(text(oid,true)).child(button('copy-commit-id',svg('mods/juhas/icons/copy.svg').size(13),(_e,cx)=>cx.write_to_clipboard(oid),{tooltip:'Copy full commit ID'}).h(type.px(22)).w(22).px(0));}
 export function virtualList(id,items,height,row,click,scrollHandle=null,viewportHeight=null){const type=uiMetrics();id=`${id}-${type.body}`;return v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(v_virtual_list(id,items.length,height,i=>String(items[i].renderKey??items[i].id??items[i].oid??i),range=>items.slice(range.start,range.end).map(row)).when(Boolean(scrollHandle),el=>el.track_scroll(scrollHandle)).on_item_click((key,cx)=>{const item=items.find(i=>String(i.renderKey??i.id??i.oid)===String(key));click(item?.id??item?.oid??key,cx);}).size_full().when(viewportHeight!=null,e=>e.h(viewportHeight).flex_none())).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());}
 export function section(title){const type=uiMetrics();const t=theme();return div().h(type.px(34)).flex_none().px(10).py(type.px(6)).text_size(type.body).font_semibold().text_color(t.foreground).bg(t.chrome).child(title);}
+function panelHeader(title,detail){
+ const type=uiMetrics(),t=theme();
+ return h_flex().min_h(type.px(34)).w_full().flex_none().items_center().pl(type.px(10)).pr(type.px(4)).gap(type.px(4))
+  .bg(t.background).border_b(1).border_color(t.border)
+  .child(h_flex().flex_1().min_w(0).items_center().gap(type.px(8))
+   .child(text(title).flex_none().font_semibold())
+   .when(Boolean(detail),e=>e.child(text(detail,true).min_w(0).truncate())));
+}
 export function draftsPane(view,cx){const type=uiMetrics();
  const repoKey=view.controller.state.repo?.key,drafts=filterDrafts(view.controller.session().drafts,{repoKey}),status=view.draftStatus||'all',source=view.draftSource||'all',visible=filterDrafts(drafts,{status,source}),sources=[...new Map(drafts.map(d=>[d.comparisonId,d])).values()];
  const sourceLabel=d=>d.targetOid?`${d.baseOid?.slice(0,8)||'empty'} → ${d.targetOid.slice(0,8)}`:'Working tree';
  const choose=(value,cx)=>{view.draftSource=value;view.draftSourcePicker=false;cx.notify();};
+ const headerButton=(id,icon,action,tooltip)=>button(id,svg(`mods/juhas/icons/${icon}.svg`).size(type.px(14)),action,{tooltip}).w(type.px(24)).px(0);
  return v_flex().size_full().min_h(0).min_w(0)
-  .child(h_flex().items_center().child(section(`Saved comments · ${visible.length}/${drafts.length}`).flex_1())
-   .when(Boolean(view.navigateComment),e=>e.child(button('comment-previous','↑',(_e,cx)=>view.navigateComment(-1,cx),{tooltip:'Previous comment'})).child(button('comment-next','↓',(_e,cx)=>view.navigateComment(1,cx),{tooltip:'Next comment'})))
-   .when(Boolean(view.generalComment),e=>e.child(button('general-comment','General comment',(_e,cx)=>view.generalComment(cx))))
-   .child(button('clear-comments','Clear all',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},{tooltip:'Delete all saved comments in this repository, including comments hidden by filters'}).disabled(!drafts.length)))
+  .child(panelHeader('Comments',visible.length===drafts.length?String(drafts.length):`${visible.length}/${drafts.length}`)
+   .when(Boolean(view.navigateComment),e=>e.child(headerButton('comment-previous','arrow-up',(_e,cx)=>view.navigateComment(-1,cx),'Previous comment')).child(headerButton('comment-next','arrow-down',(_e,cx)=>view.navigateComment(1,cx),'Next comment')))
+   .when(Boolean(view.generalComment),e=>e.child(headerButton('general-comment','comment',(_e,cx)=>view.generalComment(cx),'General comment')))
+   .child(headerButton('clear-comments','trash',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},'Delete all saved comments in this repository, including comments hidden by filters').disabled(!drafts.length)))
   .child(h_flex().min_h(type.px(36)).flex_none().px(8).py(type.px(4)).gap(6).flex_wrap().items_center()
    .child(buttonGroup('draft-status',[{value:'all',label:'All'},{value:'current',label:'Current'},{value:'outdated',label:'Outdated'}],status,(value,cx)=>{view.draftStatus=value;cx.notify();}))
    .child(popover('draft-source',source==='all'?'All comparisons':sourceLabel(sources.find(d=>d.comparisonId===source)||{}),Boolean(view.draftSourcePicker),(open,cx)=>{view.draftSourcePicker=open;cx.notify();},()=>v_flex().size_full().min_h(0)
@@ -129,8 +138,9 @@ export function historyPane(view,cx){const type=uiMetrics();
   .when(width>=type.px(900),e=>e.child(div().w(75).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(c.author)))
   .when(width>=type.px(720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx),view.reviewIsVisible?.()===false?null:view.historyScroll);
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
- return v_flex().size_full().min_w(0).min_h(0).on_size_change((size,cx)=>{const width=Math.round(size.width);if(view.historyPaneWidth!==width){view.historyPaneWidth=width;cx.notify();}}).child(h_flex().h(type.px(34)).flex_none().items_center().gap(4)
-  .child(section(view.historyRef==='all'?'Git history · all branches':view.historyFull?'Git history':s.featureBaseOid?'Git history · branch':'Git history · HEAD').flex_1().min_w(0).truncate())
+ const scope=view.historyRef==='all'?'all branches':view.historyFull?'':s.featureBaseOid?'branch':'HEAD';
+ return v_flex().size_full().min_w(0).min_h(0).on_size_change((size,cx)=>{const width=Math.round(size.width);if(view.historyPaneWidth!==width){view.historyPaneWidth=width;cx.notify();}})
+  .child(panelHeader('History',scope)
   .when(Boolean(s.historyLoading||s.historyBaseLoading),e=>e.child(historyLoadingIndicator(s)))
   .child(popover('history-options',svg('mods/juhas/icons/more.svg').size(14),view.panel==='historyOptions',(open,cx)=>{if(open||view.panel==='historyOptions')view.panel=open?'historyOptions':null;cx.notify();},()=>v_flex().size_full().min_h(0)
    .child(button('history-feature','Feature branch commits',(_e,cx)=>view.setHistoryView('feature',cx)))
@@ -152,7 +162,7 @@ export function filesPane(view){const type=uiMetrics();
  const s=view.controller.state,t=theme(),session=view.controller.session(),drafts=session.drafts,query=view.inputs?.fileQuery?.value()||'',rows=fileRows(view.visibleFiles?.()||s.files,view.fileTree,view.collapsedDirs||new Set(),query);
 
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
- return v_flex().size_full().min_w(0).min_h(0).child(h_flex().h(type.px(30)).flex_none().items_center().child(section(`Files · ${s.files.length}`).flex_1().min_w(0).truncate())
+ return v_flex().size_full().min_w(0).min_h(0).child(panelHeader('Files',String(s.files.length))
   .child(toggle('hide-tests',svg('mods/juhas/icons/flask-conical-off.svg').size(15),Boolean(view.hideTests),(pressed,cx)=>view.setHideTests?.(pressed,cx),{tooltip:'Hide test files'}))
   .when(Boolean(view.inputs?.fileQuery),e=>e.child(button('toggle-file-filter',svg('mods/juhas/icons/search.svg').size(14),(_e,cx)=>{view.fileFilterOpen=!view.fileFilterOpen;if(view.fileFilterOpen)view.inputs.fileQuery.focus();cx.notify();},{active:Boolean(view.fileFilterOpen||query),tooltip:'Filter files by path'})))
   .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))

@@ -667,18 +667,37 @@ export default class Juhas extends View {
   return refs;
  }
  moveReferenceChoice(delta,cx){const refs=this.filteredReferences();this.refIndex=Math.max(this.panel==='historyRefs'||this.inputs.refQuery.value().trim()?0:-1,Math.min(refs.length-1,(this.refIndex??0)+delta));cx.notify();}
- chooseReferenceChoice(history,cx){if(!history&&this.refIndex===-1){this.chooseReference('',false,cx);return;}const ref=this.filteredReferences()[this.refIndex||0];if(ref)this.chooseReference(ref.fullName,history,cx);}
+ automaticReference(){
+  const ref=this.controller.state.automaticChoice?.ref;
+  if(!ref)return null;
+  const pair=this.pairedReferences?.refs.find(item=>item.local&&item.remote&&(item.local.fullName===ref||item.remote.fullName===ref));
+  if(!pair)return null;
+  const id='automatic:'+ref;
+  const remote=this.pendingRemoteChoices?.[id]??(pair.remote.fullName===ref);
+  return {...pair,...(remote?pair.remote:pair.local),id,name:'Automatic'};
+ }
+ chooseAutomaticReference(cx){
+  this.filteredReferences();
+  const ref=this.automaticReference()?.fullName;
+  this.chooseReference(ref&&ref!==this.controller.state.automaticChoice?.ref?ref:'',false,cx);
+ }
+ chooseReferenceChoice(history,cx){if(!history&&this.refIndex===-1){this.chooseAutomaticReference(cx);return;}const ref=this.filteredReferences()[this.refIndex||0];if(ref)this.chooseReference(ref.fullName,history,cx);}
  chooseAutomaticBase(cx){const version=this.sourceActionVersion=(this.sourceActionVersion||0)+1,controller=this.controller,repo=controller.state.repo,branch=controller.state.branch,context=this.activeContext?.key;const current=()=>!this.closed&&this.sourceActionVersion===version&&this.controller===controller&&controller.state.repo===repo&&controller.state.branch===branch&&this.activeContext?.key===context;this.controller.setBase('');this.inputs.base.set_value('');this.allChangesFrom='branch';this.panel=null;this.work(cx,async cx=>{await controller.ensureAutomaticBase?.(this.config,{force:true});if(!current())return;this.restoreBase();await this.updateFeatureHistory();if(current())this.applyScope('branch',cx);});}
  chooseReference(ref,history,cx){if(!history&&!ref){this.chooseAutomaticBase(cx);return;}this.panel=null;if(history){this.historyFull=true;this.historyRef=ref;this.work(cx,cx=>this.controller.loadHistory(this.filters()));}else{this.controller.setBase(ref);this.restoreBase();this.pendingScope=null;this.allChangesFrom='branch';this.work(cx,cx=>this.updateFeatureHistory());this.applyScope('branch',cx);}cx.notify();}
  referencePicker(history){const type=uiMetrics(),t=theme();const content=v_flex().min_h(0).min_w(0),refs=this.filteredReferences();
+   const showAutomatic=!history&&!this.inputs.refQuery.value().trim();
+   const automatic=showAutomatic?this.automaticReference():null;
+   const onRemote=(ref,remote,cx)=>{this.pendingRemoteChoices={...this.pendingRemoteChoices,[ref.id]:remote};cx.notify();};
    return content
     .child(h_flex().w_full().min_w(0).gap(4).items_center().child(field(this.inputs.refQuery,'Find a branch')).child(button('fetch-branches',svg('mods/juhas/icons/fetch.svg').size(15).when(Boolean(this.fetching),e=>e.spin(900)),(_e,cx)=>{cx.stop_propagation();this.fetch(cx);},{tooltip:this.fetching?'Fetching branches from remotes':'Fetch latest branches from remotes'}).w(28).px(0).disabled(Boolean(this.busy))))
     .when(Boolean(this.fetchError),e=>e.child(text(this.fetchError,true).px(8).py(4)))
     .child(v_flex().flex_none().min_h(0)
      .child(h_flex().px(8).h(type.px(24)).items_center().border_b(1).border_color(t.border).child(text('BRANCH',true).flex_1().text_size(type.caption)).child(text('REMOTE',true).text_size(type.caption)))
-     .when(!history&&!this.inputs.refQuery.value().trim(),e=>e.child(button('automatic-base',h_flex().w_full().gap(8).items_center().child(text('Automatic').flex_1()),(_e,cx)=>{this.chooseAutomaticBase(cx);},{active:(this.refIndex??-1)===-1,tooltip:'Automatic'}).w_full().justify_start().rounded(4)))
+     .when(showAutomatic,e=>e.child(automatic
+      ?optionList(this.id+'-automatic-base',[automatic],(this.refIndex??-1)===-1?0:-1,(delta,cx)=>this.moveReferenceChoice(delta,cx),(_ref,cx)=>this.chooseAutomaticReference(cx),{rows:1,remoteColumn:true,onRemote})
+      :button('automatic-base',h_flex().w_full().gap(8).items_center().child(text('Automatic').flex_1()),(_e,cx)=>this.chooseAutomaticBase(cx),{active:(this.refIndex??-1)===-1,tooltip:'Automatic'}).w_full().justify_start().rounded(4)))
      .when(history,e=>e.child(button('history-head','Current branch',(_e,cx)=>this.chooseReference('HEAD',true,cx))).child(button('history-all','All branches',(_e,cx)=>this.chooseReference('all',true,cx))))
-     .child(optionList(this.id+'-refs',refs,this.refIndex||0,(delta,cx)=>this.moveReferenceChoice(delta,cx),(ref,cx)=>this.chooseReference(ref.fullName,history,cx),{height:history?168:196,rows:history?6:7,selected:history?this.historyRef:this.controller.base(),remoteColumn:!history,onRemote:(ref,remote,cx)=>{this.pendingRemoteChoices={...this.pendingRemoteChoices,[ref.id]:remote};cx.notify();}})));
+     .child(optionList(this.id+'-refs',refs,this.refIndex||0,(delta,cx)=>this.moveReferenceChoice(delta,cx),(ref,cx)=>this.chooseReference(ref.fullName,history,cx),{height:history?168:196,rows:history?6:7,selected:history?this.historyRef:this.controller.base(),remoteColumn:!history,onRemote})));
  }
  footer(cx){const type=uiMetrics();
   const s=this.controller.session(),t=theme();let content=v_flex().flex_none().border_t(1).border_color(t.border);

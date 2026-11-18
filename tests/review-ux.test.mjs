@@ -107,6 +107,34 @@ test('remote switch stages the reference until the row is chosen',()=>{
  options[2].onRemote(options[1][0],false,cx);assert.equal(v.filteredReferences()[0].fullName,'refs/heads/topic');
 });
 
+test('Automatic offers its paired tracking branch and applies it only on confirmation',()=>{
+ const {v,nodes,cx}=fixture(),local='refs/heads/topic',remote='refs/remotes/upstream/renamed';
+ v.controller.state.refs=[{name:'topic',fullName:local,upstream:remote},{name:'upstream/renamed',fullName:remote}];
+ v.controller.state.automaticChoice={ref:local};
+ let chosen;
+ v.chooseReference=(...args)=>chosen=args;
+ v.setReferencePicker(false,true,cx);
+ v.referencePicker(false);
+ const automatic=nodes.find(n=>n[0]==='refs'&&n[1][0]?.name==='Automatic');
+ assert.equal(automatic?.[1][0].fullName,local);
+ automatic[2].onRemote(automatic[1][0],true,cx);
+ assert.equal(chosen,undefined);
+ v.chooseReferenceChoice(false,cx);
+ assert.deepEqual(chosen,[remote,false,cx]);
+ automatic[2].onRemote(automatic[1][0],false,cx);
+ v.chooseReferenceChoice(false,cx);
+ assert.deepEqual(chosen,['',false,cx]);
+ v.controller.state.automaticChoice={ref:remote};
+ v.setReferencePicker(false,true,cx);
+ nodes.length=0;
+ v.referencePicker(false);
+ const remoteAutomatic=nodes.find(n=>n[0]==='refs'&&n[1][0]?.name==='Automatic');
+ assert.equal(remoteAutomatic[1][0].fullName,remote);
+ remoteAutomatic[2].onRemote(remoteAutomatic[1][0],false,cx);
+ v.chooseReferenceChoice(false,cx);
+ assert.deepEqual(chosen,[local,false,cx]);
+});
+
 
 test('fetch keeps the branch picker, query, pending remote choice and comparison',async()=>{
  const {v,cx}=fixture();v.panel='refs';v.pendingRemoteChoices={topic:true};v.inputs.refQuery.set_value('topic');const comparison=v.controller.state.comparison;

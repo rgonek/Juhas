@@ -205,6 +205,13 @@ test('diff file heading uses the shared row style and shows file-list totals, in
  assert.ok(name);assert.equal(name.values.font_semibold,undefined);
  assert.deepEqual(name.values.flex_1,[]);const plus=row.nodes.findIndex(n=>n.nodes?.includes('+14')),minus=row.nodes.findIndex(n=>n.nodes?.includes('−9'));assert.equal(plus,row.nodes.indexOf(name)+1);assert.equal(minus,plus+1);assert.ok(row.nodes.slice(minus+1).some(n=>n.identity==='comment-file'));
  assert.ok(row.nodes.some(n=>n.nodes?.includes('+14')));assert.ok(row.nodes.some(n=>n.nodes?.includes('−9')));
+ assert.ok(!row.nodes.some(n=>n.identity==='single-copy-path'));
+ row.handlers.on_hover(true,{notify(){}});
+ const copy=header().nodes.find(n=>n.identity==='single-copy-path');
+ let copied;
+ copy.handlers.on_click(null,{stop_propagation(){},write_to_clipboard(path){copied=path;}});
+ assert.equal(copied,'mods/juhas/main.js');
+ header().handlers.on_hover(false,{notify(){}});
  Object.assign(view.controller.state.file,{additions:0,deletions:0});row=header();assert.ok(row.nodes.some(n=>n.nodes?.includes('+0')));assert.ok(row.nodes.some(n=>n.nodes?.includes('−0')));
  Object.assign(view.controller.state.file,{additions:null,deletions:null});row=header();assert.ok(!row.nodes.some(n=>n.nodes?.includes('+null')||n.nodes?.includes('−null')));
 });

@@ -1,3 +1,4 @@
+import {diffContextRows} from '../mods/juhas/reading.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as models from '../mods/juhas/review-ui.js';
@@ -27,7 +28,7 @@ test('split replacement lines stay paired when comments are attached to either s
  const old=line('old','old'),next=line('new','new'),oldComment={id:'old-comment',kind:'comment',draft:{side:'old'}},newComment={id:'new-comment',kind:'comment',draft:{side:'new'}};
  const rows=models.splitRows([old,oldComment,next,newComment]);assert.equal(rows[0].old,old);assert.equal(rows[0].next,next);assert.deepEqual(rows.slice(1),[oldComment,newComment]);
 });
-function nativeView(){let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');const Native=new Function('View','changeGroups','stepChange','annotatePatch','splitRows','patchCode','EditorState','uiMetrics',source+'\nreturn Juhas;')(class{},models.changeGroups,models.stepChange,annotatePatch,models.splitRows,models.patchCode,{new:options=>({options,on(){},set_value(value){this.text=value;},value(){return this.text;}})},()=>({fontSize:14})),view=Object.create(Native.prototype),scroll=[];
+function nativeView(){let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');const Native=new Function('View','changeGroups','stepChange','annotatePatch','diffContextRows','splitRows','patchCode','EditorState','uiMetrics',source+'\nreturn Juhas;')(class{},models.changeGroups,models.stepChange,annotatePatch,diffContextRows,models.splitRows,models.patchCode,{new:options=>({options,on(){},set_value(value){this.text=value;},value(){return this.text;}})},()=>({fontSize:14})),view=Object.create(Native.prototype),scroll=[];
  view.controller={state:{comparison:{id:'c'},file:{id:'f'}}};view.diffMode='unified';view.diffRows=[line('one','new'),line('context','context'),line('two','old')];view.diffScroll={scroll_to_item:(...args)=>scroll.push(args)};view.diffRowsKey=view.diffChangeKey();return {view,scroll};}
 test('native navigation scrolls through the retained handle without reading Git or opening a comment',()=>{
  const {view,scroll}=nativeView(),cx={notify(){}};view.navigateChange(1,cx);view.navigateChange(1,cx);view.navigateChange(-1,cx);assert.deepEqual(scroll,[[0,'top'],[2,'top'],[0,'top']]);assert.equal(view.panel,undefined);
@@ -46,8 +47,8 @@ test('navigation crosses file boundaries, skips empty patches and stops at revie
  view.diffRowsKey=view.diffChangeKey();view.changeCursor={source:view.diffRowsKey,id:'two'};
  const selected=[];view.controller.session=()=>({drafts:[]});view.controller.selectFile=async id=>{selected.push(id);state.file=state.files.find(f=>f.id===id);state.patch={hunks:id==='binary'?[]:[{header:'@@',lines:[line('first','new'),line('context','context'),line('last','new')]}]};};
  view.publish=()=>{};view.work=(_cx,action)=>{view.pending=action(_cx);};
- view.navigateChange(1,cx);await view.pending;assert.deepEqual(selected,['binary','b']);assert.equal(view.changeCursor.id,'h0l0');assert.deepEqual(scroll.at(-1),[1,'top']);
+ view.navigateChange(1,cx);await view.pending;assert.deepEqual(selected,['binary','b']);assert.equal(view.changeCursor.id,'h0l0');assert.deepEqual(scroll.at(-1),[0,'top']);
  view.diffRows=[line('one','new'),line('context','context'),line('two','old')];view.diffRowsKey=view.diffChangeKey();view.changeCursor={source:view.diffRowsKey,id:'two'};
  view.navigateChange(1,cx);await view.pending;assert.equal(view.message,'End of review');assert.equal(state.file.id,'b');
- view.changeCursor={source:view.diffRowsKey,id:'one'};view.navigateChange(-1,cx);await view.pending;assert.equal(state.file.id,'a');assert.equal(view.changeCursor.id,'h0l2');assert.deepEqual(scroll.at(-1),[3,'top']);
+ view.changeCursor={source:view.diffRowsKey,id:'one'};view.navigateChange(-1,cx);await view.pending;assert.equal(state.file.id,'a');assert.equal(view.changeCursor.id,'h0l2');assert.deepEqual(scroll.at(-1),[2,'top']);
 });

@@ -3,7 +3,7 @@ import {resolveRepo} from './repositories.js';
 import {git,uid,oid,isAncestor,withGitBudget} from './git.js';
 import {listHistory,listRefs} from './history.js';
 import {resolveComparison,fromHistory,resolveBase} from './comparisons.js';
-import {listChangedFiles,listChangedFileMetadata,loadChangedFileStats,loadPatch} from './diff.js';
+import {listChangedFiles,listChangedFileMetadata,loadChangedFileStats,loadPatch,revealPatchContext} from './diff.js';
 import {createCache,createRequestGate} from './cache.js';
 import {loadSession,mutateSession} from './storage.js';
 import {addDraft,markSeen,lastCheckpoint} from './review.js';
@@ -95,7 +95,15 @@ export class Controller {
   await verify();const key=patchKey(comparison,file,full);let patch=this.cache.get(key);if(!patch){patch=await loadPatch(run,comparison,file,{full});this.cache.set(key,patch);}await verify();return patch;
  }
  async loadDetails(){const repo=this.state.repo,id=this.state.comparison?.targetOid;if(!repo||!id)return;const key=JSON.stringify([repo.key,id,'details']);let details=this.cache.get(key);if(!details){const raw=await git(this.run,repo,['show','-s','--format=%s%x00%an <%ae> · %aI%x00%b',id,'--']);const [subject,author,body]=raw.split('\0');details={subject,author,body:body?.trim()};this.cache.set(key,details);}if(this.state.repo?.key===repo.key&&this.state.comparison?.targetOid===id)this.state.details=details;}
- async expandFile(full=true){this.refreshGate.begin('expand');const c=this.state.comparison,file=this.state.file;if(!c||!file)return;const token=this.patchGate.begin(file.id);const patch=await loadPatch(this.run,c,file,{full});if(c.mutableTarget&&!await this.validateWorking(c,token))return;if(this.patchGate.isCurrent(token)&&this.state.comparison?.id===c.id)this.state.patch={...patch,fullContext:full};}
+ async expandFile(full=true,gap=null,current=this.state.patch){
+  this.refreshGate.begin('expand');
+  const c=this.state.comparison,file=this.state.file;if(!c||!file)return;
+  const token=this.patchGate.begin(file.id),patch=await loadPatch(this.run,c,file,{full});
+  if(c.mutableTarget&&!await this.validateWorking(c,token))return;
+  if(!this.patchGate.isCurrent(token)||this.state.comparison?.id!==c.id)return;
+  if(gap&&!patch.complete)throw new Error(patch.reason);
+  this.state.patch=gap?revealPatchContext(current,patch,gap):{...patch,fullContext:full};
+ }
  async validateWorking(expected,token){
   if(!this.patchGate.isCurrent(token)||this.state.comparison?.id!==expected.id)return false;
   const current=await resolveComparison(this.run,expected.repo,expected.scope,this.session().checkpoints);

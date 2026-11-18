@@ -32,6 +32,22 @@ export function decorateLine(text,path,changed=[],matches=[]){
  for(const token of tokenizeLine(text,path)){const end=offset+token.text.length,bounds=new Set([offset,end]);for(const range of [...changed,...matches]){if(range.start>offset&&range.start<end)bounds.add(range.start);if(range.end>offset&&range.end<end)bounds.add(range.end);}const sorted=[...bounds].sort((a,b)=>a-b);for(let i=0;i<sorted.length-1;i++){const start=sorted[i],finish=sorted[i+1];result.push({text:text.slice(start,finish),kind:token.kind,changed:changed.some(r=>r.start<finish&&r.end>start),match:matches.some(r=>r.start<finish&&r.end>start)});}offset=end;}
  return result;
 }
+export function diffContextRows(rows,patch){
+ const visible=[];
+ let next=1;
+ for(const row of rows){
+  if(row.kind==='hunk'){
+   const start=row.hunk.lines.find(line=>line.newLine!=null)?.newLine;
+   if(patch?.complete&&start>next){
+    visible.push({id:`context:${next}:${start}`,kind:'context-gap',start:next,end:start});
+   }
+   continue;
+  }
+  if(row.newLine!=null)next=row.newLine+1;
+  visible.push(row);
+ }
+ return visible;
+}
 export function multiFileRows(sections){
  const result=[];for(const section of sections){const {file,comparison,collapsed,loading,limited}=section,context={fileId:file.id,comparisonId:comparison?.id,filePath:file.newPath};
   result.push({...context,id:`file:${file.id}`,kind:'file-header',text:file.newPath,collapsed,loading,limited});if(collapsed)continue;

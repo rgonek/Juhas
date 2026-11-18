@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tokenizeLine,intraline,findInPatch,decorateLine,multiFileRows} from '../mods/juhas/reading.js';
+import {tokenizeLine,intraline,findInPatch,decorateLine,diffContextRows,multiFileRows} from '../mods/juhas/reading.js';
+import {parsePatch,revealPatchContext} from '../mods/juhas/diff.js';
+import {annotatePatch} from '../mods/juhas/comments.js';
+
+test('revealing one context gap preserves other gaps and both source line numbers',()=>{
+ const compact=parsePatch('@@ -3 +3,2 @@\n original\n+addition\n@@ -6,2 +7 @@\n-removal\n final','file');
+ const full=parsePatch('@@ -1,7 +1,7 @@\n first\n second\n original\n+addition\n fourth\n fifth\n-removal\n final','file');
+ const display=patch=>diffContextRows(annotatePatch(patch,[],'comparison','file'),patch);
+ const gaps=patch=>display(patch).filter(row=>row.kind==='context-gap').map(({start,end})=>[start,end]);
+ assert.deepEqual(gaps(compact),[[1,3],[5,7]]);
+ const expanded=revealPatchContext(compact,full,{start:5,end:7});
+ assert.deepEqual(gaps(expanded),[[1,3]]);
+ assert.deepEqual(display(expanded).filter(row=>row.side==='context').map(({oldLine,newLine})=>[oldLine,newLine]),[[3,3],[4,5],[5,6],[7,7]]);
+ assert.deepEqual(gaps(revealPatchContext(expanded,full,{start:1,end:3})),[]);
+});
 test('syntax tokens retain exact Unicode and whitespace and reuse theme-independent cache',()=>{
  const source='const café = "😀\t"; // x  ';const tokens=tokenizeLine(source,'a.ts');
  assert.equal(tokens.map(t=>t.text).join(''),source);assert.ok(tokens.some(t=>t.kind==='keyword'));assert.ok(tokens.some(t=>t.kind==='string'));

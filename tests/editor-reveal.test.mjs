@@ -1,3 +1,4 @@
+import {diffContextRows} from '../mods/juhas/reading.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -6,7 +7,7 @@ import {splitRows} from '../mods/juhas/review-ui.js';
 
 test('revealing a line composer uses a scroll strategy supported by native Herdr',()=>{
  const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
- const Native=new Function('View','annotatePatch','composerRows','splitRows','class Juhas extends View'+source+'\nreturn Juhas;')(class{},annotatePatch,composerRows,splitRows);
+ const Native=new Function('View','annotatePatch','composerRows','diffContextRows','splitRows','class Juhas extends View'+source+'\nreturn Juhas;')(class{},annotatePatch,composerRows,diffContextRows,splitRows);
  for(const diffMode of ['unified','split']){
   const view=Object.create(Native.prototype),calls=[];
   Object.assign(view,{diffMode,target:{comparisonId:'c',newPath:'a.js',side:'new',startLine:1,endLine:1},prepareFileHeaders(){},controller:{state:{comparison:{id:'c'},file:{newPath:'a.js'},patch:{hunks:[{header:'@@',lines:[{id:'line',kind:'line',side:'new',newLine:1,text:'code'}]}]}},session:()=>({drafts:[]})},diffScroll:{scroll_to_item(index,strategy){assert.ok(['top','center'].includes(strategy),`Unsupported native strategy: ${strategy}`);calls.push(index);}}});

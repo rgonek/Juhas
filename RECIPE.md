@@ -1,6 +1,6 @@
 # Review agent code & send feedback
 
-Juhas lets you review your coding agent's changes and send feedback from Herdr. Inspect individual commits, a branch's combined diff, or uncommitted work in Unified or Split view. Browse Git history and changed files, then comment on a line, a range or a whole file. Collect comments from several commits into one review, check the recipient, and edit or copy the message before sending it to your agent. Keep the review in a sidebar or open a tab or split pane; your selected comparison and comment drafts stay available as you move around. Mark reviewed commits as seen to compare the next round of changes. Reviews use local Git repositories and do not require GitHub or a pull request.
+Juhas lets you review your coding agent's changes and send feedback from Herdr. Inspect individual commits, a branch's combined diff, or uncommitted work in Unified or Split view. Switch between local Git repositories in the same review view. Browse Git history and changed files, then comment on a line, a range or a whole file. Collect comments from several commits into one review, check the recipient, and edit or copy the message before sending it to your agent. Keep the review in a sidebar or open a tab or split pane; your selected comparison and comment drafts stay available as you move around. Mark reviewed commits as seen to compare the next round of changes. Reviews use local Git repositories and do not require GitHub or a pull request.
 
 ![Juhas](preview.png)
 

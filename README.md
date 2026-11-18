@@ -6,6 +6,10 @@ Review commits one by one, see a branch's combined changes, or inspect
 uncommitted work. Comment beside the code, then send your feedback to the
 coding agent in one review.
 
+For projects with multiple local Git repositories, use the repository selector
+to switch between them in the same review view. See [Usage](docs/usage.md) for
+how Juhas discovers repositories, including from VS Code workspace files.
+
 ![Juhas code review cover with a sample diff, inline feedback and a sheep illustration](preview.png)
 
 *Illustrated cover with a close-up of sample code and feedback. See the native screenshot below for the current interface.*

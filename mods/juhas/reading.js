@@ -32,19 +32,22 @@ export function decorateLine(text,path,changed=[],matches=[]){
  for(const token of tokenizeLine(text,path)){const end=offset+token.text.length,bounds=new Set([offset,end]);for(const range of [...changed,...matches]){if(range.start>offset&&range.start<end)bounds.add(range.start);if(range.end>offset&&range.end<end)bounds.add(range.end);}const sorted=[...bounds].sort((a,b)=>a-b);for(let i=0;i<sorted.length-1;i++){const start=sorted[i],finish=sorted[i+1];result.push({text:text.slice(start,finish),kind:token.kind,changed:changed.some(r=>r.start<finish&&r.end>start),match:matches.some(r=>r.start<finish&&r.end>start)});}offset=end;}
  return result;
 }
-export function diffContextRows(rows,patch){
+export function withLineInfo(rows){
  const visible=[];
- let next=1;
+ let oldEnd=1,newEnd=1;
  for(const row of rows){
-  if(row.kind==='hunk'){
-   const start=row.hunk.lines.find(line=>line.newLine!=null)?.newLine;
-   if(patch?.complete&&start>next){
-    visible.push({id:`context:${next}:${start}`,kind:'context-gap',start:next,end:start});
-   }
-   continue;
+  if(row.kind!=='hunk'){visible.push(row);continue;}
+  const header=/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(row.text);
+  if(!header)continue;
+  const oldCount=Number(header[2]??1),newCount=Number(header[4]??1);
+  const oldStart=Number(header[1])+Number(oldCount===0);
+  const newStart=Number(header[3])+Number(newCount===0);
+  const skipped=newStart-newEnd;
+  if(skipped>0&&oldStart-oldEnd===skipped){
+   visible.push({...row,text:`${skipped} omitted ${skipped===1?'line':'lines'}`});
   }
-  if(row.newLine!=null)next=row.newLine+1;
-  visible.push(row);
+  oldEnd=oldStart+oldCount;
+  newEnd=newStart+newCount;
  }
  return visible;
 }

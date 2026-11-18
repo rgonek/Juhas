@@ -6,7 +6,7 @@ import {layoutGraph} from './graph.js';
 import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from './review-ui.js';
 import {annotatePatch,composerRows,measuredCommentRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 import {formatCommitTime} from './commit-time.js';
-import {decorateLine,diffContextRows,intraline,multiFileRows} from './reading.js';
+import {decorateLine,intraline,multiFileRows,withLineInfo} from './reading.js';
 export function uiMetrics(){const look=settings();return typography(look.ui_font_size,window.rem_size());}
 export function nativeFrame(id,{framed=true}={}){const type=uiMetrics();const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).when(framed,e=>e.rounded(10).border_1().border_color(t.border)).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(type.body).line_height(type.lineHeight);}
 function control(element,{active=false,primary=false,segment=false}={}){const type=uiMetrics();const t=theme();return element.h(type.px(28)).flex_none().px(8).flex().gap(6).items_center().justify_center().rounded(6).text_size(type.control).line_height(type.lineHeight).cursor_pointer()
@@ -174,7 +174,6 @@ function sourceText(row,path,t,wrap,changed,matches,prefix=''){
 function codeCell(row,side,t,wrap,path,changed=[],matches=[],selected=false){const type=uiMetrics();
  const line=row?.[side==='old'?'oldLine':'newLine'];return h_flex().flex_1().min_w(0).when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).gap(8).px(8).overflow_hidden()
   .bg(selected?t.selected:row?.side==='old'?t.ansi1+'18':row?.side==='new'?t.ansi2+'18':t.background)
-  .when(Boolean(row)&&!selected,e=>e.hover(el=>el.bg(row.side==='old'?t.ansi1+'30':row.side==='new'?t.ansi2+'30':t.hover)))
   .child(div().w(36).flex_none().text_right().text_color(selected?t.accent:t.dim).child(String(line??'')))
   .child(sourceText(row,path,t,wrap,changed,matches));
 }
@@ -184,7 +183,7 @@ export function diffPane(view,cx){const type=uiMetrics();
  const activeTarget=view.inlineEditor&&view.target?.comparisonId===s.comparison?.id&&view.target?.newPath===s.file?.newPath?view.target:null,composed=composerRows(annotated,activeTarget,view.editId);
  const clickSource=view.diffChangeKey();
  const selectedLine=(row,side,container=row)=>{const target=view.target,line=row?.[side==='old'?'oldLine':'newLine'];return Boolean(target&&line!=null&&target.comparisonId===(container?.comparisonId||s.comparison?.id)&&target.newPath===(container?.filePath||s.file?.newPath)&&target.side===side&&line>=target.startLine&&line<=target.endLine);};
- const present=(source,patch)=>{const visible=diffContextRows(source,patch),display=split?splitRows(visible):visible;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
+ const present=(source,patch)=>{const visible=withLineInfo(source),display=split?splitRows(visible):visible;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
  const sections=view.allFiles?(view.allFileSections||[]).filter(section=>!view.hideTests||!isTestFile(section.file)).map(section=>{const source=section.patch?annotatePatch(section.patch,drafts,section.comparison?.id,section.file.newPath):null,target=view.target?.comparisonId===section.comparison?.id&&view.target?.newPath===section.file.newPath?view.target:null;return {...section,source,rows:source?present(composerRows(source,target,view.editId),section.patch):null};}):null;
  const rows=sections?multiFileRows(sections):present(composed,s.patch),changes=changeGroups(rows),emphasis=new Map(),pairs=new Map();
  const paired=(source,fileId='')=>{for(const row of splitRows(source))if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const pair={old:row.old,next:row.next,fileId};pairs.set(fileId+':'+row.old.id,pair);pairs.set(fileId+':'+row.next.id,pair);}};if(sections){for(const section of sections)if(section.source&&!section.collapsed&&!section.limited)paired(section.source,section.file.id);}else paired(annotated);
@@ -199,24 +198,19 @@ export function diffPane(view,cx){const type=uiMetrics();
   if(row.kind==='file-header'&&view.fileHeaderViews?.has(row.fileId))return div().h(type.px(34)).w_full().child(view.fileHeaderViews.get(row.fileId));
   if(row.kind==='file-header')return h_flex().h(type.px(34)).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(type.px(46)).p(type.px(12));
-  if(row.kind==='context-gap')return h_flex().id(row.id).h(type.px(22)).px(10).gap(6).items_center().cursor_pointer().bg(t.raised).hover(e=>e.bg(t.hover))
-   .child(svg('mods/juhas/icons/unfold-vertical.svg').size(13))
-   .child(text(`Show ${row.end-row.start} hidden unchanged ${row.end-row.start===1?'line':'lines'}`,true));
   if(row.kind==='comment'||row.kind==='editor'){
    const height=row.kind==='editor'?type.px(INLINE_EDITOR_HEIGHT):(commentHeight(row.text)*type.scale),content=()=>row.kind==='editor'?div().min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT)).w_full().max_w(view.width||'100%').child(view.inlineEditor):commentCard(row,view,view.width);
    if(!split||!row.draft?.side)return content();
    return h_flex().when(row.kind==='editor',e=>e.min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT))).when(row.kind!=='editor',e=>e.h(height)).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0));
   }
-  if(row.kind==='hunk')return div().h(type.px(22)).px(10).bg(t.raised).text_color(t.accent).font_family(settings().font_family).text_size(type.caption).child(row.text);
+  if(row.kind==='hunk')return h_flex().h(type.px(22)).px(10).items_center().bg(t.raised).text_color(t.muted).text_size(type.caption).child(row.text);
   if(row.kind==='pair'){const old=row.old?{...row.old,fileId:row.fileId}:null,next=row.next?{...row.next,fileId:row.fileId}:null;return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_stretch()).when(!wrap,e=>e.h(type.px(22))).font_family(settings().font_family).text_size(type.code).line_height(type.lineHeight).child(codeCell(old,'old',t,wrap,row.filePath||s.file?.newPath,fragments(old),ranges(old,'old'),selectedLine(old,'old',row))).child(div().w(1).bg(t.border)).child(codeCell(next,'new',t,wrap,row.filePath||s.file?.newPath,fragments(next),ranges(next,'new'),selectedLine(next,'new',row)));}
   const mark=row.side==='new'?'+':row.side==='old'?'-':' ';
   const selected=selectedLine(row,row.side==='context'?(view.target?.side||'new'):row.side==='old'?'old':'new');
   return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).px(8).gap(8).font_family(settings().font_family).text_size(type.code).line_height(type.lineHeight).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
-   .when(!selected,e=>e.hover(el=>el.bg(row.side==='old'?t.ansi1+'30':row.side==='new'?t.ansi2+'30':t.hover)))
    .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.oldLine??''))).child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.newLine??'')))
    .child(sourceText(row,row.filePath||s.file?.newPath,t,wrap,fragments(row),ranges(row,row.side==='old'?'old':'new'),`${mark} `));
  };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rows.find(r=>r.id===id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
-  if(row.kind==='context-gap'){view.toggleFileContext?.(row.fileId||s.file?.id,cx,row);return;}
   if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
@@ -239,8 +233,9 @@ export function diffPane(view,cx){const type=uiMetrics();
   .when(!view.allFiles&&!hiddenSelected&&Boolean(s.file),e=>e.child(h_flex().id('diff-file-header').min_h(type.px(34)).flex_none().px(10).gap(6).items_center().border_b(1).border_color(t.border)
    .on_hover((hovered,cx)=>{if(view.singleHeaderHovered!==hovered){view.singleHeaderHovered=hovered;cx.notify();}})
    .child(fileStatus(s.file))
-   .child(text(s.file.newPath).flex_1().min_w(0).truncate().text_ellipsis_middle().tooltip(s.file.newPath))
-   .when(Boolean(view.singleHeaderHovered),row=>row.child(copyPathButton('single-copy-path',s.file.newPath)))
+   .child(h_flex().flex_1().min_w(0).gap(6).items_center()
+    .child(text(s.file.newPath).min_w(0).truncate().text_ellipsis_middle().tooltip(s.file.newPath))
+    .when(Boolean(view.singleHeaderHovered),row=>row.child(copyPathButton('single-copy-path',s.file.newPath))))
    .when(s.file.additions!=null,e=>e.child(text('+'+s.file.additions).flex_none().text_size(type.caption).text_color(t.ansi2)).child(text('−'+s.file.deletions).flex_none().text_size(type.caption).text_color(t.ansi1)))
    .child(button('comment-file',svg('mods/juhas/icons/comment.svg').size(14),(_e,cx)=>view.fileComment(cx),{tooltip:'Comment on this file'}).w(28).px(0))
    .child(button('expand-context',svg(`mods/juhas/icons/${s.patch?.fullContext?'fold':'unfold'}-vertical.svg`).size(14),(_e,cx)=>view.toggleFileContext?.(s.file.id,cx),{tooltip:s.patch?.fullContext?'Fold unchanged context':'Show whole file'}).w(28).px(0))))

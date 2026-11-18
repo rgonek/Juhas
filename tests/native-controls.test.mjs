@@ -201,13 +201,15 @@ test('history loading uses native SVG animation and disables duplicate paginatio
 test('diff file heading uses the shared row style and shows file-list totals, including zero and unknown counts',()=>{
  const view=diffView({hunks:[]},null);Object.assign(view.controller.state.file,{newPath:'mods/juhas/main.js',additions:14,deletions:9});
  const header=()=>descendants(controls().diffPane(view)).find(n=>n.values?.id==='diff-file-header');
- let row=header(),name=row.nodes.find(n=>n.nodes?.includes('mods/juhas/main.js'));
+ const pathGroup=row=>row.nodes.find(n=>n.nodes?.some(child=>child.nodes?.includes('mods/juhas/main.js')));
+ let row=header(),group=pathGroup(row),name=group.nodes[0];
  assert.ok(name);assert.equal(name.values.font_semibold,undefined);
- assert.deepEqual(name.values.flex_1,[]);const plus=row.nodes.findIndex(n=>n.nodes?.includes('+14')),minus=row.nodes.findIndex(n=>n.nodes?.includes('−9'));assert.equal(plus,row.nodes.indexOf(name)+1);assert.equal(minus,plus+1);assert.ok(row.nodes.slice(minus+1).some(n=>n.identity==='comment-file'));
+ assert.deepEqual(group.values.flex_1,[]);const plus=row.nodes.findIndex(n=>n.nodes?.includes('+14')),minus=row.nodes.findIndex(n=>n.nodes?.includes('−9'));assert.equal(plus,row.nodes.indexOf(group)+1);assert.equal(minus,plus+1);assert.ok(row.nodes.slice(minus+1).some(n=>n.identity==='comment-file'));
  assert.ok(row.nodes.some(n=>n.nodes?.includes('+14')));assert.ok(row.nodes.some(n=>n.nodes?.includes('−9')));
- assert.ok(!row.nodes.some(n=>n.identity==='single-copy-path'));
+ assert.equal(group.nodes.length,1);
  row.handlers.on_hover(true,{notify(){}});
- const copy=header().nodes.find(n=>n.identity==='single-copy-path');
+ const copy=pathGroup(header()).nodes[1];
+ assert.equal(copy.identity,'single-copy-path');
  let copied;
  copy.handlers.on_click(null,{stop_propagation(){},write_to_clipboard(path){copied=path;}});
  assert.equal(copied,'mods/juhas/main.js');

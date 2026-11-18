@@ -1,3 +1,4 @@
+import {withLineInfo} from '../mods/juhas/reading.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -5,10 +6,9 @@ import * as comments from '../mods/juhas/comments.js';
 import * as models from '../mods/juhas/review-ui.js';
 import * as submission from '../mods/juhas/submit.js';
 import {Controller} from '../mods/juhas/controller.js';
-import {diffContextRows} from '../mods/juhas/reading.js';
 function fixture(data=new Map()){
  const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];let serial=0;
- const deps={...comments,...models,...submission,diffContextRows,theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
+ const deps={...comments,...models,...submission,withLineInfo,theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
  const Native=new Function('View',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},...Object.values(deps)),v=Object.create(Native.prototype);
  const patch={hunks:[{header:'@@',lines:[{side:'old',oldLine:1,newLine:null,text:'before'},{side:'new',oldLine:null,newLine:1,text:'after'},{side:'context',oldLine:2,newLine:2,text:'shared'}]}]};
  const comparison={id:'c',repoKey:'r',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40)},files=[{id:'a',newPath:'a',oldPath:'a'},{id:'b',newPath:'b',oldPath:'b'}],saved={drafts:[],submittedBatches:[]};

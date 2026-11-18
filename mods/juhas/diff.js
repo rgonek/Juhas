@@ -40,27 +40,3 @@ export async function loadPatch(run,c,file,limits={}){
  else r={stdout:await git(run,c.repo,['diff',...options,...(limits.full?['--unified=20000']:[]),...ends(c),'--',`:(literal)${file.oldPath??file.newPath}`,...(file.oldPath!==file.newPath?[`:(literal)${file.newPath}`]:[])])};
  return {...parsePatch(r.stdout,file.id,limits),full:!!limits.full};
 }
-
-export function revealPatchContext(current,full,{start,end}){
- if(!full.complete)return current;
- const visible=new Set();
- for(const hunk of current.hunks){
-  for(const line of hunk.lines){
-   if(line.side==='context')visible.add(line.newLine);
-  }
- }
- const hunks=[];
- for(const hunk of full.hunks){
-  let lines=[];
-  const flush=()=>{
-   if(lines.length)hunks.push({header:hunk.header,lines});
-   lines=[];
-  };
-  for(const line of hunk.lines){
-   if(line.side!=='context'||visible.has(line.newLine)||line.newLine>=start&&line.newLine<end)lines.push(line);
-   else flush();
-  }
-  flush();
- }
- return {...current,hunks};
-}

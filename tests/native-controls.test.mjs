@@ -6,12 +6,13 @@ import {layoutGraph} from '../mods/juhas/graph.js';
 import * as comments from '../mods/juhas/comments.js';
 import {formatCommitTime} from '../mods/juhas/commit-time.js';
 import * as reading from '../mods/juhas/reading.js';
+import {pierreFileIcon} from '../mods/juhas/file-icons.js';
 import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from '../mods/juhas/review-ui.js';
 import {fileReviewKey,setFileReviewed} from '../mods/juhas/progress.js';
 function controls(overrides={}){
  let layout=false;
  const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
- const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,...comments,...reading,formatCommitTime,fileRows,splitRows,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
+ const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,pierreFileIcon,image:path=>element('image',path),...comments,...reading,formatCommitTime,fileRows,splitRows,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
  Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
@@ -341,20 +342,24 @@ test('file panel uses extension icons and status colors in both layouts',()=>{
   {id:'a',newPath:'EUZServices/CostCenters/ReplaceCostCenterAutoComponent.cs',status:'M'},
   {id:'b',newPath:'EUZServices/CostCenters/config.json',status:'A'},
   {id:'c',newPath:'EUZServices/CostCenters/old.md',status:'D'},
+  {id:'d',newPath:'EUZServices/CostCenters/shot.PNG',status:'D'},
+  {id:'e',newPath:'.gitignore',status:'M'},
+  {id:'f',newPath:'LICENSE',status:'M'},
  ];
  const ui=controls({theme:()=>palette});
  for(const fileTree of [true,false]){
   const view={id:'files',fileTree,controller:{state:{files},session:()=>({drafts:[]})}};
   const list=descendants(ui.filesPane(view)).find(node=>node.kind==='virtual');
   const rows=list.renderRows(),nodes=rows.flatMap(descendants);
-  for(const [icon,stem,suffix,color] of [['C#','ReplaceCostCenterAutoComponent','.cs','blue'],['{}','config','.json','green'],['MD','old','.md','red']]){
-   assert.ok(nodes.some(node=>node.nodes?.includes(icon)));
+  for(const icon of ['image','git','default'])assert.ok(nodes.some(node=>node.kind==='image'&&node.identity==='mods/juhas/icons/pierre/'+icon+'.png'));
+  for(const [icon,stem,suffix,color] of [['default','ReplaceCostCenterAutoComponent','.cs','blue'],['json','config','.json','green'],['markdown','old','.md','red']]){
+   assert.ok(nodes.some(node=>node.kind==='image'&&node.identity==='mods/juhas/icons/pierre/'+icon+'.png'));
    assert.ok(nodes.some(node=>node.nodes?.includes(stem)&&Object.hasOwn(node.values,'truncate')));
    assert.ok(nodes.some(node=>node.nodes?.includes(suffix)&&Object.hasOwn(node.values,'flex_none')));
    assert.ok(nodes.some(node=>node.values?.text_color===color&&descendants(node).includes(stem)&&descendants(node).includes(suffix)));
   }
   assert.ok(nodes.some(node=>node.nodes?.includes('EUZServices/CostCenters')));
-  assert.ok(!nodes.includes('3 files'));
+  assert.ok(!nodes.includes('4 files'));
   assert.ok(rows.some(row=>row.values.tooltip===files[0].newPath));
  }
 });

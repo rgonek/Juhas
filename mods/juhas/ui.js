@@ -1,4 +1,5 @@
-import {div,PathBuilder,svg,list} from 'gpui-kit';
+import {div,image,PathBuilder,svg,list} from 'gpui-kit';
+import {pierreFileIcon} from './file-icons.js';
 import {h_flex,v_flex,v_virtual_list,Scrollbar,Input,Button,Checkbox,Toggle,Switch,Popover,Select,Popup} from 'gpui-base';
 import {theme,settings} from 'herdr';
 import {typography} from './typography.js';
@@ -165,19 +166,12 @@ export function filesPane(view){const type=uiMetrics();
    .when(count>0,e=>e.child(h_flex().gap(3).items_center().tooltip('Saved comments').child(svg('mods/juhas/icons/comment.svg').size(12).text_color(t.accent)).child(text(String(count)).text_color(t.accent))));
  },(id,cx)=>{const f=rows.find(r=>r.id===id);if(f?.directory){if(query.trim())return;view.collapsedDirs??=new Set();if(f.closed){for(const path of f.paths)view.collapsedDirs.delete(path);}else view.collapsedDirs.add(f.path);cx.notify();}else view.selectFile(id,cx);},view.reviewIsVisible?.()===false?null:view.filesScroll));
 }
-const fileTypeIcons=new Map(Object.entries({
- cs:'C#',fs:'F#',vb:'VB',js:'JS',jsx:'JSX',mjs:'JS',cjs:'JS',ts:'TS',tsx:'TSX',
- json:'{}',jsonc:'{}',md:'MD',mdx:'MD',css:'CSS',scss:'CSS',html:'<>',xml:'<>',
- csproj:'<>',xaml:'<>',py:'PY',rs:'RS',go:'GO',sql:'SQL',ps1:'PS',sh:'SH',
- yml:'YML',yaml:'YML',toml:'TOML',txt:'TXT',png:'IMG',jpg:'IMG',svg:'SVG',
-}));
 function fileRowLabel(file,tree,type,t){
  const slash=file.newPath.lastIndexOf('/'),name=file.newPath.slice(slash+1),dot=name.lastIndexOf('.');
  const suffix=dot>0&&dot<name.length-1?name.slice(dot):'',stem=suffix?name.slice(0,dot):name;
- const icon=fileTypeIcons.get(suffix.slice(1).toLowerCase());
+ const icon=pierreFileIcon(name);
  return h_flex().flex_1().min_w(0).gap(7).items_center()
-  .child(h_flex().w(type.px(28)).flex_none().justify_center().items_center().text_size(type.caption).text_color(t.muted)
-   .child(icon?div().font_semibold().child(icon):svg('mods/juhas/icons/single-file.svg').size(14)))
+  .child(image(`mods/juhas/icons/pierre/${icon}.png`).size(type.px(15)).flex_none())
   .child(h_flex().min_w(0).items_center().text_size(type.body).text_color(fileStatusColor(file.status,t))
    .child(div().min_w(0).truncate().child(stem))
    .when(Boolean(suffix),e=>e.child(div().flex_none().child(suffix))))

@@ -138,6 +138,8 @@ test('repository selection precedes comparison and has its own row in a narrow p
  const {view,state,render}=fixture();
  const a={key:'a',root:'/workspace/a',name:'Primary'},b={key:'b',root:'/workspace/b'};
  state.repo=a;view.policy={repos:[a,b],canSwitch:true};
+ view.repositoryCounts=new Map([['a',{additions:1,deletions:2}],['b',{additions:5,deletions:1}]]);
+ view.panel='repos';
  for(const width of [900,450]){
   view.width=width;
   const nodes=render(),toolbar=nodes.find(n=>n.id==='review-toolbar');
@@ -145,10 +147,18 @@ test('repository selection precedes comparison and has its own row in a narrow p
   const container=width===450?repoRow:toolbar;
   assert.ok(container);
   assert.equal(container.nodes[0].id,'context-repos');
+  const rows=container.nodes[0].nodes[0].nodes;
+  assert.deepEqual(rows.map(row=>row.id),['b','a']);
+  assert.deepEqual(rows[0].label.nodes[0].nodes[1].nodes.map(node=>[node.label,node.values.text_color]),[['+5','added'],['−1','removed']]);
   assert.equal(Boolean(repoRow),width===450);
  }
  view.policy={repos:[a],canSwitch:false};
- assert.ok(!render().some(n=>n.id==='context-repos'));
+ for(const width of [900,450]){
+  view.width=width;
+  const nodes=render();
+  assert.ok(!nodes.some(n=>n.id==='context-repos'||n.id==='repository-toolbar'));
+  assert.equal(nodes.find(n=>n.id==='review-toolbar').nodes[0].id,'comparison-baseline');
+ }
 });
 test('summary click shows colored compact line counts and tooltip keeps exact complete totals',()=>{
  const {view,state,controls,cx,render}=fixture();state.comparison.commitCount=20;state.files=[{additions:123456,deletions:1200},{additions:90,deletions:34},{binary:true,additions:null,deletions:null}];

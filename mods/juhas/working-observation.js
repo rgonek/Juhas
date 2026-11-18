@@ -1,4 +1,4 @@
-import {git,fingerprint} from './git.js';
+import {git,fingerprint,withGitBudget} from './git.js';
 const options=['--no-color','--no-ext-diff','--no-textconv','--find-renames=20%'];
 export function parseFiles(raw){
  const tokens=raw.split('\0'),files=[],stats=[];
@@ -8,7 +8,7 @@ export function parseFiles(raw){
 export async function readFiles(run,repo,ends){return parseFiles(await git(run,repo,['diff',...options,'--raw','--numstat','--no-abbrev','-z',...ends,'--']));}
 // Raw metadata covers deletes, modes, rename paths and submodule identities.
 // Content hashing is batched; full-repository binary patches are never probed.
-export async function observeWorking(run,repo,baseTree){
+async function readWorkingFiles(run,repo,baseTree){
  const files=await readFiles(run,repo,[baseTree]);
  const untracked=(await git(run,repo,['ls-files','--others','--exclude-standard','-z'])).split('\0').filter(Boolean);
  if(files.length+untracked.length>10000)throw new Error('Working observation exceeds 10000 changed paths; previous source retained');
@@ -22,6 +22,21 @@ export async function observeWorking(run,repo,baseTree){
  const results=await Promise.allSettled(workers),failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
  files.push(...metadataFiles);
  if(files.length>10000)throw new Error('Working observation exceeds 10000 changed paths; previous source retained');
+ return {files,untracked};
+}
+export async function workingLineCounts(runner,repo){
+ const run=withGitBudget(runner);
+ const head=await run(repo,['rev-parse','--verify','HEAD^{tree}']);
+ const baseTree=(head.code===0?head.stdout:await git(run,repo,['hash-object','-t','tree','--stdin'])).trim();
+ const {files}=await readWorkingFiles(run,repo,baseTree);
+ return files.reduce((total,file)=>{
+  total.additions+=file.additions??0;
+  total.deletions+=file.deletions??0;
+  return total;
+ },{additions:0,deletions:0});
+}
+export async function observeWorking(run,repo,baseTree){
+ const {files,untracked}=await readWorkingFiles(run,repo,baseTree);
  const regular=files.filter(f=>!['000000','120000','160000'].includes(f.newMode));
  for(let i=0;i<regular.length;i+=40){const batch=regular.slice(i,i+40),hashes=(await git(run,repo,['hash-object','--no-filters','--',...batch.map(f=>f.newPath)])).trim().split('\n');if(hashes.length!==batch.length||hashes.some(h=>! /^[a-f0-9]{40,64}$/.test(h)))throw new Error('Cannot verify working file contents');batch.forEach((f,j)=>f.newOid=hashes[j]);}
  for(const file of files.filter(f=>f.newMode==='120000')){

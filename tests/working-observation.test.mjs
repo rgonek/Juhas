@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {observeWorking} from '../mods/juhas/working-observation.js';
+import {observeWorking,workingLineCounts} from '../mods/juhas/working-observation.js';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {fixture,run} from './helpers/repos.mjs';
+
+test('repository counts include staged, unstaged and untracked lines against HEAD',async t=>{
+ const repo=fixture(t);
+ repo.commit('old\nkeep\n');
+ writeFileSync(join(repo.root,'file.txt'),'new\nkeep\n');
+ repo.git('add','file.txt');
+ writeFileSync(join(repo.root,'file.txt'),'new\nkeep\nextra\n');
+ writeFileSync(join(repo.root,'new.txt'),'untracked\n');
+ assert.deepEqual(await workingLineCounts(run,repo),{additions:3,deletions:1});
+});
 
 const paths=Array.from({length:11},(_,i)=>`new-${i}.txt`);
 const raw=path=>`:000000 100644 ${'0'.repeat(40)} ${'0'.repeat(40)} A\0/dev/null\0${path}\0${1}\t0\t\0/dev/null\0${path}\0`;

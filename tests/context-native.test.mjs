@@ -8,16 +8,47 @@ import {createCache} from '../mods/juhas/cache.js';
 import {createRunner} from '../mods/juhas/git.js';
 import {resolveRepositoryScope,allowedRepository,contextStorageKey} from '../mods/juhas/context.js';
 import {resolveRepo} from '../mods/juhas/repositories.js';
-function nativeView(list=directories){
+function nativeView(list=directories,workingLineCounts,hasWorkingChanges){
  const data=new Map(),store={get:k=>data.get(k),set:(k,v)=>data.set(k,v)};let id=0;
  let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
  const deps={createCache,resolveConfig,selectBase,readLocalConfig,readTextFile:async()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});},shared:store.get,setShared:store.set,store,Controller,createRunner,cache:createCache(),exec:(_command,args,options)=>run({root:options.cwd},args),scopeCache:new Map(),resolveRepositoryScope,allowedRepository,contextStorageKey,readDirectories:(_exec,_home,machine,path)=>directories(machine,path),appHome:()=>'',uid:()=>String(++id)};
- Object.assign(deps,{resolveRepo,readDirectories:(_exec,_home,machine,path)=>list(machine,path)});
+ Object.assign(deps,{resolveRepo,workingLineCounts,hasWorkingChanges,readDirectories:(_exec,_home,machine,path)=>list(machine,path)});
  const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps));const view=Object.create(Native.prototype);
  view.contextProps={config:{baseRef:'refs/heads/trunk'}};view.config={maxDepth:3,maxRepos:20};view.contextViews=new Map();view.policy={repos:[],canSwitch:false};view.inputs={};view.role='sidebar';view.sessionId='initial';
  for(const key of ['folder','base','target','query','author','path','comment','note']){let value='';view.inputs[key]={value:()=>value,set_value:next=>value=next};}
  view.work=(_cx,fn)=>view.pending=fn(_cx);return {view,store};
 }
+test('reopening the repository picker reuses pending and fresh counts',async ()=>{
+ let calls=0,release;
+ const scan=new Promise(resolve=>{release=resolve;});
+ const counts={additions:4,deletions:2};
+ let probes=0,seen;
+ const {view}=nativeView(directories,async(_run,repo)=>{calls++;seen=repo.key;await scan;return counts;},
+  async(_run,repo)=>{probes++;return repo.key==='repo';});
+ let pending;
+ const cx={notify(){},spawn(fn){pending=fn(this);}};
+ const repo={key:'repo'};
+ view.controller={run(){}};
+ view.activeContext={key:'project'};
+ view.policy={repos:[repo,{key:'clean'}]};
+ view.loadRepositoryCounts(cx);
+ view.loadRepositoryCounts(cx);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(probes,2);
+ assert.equal(view.repositoryChanges.get('repo'),true);
+ assert.equal(view.repositoryChanges.get('clean'),false);
+ assert.equal(calls,1);
+ assert.equal(seen,'repo');
+ release();await pending;
+ view.loadRepositoryCounts(cx);
+ assert.equal(calls,1);
+ assert.deepEqual(view.repositoryCounts.get(repo.key),counts);
+ view.policy={repos:[repo]};
+ view.loadRepositoryCounts(cx);
+ assert.deepEqual(view.repositoryCounts.get(repo.key),counts);
+ await pending;
+ assert.equal(calls,2);
+});
 test('switching projects replaces Git and comments; returning restores the correct cached project',async t=>{
  const a=fixture(t),b=fixture(t);a.commit('base A');a.git('checkout','-b','feature/a');a.commit('project A');b.commit('base B');b.git('checkout','-b','feature/b');b.commit('project B');const {view,store}=nativeView();const cx={notify(){},spawn(fn){return fn(this);}};
  const first={key:'project-a',spaceId:'a',folder:a.root,machine:null},second={key:'project-b',spaceId:'b',folder:b.root,machine:null};
@@ -49,9 +80,21 @@ test('single-repository context cannot be switched to another saved repository',
  const a=fixture(t);a.commit('a');const {view}=nativeView(),cx={notify(){}};view.activateContext({key:'a',spaceId:'a',folder:a.root,machine:null},cx);await view.pending;const before=view.controller.state.repo.root;view.openFolder('/outside',cx);assert.equal(view.controller.state.repo.root,before);assert.match(view.message,/active project/);
 });
 test('choosing another repository in a parent context resets ref and search controls',async t=>{
- const a=fixture(t);a.commit('one');a.git('worktree','add','-b','another',a.parent+'/another');const {view}=nativeView(),cx={notify(){}};
+ const a=fixture(t);a.commit('one');a.git('worktree','add','-b','another',a.parent+'/another');const {view}=nativeView();
+ let background;const cx={notify(){},spawn(fn){background=fn(this);}};
  view.activateContext({key:'parent',spaceId:'parent',folder:a.parent,machine:null},cx);await view.pending;assert.equal(view.policy.canSwitch,true);const next=view.policy.repos.find(r=>r.root!==view.controller.state.repo.root);
- view.inputs.target.set_value('commit-from-first-repo');view.inputs.query.set_value('old search');view.historyRef='old-branch';view.openFolder(next.root,cx);await view.pending;
+ let releaseHistory,comparisonAtHistory;
+ const history=new Promise(resolve=>{releaseHistory=resolve;});
+ view.updateFeatureHistory=async()=>{comparisonAtHistory=view.controller.state.comparison;await history;};
+ view.inputs.target.set_value('commit-from-first-repo');view.inputs.query.set_value('old search');view.historyRef='old-branch';view.panel='repos';
+ try{
+  view.openFolder(next.root,cx);
+  assert.equal(view.panel,null);
+  assert.equal(view.switchingRepository,next);
+  await view.pending;
+  assert.ok(comparisonAtHistory);
+  assert.equal(view.switchingRepository,null);
+ }finally{releaseHistory();await view.pending;await background;}
  assert.equal(view.controller.state.repo.root,next.root);assert.equal(view.inputs.target.value(),'HEAD');assert.equal(view.inputs.query.value(),'');assert.equal(view.historyRef,'HEAD');
  const first=view.policy.repos.find(r=>r.root!==next.root);
  view.target={repoKey:next.key,newPath:'file.txt'};view.inputs.comment.set_value('unsaved');

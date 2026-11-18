@@ -50,21 +50,21 @@ export function field(state,_placeholder,width){const type=uiMetrics();const t=t
 // Popup overlays do not provide the viewport used by v_virtual_list. Keep this
 // small option window bounded, with the complete collection searchable and
 // reachable through the native wheel and the selector's arrow-key actions.
-export function optionList(id,items,index,move,choose,{height=196,rows=7,label=item=>item.name,tooltip=item=>item.fullName||item.oid||item.id,selected,remoteColumn=false,onRemote}={}){const type=uiMetrics(),t=theme();
+export function optionList(id,items,index,move,choose,{height=196,rows=7,rowHeight=28,label=item=>item.name,renderLabel,tooltip=item=>item.fullName||item.oid||item.id,selected,remoteColumn=false,onRemote}={}){const type=uiMetrics(),t=theme();
  const start=Math.max(0,Math.min(Math.max(0,items.length-rows),(index||0)-Math.floor(rows/2)));let wheel=0;
  const option=(item,offset)=>{
   const key=item.fullName||item.oid||item.id,active=start+offset===(index||0),checked=selected===key;
   const mark=()=>svg('mods/juhas/icons/check.svg').size(14).flex_none().opacity(checked?1:0);
-  const content=h_flex().w_full().gap(8).items_center().child(text(label(item)).flex_1().min_w(0).truncate().text_ellipsis_middle()).when(!remoteColumn,e=>e.child(mark()));
-  const row=button(id+'-'+key,content,(_e,cx)=>choose(item,cx),{active,tooltip:tooltip(item)}).h(type.px(28)).min_w(0).px(8).rounded(4).justify_start().tab_index(-1).role('list_box_option').when(active,e=>e.aria_active_descendant());
+  const content=h_flex().w_full().gap(8).items_center().child(renderLabel?renderLabel(item):text(label(item)).flex_1().min_w(0).truncate().text_ellipsis_middle()).when(!remoteColumn,e=>e.child(mark()));
+  const row=button(id+'-'+key,content,(_e,cx)=>choose(item,cx),{active,tooltip:tooltip(item)}).h(type.px(rowHeight)).min_w(0).px(8).rounded(4).justify_start().tab_index(-1).role('list_box_option').when(active,e=>e.aria_active_descendant());
   if(!remoteColumn)return row.w_full();
   const useRemote=item.remote?.fullName===key;
   return h_flex().h(type.px(28)).min_w(0).rounded(4).bg(active?t.selected:t.background).child(row.flex_1()).child(h_flex().w(46).flex_none().justify_end().pr(8).items_center()
    .when(Boolean(item.local&&item.remote),e=>e.child(Switch.new(id+'-remote-'+item.id).checked(useRemote).tab_index(0).accessibility_label('Use remote version of '+item.name).tooltip('Use remote version of '+item.name).on_mouse_down('left',(_e,cx)=>cx.stop_propagation()).on_change((value,cx)=>{cx.stop_propagation();onRemote?.(item,value,cx);}).child(div().w(28).h(16).rounded(8).bg(useRemote?t.accent:t.border).flex().items_center().px(2).when(useRemote,e=>e.justify_end()).child(div().size(12).rounded(6).bg(t.background)))))
    .when(Boolean(!item.local&&item.remote),e=>e.child(h_flex().id(id+'-remote-only-'+item.id).w(28).h(16).flex_none().items_center().justify_center().tooltip('Only a remote-tracking branch is available; there is no local branch to switch to. Uses the last fetched version.').child(svg('mods/juhas/icons/check.svg').size(13).text_color(t.muted)))));
  };
- return v_flex().id(id).h(type.px(Math.min(height,Math.max(1,Math.min(rows,items.length))*28))).flex_none().min_w(0).overflow_hidden().role('list')
-  .on_scroll_wheel((event,cx)=>{cx.stop_propagation();wheel-=event.delta_lines?.y??(event.delta?.y||0)/type.px(28);const steps=Math.trunc(wheel);if(steps){wheel-=steps;move(steps,cx);}})
+ return v_flex().id(id).h(type.px(Math.min(height,Math.max(1,Math.min(rows,items.length))*rowHeight))).flex_none().min_w(0).overflow_hidden().role('list')
+  .on_scroll_wheel((event,cx)=>{cx.stop_propagation();wheel-=event.delta_lines?.y??(event.delta?.y||0)/type.px(rowHeight);const steps=Math.trunc(wheel);if(steps){wheel-=steps;move(steps,cx);}})
   .when(!items.length,e=>e.child(text('No matches',true).p(8)))
   .children(items.slice(start,start+rows).map(option));
 }

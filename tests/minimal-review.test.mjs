@@ -8,7 +8,9 @@ function fixture(){
  const element=(id)=>{let proxy;const data={nodes:[],values:{}};if(id)data.id=id;proxy=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...args)=>{if(k==='id')t.id=args[0];else if(k==='child')t.nodes.push(args[0]);else if(k==='children')t.nodes.push(...args[0]);else if(k==='when'){if(args[0])args[1](proxy);}else t.values[k]=args.length===1?args[0]:args;return proxy;}});return proxy;};
  const controls=new Map(),control=(id,label,action,options)=>{const node=element(id);Object.assign(node,{label,action,options});controls.set(id,node);return node;};
  const deps={branchChoices,uiMetrics:()=>typography(14,16),theme:()=>({ansi2:'added',ansi1:'removed'}),div:element,section:element,h_flex:element,v_flex:element,nativeFrame:element,svg:element,text:(label)=>{const node=element();node.label=label;return node;},button:control,buttonGroup:control,checkbox:(id,label,checked,action)=>control(id,label,action,{checked}),toggle:(id,label,pressed,action)=>control(id,label,action,{pressed}),popover:(id,label,open,action,content)=>{const node=control(id,label,action);if(open)node.nodes.push(content());return node;},h_resizable:element,v_resizable:element,resizable_panel:element,filesPane:()=>element('files-content'),historyPane:()=>element('history-content'),draftsPane:()=>element('comments-content'),diffPane:()=>element('diff-content'),shared:()=>null};
- deps.selector=deps.popover;const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
+ deps.selector=deps.popover;
+ deps.optionList=(id,items,_index,_move,_choose,{renderLabel})=>element(id).children(items.map(item=>control(item.id,renderLabel(item))));
+ const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
  const Native=new Function('View','isTestFile','currentBranchFits',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},isTestFile,currentBranchFits,...Object.values(deps));
  const view=Object.create(Native.prototype),state={repo:{key:'repo'},branch:'feature/topic',files:[],history:[],refs:[],comparison:{id:'comparison',scope:{kind:'branch'},targetOid:'abcdef0123456789'}};
  Object.assign(view,{id:'review',role:'pane',contextProps:{},config:{},inputs:{},deferSync(){},baseChoice:()=>({ref:'refs/heads/main'}),hasUnsavedComment:()=>false,footer:()=>null,rememberLoadedView(){},controller:{base:()=>'',state,session:()=>({drafts:[]})}});
@@ -134,10 +136,13 @@ test('review toolbar keeps baseline on the left and panel refresh summary submit
 test('compact counts use at most three digits and promote a rounded 1000 to the next suffix',()=>{
  const {view}=fixture();for(const [value,want] of [[0,'0'],[999,'999'],[1000,'1k'],[1234,'1.23k'],[12345,'12.3k'],[123456,'123k'],[999499,'999k'],[999500,'1M'],[1000000,'1M'],[123456789,'123M'],[Number.MAX_SAFE_INTEGER,'9.01Q']]){const result=view.compactCount(value);assert.equal(result,want);assert.ok(result.replace(/\D/g,'').length<=3);}assert.equal(view.compactCount(null),'…');
 });
-test('repository selection precedes comparison and has its own row in a narrow pane',()=>{
+test('repository and comparison controls move together in a narrow pane',()=>{
  const {view,state,render}=fixture();
  const a={key:'a',root:'/workspace/a',name:'Primary'},b={key:'b',root:'/workspace/b'};
- state.repo=a;view.policy={repos:[a,b],canSwitch:true};
+ const clean={key:'clean',root:'/workspace/clean',name:'A clean repository'};
+ state.repo=a;view.policy={repos:[a,b,clean],homeKey:'a',canSwitch:true};
+ view.activeContext={folder:'/workspace'};
+ view.repositoryChanges=new Map([['a',false],['b',true],['clean',false]]);
  view.repositoryCounts=new Map([['a',{additions:1,deletions:2}],['b',{additions:5,deletions:1}]]);
  view.panel='repos';
  for(const width of [900,450]){
@@ -146,10 +151,15 @@ test('repository selection precedes comparison and has its own row in a narrow p
   const repoRow=nodes.find(n=>n.id==='repository-toolbar');
   const container=width===450?repoRow:toolbar;
   assert.ok(container);
-  assert.equal(container.nodes[0].id,'context-repos');
-  const rows=container.nodes[0].nodes[0].nodes;
-  assert.deepEqual(rows.map(row=>row.id),['b','a']);
+  const baseline=container.nodes[0];
+  assert.equal(baseline.id,'comparison-baseline');
+  assert.equal(baseline.nodes[0].id,'context-repos');
+  assert.equal(baseline.nodes[1].id,'compare-from');
+  const rows=baseline.nodes[0].nodes[0].nodes;
+  assert.deepEqual(rows.map(row=>row.id),['b','a','clean']);
   assert.deepEqual(rows[0].label.nodes[0].nodes[1].nodes.map(node=>[node.label,node.values.text_color]),[['+5','added'],['−1','removed']]);
+  assert.equal(rows[0].label.nodes[1].label,'b');
+  assert.equal(rows[1].label.nodes[0].nodes.length,1);
   assert.equal(Boolean(repoRow),width===450);
  }
  view.policy={repos:[a],canSwitch:false};

@@ -24,6 +24,9 @@ async function readWorkingFiles(run,repo,baseTree){
  if(files.length>10000)throw new Error('Working observation exceeds 10000 changed paths; previous source retained');
  return {files,untracked};
 }
+export async function hasWorkingChanges(run,repo){
+ return Boolean(await git(run,repo,['status','--porcelain=v1','-z','--untracked-files=normal']));
+}
 export async function workingLineCounts(runner,repo){
  const run=withGitBudget(runner);
  const head=await run(repo,['rev-parse','--verify','HEAD^{tree}']);

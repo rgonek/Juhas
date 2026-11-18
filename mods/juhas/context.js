@@ -38,5 +38,5 @@ export async function resolveRepositoryScope(run,readDirectories,context,limits=
    }
   }catch{warnings.push('Could not list workspace files');}
  }
- return {...found,warnings,canSwitch:found.repos.length>1,kind:found.repos.length>1||(!own&&found.repos.length)?'parent':own?'single':'empty'};
+ return {...found,warnings,homeKey:own?.key??null,canSwitch:found.repos.length>1,kind:found.repos.length>1||(!own&&found.repos.length)?'parent':own?'single':'empty'};
 }

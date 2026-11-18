@@ -114,3 +114,21 @@ test('fetch keeps the branch picker, query, pending remote choice and comparison
  assert.equal(v.panel,'refs');assert.equal(v.inputs.refQuery.value(),'topic');assert.deepEqual(v.pendingRemoteChoices,{topic:true});assert.equal(v.controller.state.comparison,comparison);assert.equal(v.fetching,false);
  const {v:picker,nodes}=fixture();picker.referencePicker(false);assert.ok(nodes.some(n=>n[0]==='button'&&n[1]==='fetch-branches'));
 });
+
+test('reference picker reuses results when rendering the same large reference list',()=>{
+ const {v,cx,nodes,setQuery}=fixture();
+ let reads=0;
+ v.controller.state.refs=Array.from({length:5000},(_,i)=>({
+  name:'topic/'+i,get fullName(){reads++;return 'refs/heads/'+this.name;},
+ }));
+ v.setReferencePicker(false,true,cx);
+ const afterOpen=reads;
+ v.referencePicker(false);
+ v.referencePicker(false);
+ assert.equal(reads,afterOpen);
+ assert.equal(nodes.find(n=>n[0]==='refs')[1].length,5000);
+ setQuery('topic/1234');
+ assert.deepEqual(v.filteredReferences().map(r=>r.name),['topic/1234']);
+ v.controller.state.refs=[{name:'topic/12345',fullName:'refs/heads/topic/12345'}];
+ assert.deepEqual(v.filteredReferences().map(r=>r.name),['topic/12345']);
+});

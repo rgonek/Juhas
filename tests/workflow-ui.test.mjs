@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {selectBase} from '../mods/juhas/config.js';
-import {rangeSelection} from '../mods/juhas/review-ui.js';
+import {branchChoices,rangeSelection} from '../mods/juhas/review-ui.js';
 import {fixture,run} from './helpers/repos.mjs';
 import {Controller} from '../mods/juhas/controller.js';
 function view(sharedData=new Map()){
  let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
- const Native=new Function('View','selectBase','rangeSelection','shared','setShared','uid',source+'\nreturn Juhas;')(class{},selectBase,rangeSelection,k=>sharedData.get(k),(k,v)=>sharedData.set(k,v),()=> 'version');
+ const Native=new Function('View','selectBase','rangeSelection','branchChoices','shared','setShared','uid',source+'\nreturn Juhas;')(class{},selectBase,rangeSelection,branchChoices,k=>sharedData.get(k),(k,v)=>sharedData.set(k,v),()=> 'version');
  const v=Object.create(Native.prototype),calls=[];let manual='';v.config={baseRules:[]};v.role='sidebar';v.selectionKey='selection';v.inputs={};for(const key of ['base','target','folder','query','author','path']){let value='';v.inputs[key]={value:()=>value,set_value:next=>value=next};}
  v.controller={state:{repo:{root:'/repo',key:'r'},branch:'feature/topic',refs:[{name:'trunk',fullName:'refs/heads/trunk'}],history:[{oid:'first'},{oid:'last'}],comparison:{id:'old',scope:{kind:'commit'},targetOid:'last'}},base:()=>manual,setBase:value=>manual=value,selectScope:async scope=>{calls.push(scope);v.controller.state.comparison={id:'same-trees',scope,targetOid:scope.commit||'last'};},selectResolved:async snapshot=>{v.controller.state.comparison=snapshot;},lastCheckpoint:async()=>({id:'checkpoint'})};v.handle={focus(){}};v.work=(_cx,action)=>v.pending=action(_cx);return {v,calls,sharedData};
 }

@@ -1,3 +1,4 @@
+import {branchChoices} from '../mods/juhas/review-ui.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as config from '../mods/juhas/config.js';
@@ -35,7 +36,7 @@ test('optional local config tolerates only a missing file and exposes bad JSON o
 import {readFileSync} from 'node:fs';
 function nativeBranchView(saved=''){
  let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
- const Native=new Function('View','selectBase',source+'\nreturn Juhas;')(class{},config.selectBase),view=Object.create(Native.prototype),calls=[];let base='';
+ const Native=new Function('View','selectBase','branchChoices',source+'\nreturn Juhas;')(class{},config.selectBase,branchChoices),view=Object.create(Native.prototype),calls=[];let base='';
  view.config={baseRules:rules};view.inputs={base:{value:()=>base,set_value:v=>base=v},target:{value:()=> 'HEAD'}};view.controller={state:{refs,branch:'feature/project-42/task-9'},base:()=>saved,setBase:v=>{saved=v;calls.push(['save',v]);},selectScope:async scope=>calls.push(['scope',scope])};view.publish=()=>{};view.work=(_cx,action)=>view.pending=action(_cx);return {view,calls};
 }
 test('native Branch automatically applies a rule without pinning it as a manual override',async()=>{

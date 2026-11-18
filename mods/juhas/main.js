@@ -44,7 +44,7 @@ export default class Juhas extends View {
   this.inputs.review.on('change',(_e,cx)=>this.changeReview(cx));
   this.inputs.comment.on('change',(_e,cx)=>{this.persistComposer();this.notifyEditor(cx);});
   this.readingOptions={wrap:false};this.findQuery='';this.findMatches=[];this.findIndex=-1;this.allFiles=true;this.summaryLines=false;this.showFiles=true;this.showComments=false;this.commentPanelPosition='top';this.showHistory=false;this.filePanelPosition='top';this.historyPanelPosition='top';this.allFileSections=[];
-  for(const key of ['refQuery','fileQuery','recipientQuery'])this.inputs[key].on('change',(_e,cx)=>{if(key==='refQuery')this.refIndex=0;cx.notify();});
+  for(const key of ['refQuery','fileQuery','recipientQuery'])this.inputs[key].on('change',(_e,cx)=>{if(key==='refQuery'){this.refIndex=0;if(this.panel==='refs'||this.panel==='historyRefs')this.filteredReferences();}cx.notify();});
   this.inputs.find.on('change',(_e,cx)=>this.setFindQuery(this.inputs.find.value(),cx));
   this.inlineEditor=cx.new(InlineEditor,{owner:this,input:this.inputs.comment,save:()=>this.headerAction({kind:'save-comment'}),cancel:()=>this.headerAction({kind:'cancel-comment'})});
   this.inputs.folder.on('submit',(_e,cx)=>this.openFolder(this.inputs.folder.value(),cx));
@@ -633,9 +633,39 @@ export default class Juhas extends View {
    this.controller.mutate(s=>({...s,drafts:result.state==='sent'?s.drafts.filter(d=>batch.draftSnapshots?.[d.id]!==JSON.stringify(d)):s.drafts,submittedBatches:s.submittedBatches.map(b=>b.id===batch.id?{...b,state:result.state,error:result.error}:b)}));this.message=result.state==='sent'?'Review delivered; included comments cleared, newer draft edits retained':`${result.state}: ${result.error}`;if(result.state==='sent'){setShared(this.reviewStorageKey(),null);this.panel=null;this.upperView='comments';this.showComments=true;this.batch=null;}
   }finally{this.sending=false;}});
  }
- setReferencePicker(history,open,cx){const panel=history?'historyRefs':'refs';if(open||this.panel===panel)this.panel=open?panel:null;if(open){this.pendingRemoteChoices={};this.inputs.refQuery?.set_value('');const selected=history?this.historyRef:this.controller.base();this.refIndex=!history&&!selected?-1:Math.max(0,this.filteredReferences().findIndex(ref=>ref.fullName===selected));const token=this.refFocusToken=(this.refFocusToken||0)+1;cx.timer?.after(30,()=>{if(!this.closed&&this.panel===panel&&this.refFocusToken===token)this.inputs.refQuery?.focus();});}cx.notify();}
+ setReferencePicker(history,open,cx){const panel=history?'historyRefs':'refs';if(open||this.panel===panel)this.panel=open?panel:null;if(open){this.pendingRemoteChoices={};this.inputs.refQuery?.set_value('');const selected=history?this.historyRef:this.controller.base();const refs=this.filteredReferences();this.refIndex=!history&&!selected?-1:Math.max(0,refs.findIndex(ref=>ref.fullName===selected));const token=this.refFocusToken=(this.refFocusToken||0)+1;cx.timer?.after(30,()=>{if(!this.closed&&this.panel===panel&&this.refFocusToken===token)this.inputs.refQuery?.focus();});}cx.notify();}
 
- filteredReferences(){const query=(this.inputs.refQuery?.value()||'').trim().toLowerCase();const refs=this.panel==='historyRefs'?this.controller.state.refs:branchChoices(this.controller.state.refs,this.controller.base()).map(ref=>{const remote=this.pendingRemoteChoices?.[ref.id];return remote==null?ref:{...ref,...(remote?ref.remote:ref.local),id:ref.id,name:ref.name};});const candidates=this.controller.state.automaticChoice?.candidates||[];return refs.filter(ref=>query?[ref.name,ref.fullName,ref.local?.fullName,ref.remote?.fullName].some(name=>name?.toLowerCase().includes(query)):this.panel==='historyRefs'||this.controller.base()||!candidates.length||candidates.some(c=>[ref.fullName,ref.local?.fullName,ref.remote?.fullName].includes(c.ref)));}
+ filteredReferences(){
+  const query=(this.inputs.refQuery?.value()||'').trim().toLowerCase();
+  const history=this.panel==='historyRefs',source=this.controller.state.refs;
+  const base=history?'':this.controller.base();
+  const candidates=!history&&!base&&!query?this.controller.state.automaticChoice?.candidates:undefined;
+  const pending=history?undefined:this.pendingRemoteChoices;
+  const cached=this.referenceResults;
+  if(cached?.source===source&&cached.history===history&&cached.base===base&&cached.query===query&&cached.candidates===candidates&&cached.pending===pending)return cached.refs;
+
+  let refs=source;
+  if(!history){
+   const paired=this.pairedReferences;
+   if(paired?.source!==source||paired.base!==base)this.pairedReferences={source,base,refs:branchChoices(source,base)};
+   refs=this.pairedReferences.refs;
+  }
+  if(query){
+   refs=refs.filter(ref=>[ref.name,ref.fullName,ref.local?.fullName,ref.remote?.fullName]
+    .some(name=>name?.toLowerCase().includes(query)));
+  }else if(candidates?.length){
+   const allowed=new Set(candidates.map(candidate=>candidate.ref));
+   refs=refs.filter(ref=>allowed.has(ref.fullName)||allowed.has(ref.local?.fullName)||allowed.has(ref.remote?.fullName));
+  }
+  if(pending&&Object.keys(pending).length){
+   refs=refs.map(ref=>{
+    const remote=pending[ref.id];
+    return remote==null?ref:{...ref,...(remote?ref.remote:ref.local),id:ref.id,name:ref.name};
+   });
+  }
+  this.referenceResults={source,history,base,query,candidates,pending,refs};
+  return refs;
+ }
  moveReferenceChoice(delta,cx){const refs=this.filteredReferences();this.refIndex=Math.max(this.panel==='historyRefs'||this.inputs.refQuery.value().trim()?0:-1,Math.min(refs.length-1,(this.refIndex??0)+delta));cx.notify();}
  chooseReferenceChoice(history,cx){if(!history&&this.refIndex===-1){this.chooseReference('',false,cx);return;}const ref=this.filteredReferences()[this.refIndex||0];if(ref)this.chooseReference(ref.fullName,history,cx);}
  chooseAutomaticBase(cx){const version=this.sourceActionVersion=(this.sourceActionVersion||0)+1,controller=this.controller,repo=controller.state.repo,branch=controller.state.branch,context=this.activeContext?.key;const current=()=>!this.closed&&this.sourceActionVersion===version&&this.controller===controller&&controller.state.repo===repo&&controller.state.branch===branch&&this.activeContext?.key===context;this.controller.setBase('');this.inputs.base.set_value('');this.allChangesFrom='branch';this.panel=null;this.work(cx,async cx=>{await controller.ensureAutomaticBase?.(this.config,{force:true});if(!current())return;this.restoreBase();await this.updateFeatureHistory();if(current())this.applyScope('branch',cx);});}

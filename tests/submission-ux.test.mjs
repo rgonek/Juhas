@@ -1,3 +1,4 @@
+import {branchChoices} from '../mods/juhas/review-ui.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as submission from '../mods/juhas/submit.js';
@@ -71,9 +72,9 @@ test('edited payload byte limits and empty messages are checked before transport
 import {readFileSync} from 'node:fs';
 function nativeSubmission(data=new Map()){
  let selectedSession={...session,submittedBatches:[],drafts:comments.map(d=>({...d}))};let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
- const deliveries=[],deps={...submission,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,v),agents:()=>[agent('right')],terminals:()=>[terminal('right'),terminal('manual')],submit:submission.createSubmitter(),exec:async(_cmd,args)=>{deliveries.push(args);return {code:0};}};
+ const deliveries=[],deps={branchChoices,...submission,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,v),agents:()=>[agent('right')],terminals:()=>[terminal('right'),terminal('manual')],submit:submission.createSubmitter(),exec:async(_cmd,args)=>{deliveries.push(args);return {code:0};}};
  const Native=new Function('View',...Object.keys(deps),source+'\nreturn Juhas;')(class{},...Object.values(deps)),view=Object.create(Native.prototype);
- view.controller={base:()=>'',state:{repo:{key:'repo'},comparison:null},session:()=>selectedSession,mutate:fn=>selectedSession=fn(selectedSession)};view.currentContext=()=>({...context,key:'context'});view.activeContext=view.currentContext();view.reviewKey='review-key';view.inputs={note:{value:()=>''}};let text='';view.inputs.review={value:()=>text,set_value:value=>text=value};view.work=(_cx,fn)=>view.pending=fn(_cx);const cx={notify(){},write_to_clipboard:value=>data.set('clipboard',value)};return {view,data,deliveries,cx,getSession:()=>selectedSession};
+ view.controller={base:()=>'',state:{repo:{key:'repo'},comparison:null,refs:[]},session:()=>selectedSession,mutate:fn=>selectedSession=fn(selectedSession)};view.currentContext=()=>({...context,key:'context'});view.activeContext=view.currentContext();view.reviewKey='review-key';view.inputs={note:{value:()=>''}};let text='';view.inputs.review={value:()=>text,set_value:value=>text=value};view.work=(_cx,fn)=>view.pending=fn(_cx);const cx={notify(){},write_to_clipboard:value=>data.set('clipboard',value)};return {view,data,deliveries,cx,getSession:()=>selectedSession};
 }
 test('native preview auto-selects the project agent and scopes the editable message to one repo',()=>{
  const {view,deliveries,cx}=nativeSubmission();view.preview(cx);assert.equal(view.panel,'submit');assert.equal(view.batch.agentAddress,'right');assert.deepEqual(view.batch.draftIds,['1','2']);assert.equal(view.inputs.review.value(),view.batch.text);assert.equal(deliveries.length,0);

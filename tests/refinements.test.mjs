@@ -6,7 +6,7 @@ import {fixture,run} from './helpers/repos.mjs';
 import {resolveRepo} from '../mods/juhas/repositories.js';
 import {selectBase} from '../mods/juhas/config.js';
 import {Controller} from '../mods/juhas/controller.js';
-import {fileRows,splitRows,rangeSelection} from '../mods/juhas/review-ui.js';
+import {branchChoices,fileRows,splitRows,rangeSelection} from '../mods/juhas/review-ui.js';
 import {syncReviewSpace} from '../mods/juhas/presentation.js';
 import {listHistory} from '../mods/juhas/history.js';
 
@@ -50,7 +50,7 @@ test('all branches includes local and optionally remote graph tips without chang
 
 test('range mode waits for two explicit endpoints and other scopes cancel it',async()=>{
  let source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8');source=source.slice(source.indexOf('export default class')).replace('export default class Juhas extends View','class Juhas extends View');
- const Native=new Function('View','rangeSelection','selectBase',source+'\nreturn Juhas;')(class{},rangeSelection,selectBase),view=Object.create(Native.prototype),selected=[];
+ const Native=new Function('View','rangeSelection','selectBase','branchChoices',source+'\nreturn Juhas;')(class{},rangeSelection,selectBase,branchChoices),view=Object.create(Native.prototype),selected=[];
  view.handle={focus(){}};view.inputs={base:{value:()=>'',set_value(){}},target:{value:()=> 'HEAD',set_value(){}}};view.controller={base:()=>'',state:{refs:[],history:['new','old'].map(oid=>({oid}))},selectScope:async scope=>selected.push(scope)};view.config={};view.publish=()=>{};view.work=(_cx,fn)=>view.pending=fn(_cx);const cx={notify(){}};
  view.applyScope('range',cx);await view.pending;assert.equal(selected.length,0);view.selectCommit('new',cx);assert.equal(selected.length,0);view.selectCommit('old',cx);await view.pending;assert.deepEqual(selected[0],{kind:'range',base:'old',target:'new',includeBase:true});
  view.applyScope('range',cx);await view.pending;view.applyScope('commit',cx);await view.pending;assert.equal(view.rangePicking,false);assert.equal(selected.at(-1).kind,'commit');

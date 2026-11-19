@@ -8,6 +8,8 @@ import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from './review-
 import {annotatePatch,composerRows,measuredCommentRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 import {formatCommitTime} from './commit-time.js';
 import {decorateLine,intraline,multiFileRows,withLineInfo} from './reading.js';
+const REVIEW_PANEL_TOOLBAR_HEIGHT=36;
+
 export function uiMetrics(){const look=settings();return typography(look.ui_font_size,window.rem_size());}
 export function nativeFrame(id,{framed=true}={}){const type=uiMetrics();const t=theme();return v_flex().id(id).size_full().min_h(0).min_w(0).when(framed,e=>e.rounded(10).border_1().border_color(t.border)).overflow_hidden().bg(t.background).text_color(t.foreground).text_size(type.body).line_height(type.lineHeight);}
 function control(element,{active=false,primary=false,segment=false}={}){const type=uiMetrics();const t=theme();return element.h(type.px(28)).flex_none().px(8).flex().gap(6).items_center().justify_center().rounded(6).text_size(type.control).line_height(type.lineHeight).cursor_pointer()
@@ -86,7 +88,7 @@ export function virtualList(id,items,height,row,click,scrollHandle=null,viewport
 export function section(title){const type=uiMetrics();const t=theme();return div().h(type.px(34)).flex_none().px(10).py(type.px(6)).text_size(type.body).font_semibold().text_color(t.foreground).bg(t.chrome).child(title);}
 function panelHeader(title,detail){
  const type=uiMetrics(),t=theme();
- return h_flex().min_h(type.px(34)).w_full().flex_none().items_center().pl(type.px(10)).pr(type.px(4)).gap(type.px(4))
+ return h_flex().min_h(type.px(REVIEW_PANEL_TOOLBAR_HEIGHT)).w_full().flex_none().items_center().pl(type.px(10)).pr(type.px(4)).gap(type.px(4))
   .bg(t.background).border_b(1).border_color(t.border)
   .child(h_flex().flex_1().min_w(0).items_center().gap(type.px(8))
    .child(text(title).flex_none().font_semibold())
@@ -245,7 +247,7 @@ export function diffPane(view,cx){const type=uiMetrics();
  const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
  return v_flex().size_full().min_w(0).min_h(0)
   .on_size_change((size,cx)=>{if(view.diffWidth!==size.width){view.diffWidth=size.width;view.prepareFileHeaders?.(cx);}})
-  .child(h_flex().min_h(type.px(36)).flex_none().px(8).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)
+  .child(h_flex().min_h(type.px(REVIEW_PANEL_TOOLBAR_HEIGHT)).flex_none().px(8).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)
    .child(buttonGroup('diff-files-mode',[{value:true,label:svg('mods/juhas/icons/all-files.svg').size(15),tooltip:'All files'},{value:false,label:svg('mods/juhas/icons/single-file.svg').size(15),tooltip:'Single file'}],Boolean(view.allFiles),(all,cx)=>view.toggleAllFiles?.(all,cx)))
    .child(buttonGroup('diff-mode',[{value:'unified',label:svg('mods/juhas/icons/diff-unified.svg').size(15),tooltip:'Unified diff'},{value:'split',label:svg('mods/juhas/icons/diff-split.svg').size(15),tooltip:'Split diff'}],view.diffMode||'unified',(mode,cx)=>view.setDiffMode(mode,cx)))
    .child(toggle('diff-wrap',svg('mods/juhas/icons/wrap.svg').size(15),wrap,(pressed,cx)=>view.toggleWrap?.(pressed,cx),{tooltip:'Wrap long lines'}).disabled(!view.toggleWrap))

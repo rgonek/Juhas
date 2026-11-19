@@ -17,6 +17,24 @@ function fixture(data=new Map()){
  const field=()=>{let value='';return {value:()=>value,set_value:next=>value=next,focus(){}};};v.inputs={comment:field(),review:field(),note:field()};v.handle={focus(){}};v.inlineEditor={};v.diffMode='split';v.diffScroll={scroll_to_item(){}};v.patchRows=comments.annotatePatch(patch,[],'c','a');v.diffRows=models.splitRows(v.patchRows);v.composerKey='composer';v.reviewKey='review';v.currentContext=()=>({key:'context',spaceId:'space',tabId:'tab'});v.activeContext=v.currentContext();v.work=(_cx,action)=>v.pending=action(_cx);v.publish=()=>{};
  const cx={notify(){},spawn:action=>action(cx)};return {v,cx,data,saved};
 }
+test('typing batches draft writes without notifying the diff for each character',()=>{
+ const {v,cx,data}=fixture(),timers=[];
+ v.selectLine('h0l1',cx);
+ const typing={timer:{after:(_ms,callback)=>timers.push(callback)},notify:()=>assert.fail('typing redrew the diff')};
+ for(const value of ['a','ab','abc']){
+  v.inputs.comment.set_value(value);
+  v.queueComposerSave(typing);
+ }
+ assert.equal(timers.length,1);
+ assert.equal(data.get('composer').body,'');
+ timers.shift()();
+ assert.equal(data.get('composer').body,'abc');
+ v.inputs.comment.set_value('discard');
+ v.queueComposerSave(typing);
+ v.cancelComment(cx);
+ timers.shift()();
+ assert.equal(data.get('composer'),null);
+});
 test('clicking a visible diff line leaves the diff scroll where it is',()=>{
  const {v,cx}=fixture(),calls=[];v.diffScroll={scroll_to_item:(...args)=>calls.push(args)};v.selectLine('h0l1',cx);assert.deepEqual(calls,[]);assert.equal(v.target.endLine,1);
 });

@@ -58,3 +58,13 @@ test('panel visibility and placement survive presentation restoration without Gi
  full.toggleFiles(true,h.cx);full.positionPanel('history','top',h.cx);full.rememberLoadedView();
  const restored=h.view();restored.activateContext(h.context,h.cx);assert.equal(restored.summaryLines,true);assert.equal(restored.showFiles,true);assert.equal(restored.showHistory,true);assert.equal(restored.showComments,true);assert.equal(restored.commentPanelPosition,'right');assert.equal(restored.filePanelPosition,'left');assert.equal(restored.historyPanelPosition,'top');assert.deepEqual(h.calls,[]);
 });
+test('panels on each side follow opening order and reopening moves a panel last',()=>{
+ const {sidebar:v,cx}=harness();
+ for(const side of ['top','left','right','bottom']){
+  v.toggleFiles(false,cx);v.toggleHistory(false,cx);v.toggleComments(false,cx);
+  v.positionPanel('comments',side,cx);v.positionPanel('files',side,cx);v.positionPanel('history',side,cx);
+  assert.deepEqual(v.reviewPanelGroups()[side],['comments','files','history']);
+  v.toggleComments(false,cx);v.toggleComments(true,cx);
+  assert.deepEqual(v.reviewPanelGroups()[side],['files','history','comments']);
+ }
+});

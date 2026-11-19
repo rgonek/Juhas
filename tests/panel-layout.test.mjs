@@ -18,7 +18,7 @@ test('every independent panel placement renders one diff and exactly the visible
  }
 });
 test('same-edge panels use horizontal top or vertical side dividers',()=>{
- for(const position of ['top','left','right']){const {view,cx}=fixture();Object.assign(view,{showHistory:true,filePanelPosition:position,historyPanelPosition:position});const order=position==='top'?['files','history']:['history','files'];const tree=view.reviewPanels(cx),group=walk(tree).find(n=>n.identity===`view-panels-${position}-${order.join('-')}`);assert.ok(group);assert.equal(group.kind,position==='top'?'horizontal':'vertical');assert.deepEqual(group.nodes.map(n=>leaves(n)),order.map(kind=>[kind]));}
+ for(const position of ['top','left','right']){const {view,cx}=fixture();Object.assign(view,{showHistory:true,filePanelPosition:position,historyPanelPosition:position});const order=['files','history'];const tree=view.reviewPanels(cx),group=walk(tree).find(n=>n.identity===`view-panels-${position}-${order.join('-')}`);assert.ok(group);assert.equal(group.kind,position==='top'?'horizontal':'vertical');assert.deepEqual(group.nodes.map(n=>leaves(n)),order.map(kind=>[kind]));}
 });
 test('opposite sides surround the diff and both have a draggable separator',()=>{
  const {view,cx}=fixture();Object.assign(view,{showHistory:true,filePanelPosition:'left',historyPanelPosition:'right'});const tree=view.reviewPanels(cx);assert.equal(tree.kind,'horizontal');assert.deepEqual(tree.nodes.map(n=>leaves(n)),[['files'],['diff'],['history']]);

@@ -3,10 +3,21 @@ import assert from 'node:assert/strict';
 import {findReviewRoute,routeReview} from '../mods/juhas/review-navigation.js';
 import {updateTabsSource,createPaneTabsSource,createTabsSource} from '../scripts/install.mjs';
 function state(){const data={'juhas.review-tabs.v1':[{key:'outer',root:'C:/repo',spaceId:'s',machine:null},{key:'inner',root:'C:/repo/work',spaceId:'s',machine:null}],outer:{tabId:'r1',paneId:'p1'},inner:{tabId:'r2',paneId:'p2'}};return {data,shared:k=>data[k],setShared:(k,v)=>data[k]=v,focus:{cwd:'c:\\REPO\\work\\src'},spaces:[{id:'s',active:true,tabs:[{id:'source',active:true},{id:'r1'},{id:'r2'}]}],panes:[{pane:'p1',tab:'r1',mod:'juhas'},{pane:'p2',tab:'r2',mod:'juhas'}],presentation:'sidebar'};}
-test('routing uses deepest live matching root and saves actual source',()=>{const s=state(),calls=[];s.panes.push({pane:'term',tab:'source',terminal:'t',cwd:'C:/repo/work/lib'});s.layout={id:'panel',hidden:false,children:[{id:'panel-body',active:'files'}]};assert.equal(findReviewRoute(s).key,'inner');assert.equal(routeReview((...c)=>calls.push(c),s),true);assert.deepEqual(calls,[['tab.select',{id:'r2'}]]);assert.equal(s.data.inner.sourceContext.folder,'C:/repo/work/lib');assert.equal(s.data.inner.sourceContext.tabId,'source');assert.equal(s.data.inner.sourcePresentation,'sidebar');});
-test('routing rejects prefix siblings, stale panes, other spaces and machines',()=>{const s=state();s.focus.cwd='C:/repository';assert.equal(findReviewRoute(s),null);s.focus.cwd='C:/repo/work';s.panes=[];assert.equal(findReviewRoute(s),null);s.panes=[{pane:'p2',tab:'r2',mod:'juhas'}];s.spaces[0].machine='remote';assert.equal(findReviewRoute(s),null);s.spaces[0].machine=null;s.spaces[0].id='other';assert.equal(findReviewRoute(s),null);});
-test('active review returns through sidebar command even without cwd',()=>{const s=state(),calls=[];s.focus={};s.spaces[0].tabs.forEach(t=>t.active=t.id==='r2');assert.equal(routeReview((...c)=>calls.push(c),s),true);assert.deepEqual(calls,[['juhas.sidebar']]);});
-test('only selected Juhas sidebar is hidden on route',()=>{const s=state(),calls=[];s.layout={id:'panel',hidden:false,children:[{id:'panel-body',active:'git-review-sidebar'}]};routeReview((...c)=>calls.push(c),s);assert.deepEqual(calls[0],['layout.hide',{id:'panel'}]);});
+test('toolbar defers to local opening even when other tabs have reviews for the same path',()=>{
+ const s=state(),calls=[];
+ assert.equal(findReviewRoute(s),null);
+ assert.equal(routeReview((...c)=>calls.push(c),s),false);
+ assert.deepEqual(calls,[]);
+});
+test('active review returns through sidebar command even without cwd',()=>{
+ const s=state(),calls=[];s.focus={};s.spaces[0].tabs.forEach(t=>t.active=t.id==='r2');
+ assert.equal(routeReview((...c)=>calls.push(c),s),true);
+ assert.deepEqual(calls,[['juhas.sidebar']]);
+});
+test('a stale active review record falls through to local opening',()=>{
+ const s=state();s.spaces[0].tabs.forEach(t=>t.active=t.id==='r2');s.panes.pop();
+ assert.equal(findReviewRoute(s),null);
+});
 test('native toolbar route patch is idempotent and keeps original fallback',()=>{const source=createPaneTabsSource('const custom = 123; root.when(w?.buttons, x=>x);');assert.match(source,/routeReview\(juhasNavigationRun/);assert.match(source,/\|\|togglePane/);assert.match(source,/const custom = 123/);assert.equal(updateTabsSource(source),source);});
 test('sidebar patch preserves custom code and adds route styling',()=>{const original='// personal customization\nconst on = panel && !panel.hidden && body?.active === id;\nif (id === "git-review-sidebar") { toggleReview(run, layout()); return; }';const updated=updateTabsSource(original);assert.match(updated,/personal customization/);assert.match(updated,/Boolean\(findReviewRoute/);assert.match(updated,/if \(!routeReview/);assert.equal(updateTabsSource(updated),updated);assert.throws(()=>updateTabsSource('unrelated custom toolbar'),/preserved/);});
 

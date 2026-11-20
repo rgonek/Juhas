@@ -1,3 +1,6 @@
 export function reviewTabKey(repo,spaceId=null){let root=repo.root.replace(/\\/g,'/').replace(/\/$/,'');if(/^[a-z]:|^\/\//i.test(root))root=root.toLowerCase();return `juhas.review-tab.v1.${JSON.stringify([repo.machine??null,root,spaceId])}`;}
 export function liveReviewTab(record,spaces,panes){return Boolean(record?.tabId&&spaces.some(s=>s.tabs?.some(t=>t.id===record.tabId))&&panes.some(p=>p.pane===record.paneId&&p.tab===record.tabId&&p.mod==='juhas'));}
-export function reviewTabProps(repo,context,sessionId){return {role:'pane',isReviewTab:true,folder:repo.root,machine:repo.machine??null,sessionId,reviewContext:{...context,folder:repo.root,key:reviewTabKey(repo,context.spaceId)},reviewTabKey:reviewTabKey(repo,context.spaceId)};}
+export function reviewTabProps(repo,context,sessionId,instanceId){
+ const baseKey=reviewTabKey(repo,context.spaceId),key=instanceId?`${baseKey}.${instanceId}`:baseKey;
+ return {role:'pane',isReviewTab:true,folder:repo.root,machine:repo.machine??null,sessionId,reviewContext:{...context,folder:repo.root,key},reviewTabKey:key};
+}

@@ -182,27 +182,28 @@ export default class Juhas extends View {
  work(cx,action){cx.spawn(async cx=>this.workAsync(cx,action));}
  scopeWork(cx,action){const version=this.scopeActionVersion=(this.scopeActionVersion||0)+1,controller=this.controller,current=()=>this.scopeActionVersion===version&&this.controller===controller;this.work(cx,async cx=>{try{await action(current,cx);}catch(error){if(current())throw error;}});}
  currentContext(){return this.contextProps?.reviewContext||reviewContext(this.contextProps||{},focused(),spaces(),panes());}
- recipientContext(){const repo=this.controller.state.repo;return this.contextProps?.isReviewTab&&repo?shared(reviewTabKey(repo,this.activeContext?.spaceId))?.sourceContext||this.currentContext():this.currentContext();}
+ recipientContext(){
+  const repo=this.controller.state.repo;
+  const key=this.contextProps?.isReviewTab&&(this.contextProps.reviewTabKey||(repo&&reviewTabKey(repo,this.activeContext?.spaceId)));
+  return (key&&shared(key)?.sourceContext)||this.currentContext();
+ }
  closeReviewOrigin(origin){if(origin?.paneId&&panes().some(p=>p.pane===origin.paneId&&p.mod==='juhas'&&p.tab===origin.tabId))run('pane.close',{pane:origin.paneId});if(origin?.sidebar){run('layout.hide',{id:'git-review-sidebar'});run('layout.hide',{id:'panel'});}}
  reviewOrigin(){const tabId=this.displayTabId||this.activeContext?.tabId,matches=panes().filter(p=>p.mod==='juhas'&&p.tab===tabId),pane=matches.find(p=>p.pane===this.contextProps?.pane)||matches.find(p=>p.focused)||(matches.length===1?matches[0]:null);return this.role==='sidebar'?{sidebar:true}:this.role==='pane'&&!this.contextProps?.isReviewTab&&pane?{paneId:pane.pane,tabId}:null;}
  registerReviewTab(){
   if(!this.contextProps?.isReviewTab)return false;const key=this.contextProps.reviewTabKey,record=shared(key),space=spaces().find(s=>s.id===this.contextProps.reviewContext?.spaceId||s.id===this.activeContext?.spaceId);if(!key||!space)return false;
-  const live=panes().filter(p=>p.mod==='juhas'&&space.tabs.some(t=>t.id===p.tab));let pane=live.find(p=>p.pane===record?.paneId&&p.tab===record?.tabId);
-  if(!pane){const candidates=record?.previousTabIds?live.filter(p=>!record.previousTabIds.includes(p.tab)):live.filter(p=>p.tab!==this.contextProps.reviewContext?.tabId&&space.tabs.some(t=>t.id===p.tab&&t.name===`Review · ${String(this.contextProps.folder||'').replace(/\\/g,'/').split('/').at(-1)}`));if(candidates.length===1)pane=candidates[0];}
+  const live=panes().filter(p=>p.mod==='juhas'&&space.tabs.some(t=>t.id===p.tab));
+  let pane=live.find(p=>p.pane===this.contextProps.pane)||live.find(p=>p.pane===record?.paneId&&p.tab===record?.tabId);
+  if(!pane){
+   const candidates=record?.previousTabIds?live.filter(p=>!record.previousTabIds.includes(p.tab)):live.filter(p=>p.tab!==this.contextProps.reviewContext?.tabId&&space.tabs.some(t=>t.id===p.tab&&t.name===`Review · ${String(this.contextProps.folder||'').replace(/\\/g,'/').split('/').at(-1)}`));
+   pane=candidates.find(p=>p.tab===this.displayTabId)||(candidates.length===1?candidates[0]:null);
+  }
   if(!pane)return false;
-  // Discovery may resolve a parent folder to its repository after the tab opens.
-  const repo=this.controller.state.repo,canonicalKey=repo&&!record?.tabId?reviewTabKey(repo,space.id):key;
-  if(canonicalKey!==key){
-   const existing=shared(canonicalKey);
-   if(liveReviewTab(existing,spaces(),panes())){
-    setShared(canonicalKey,{...existing,sourceContext:record?.sourceContext||existing.sourceContext,sourceSessionId:record?.sourceSessionId||existing.sourceSessionId,sourcePresentation:record?.sourcePresentation||existing.sourcePresentation});
-    const selection=shared(this.selectionKey);if(selection)setShared(contextStorageKey('selection',existing.sessionId,existing.context),selection);
-    run('tab.select',{id:existing.tabId});if(record?.origin)this.closeReviewOrigin(record.origin);
-    setShared(key,null);setShared('juhas.review-tabs.v1',(shared('juhas.review-tabs.v1')||[]).filter(item=>item.key!==key));
-    if(panes().some(p=>p.tab===pane.tab&&p.pane!==pane.pane))run('pane.close',{pane:pane.pane});else run('tab.close',{id:pane.tab});return true;
-   }
-   this.contextProps.reviewTabKey=canonicalKey;this.contextProps.folder=repo.root;setShared(canonicalKey,record);setShared(key,null);setShared('juhas.review-tabs.v1',(shared('juhas.review-tabs.v1')||[]).filter(item=>item.key!==key));return this.registerReviewTab();}
-  this.displayTabId=pane.tab;this.displaySpaceId=space.id;setShared(key,{...record,origin:null,previousTabIds:undefined,tabId:pane.tab,paneId:pane.pane,spaceId:space.id,context:this.activeContext,sessionId:this.sessionId});const index=shared('juhas.review-tabs.v1')||[],entry={key,root:this.contextProps.folder,machine:this.contextProps.machine??null,spaceId:space.id};if(!index.some(item=>item.key===key))setShared('juhas.review-tabs.v1',[...index,entry].slice(-100));if(record?.origin)this.closeReviewOrigin(record.origin);return true;
+  this.displayTabId=pane.tab;this.displaySpaceId=space.id;
+  setShared(key,{...record,origin:null,previousTabIds:undefined,tabId:pane.tab,paneId:pane.pane,spaceId:space.id,context:this.activeContext,sessionId:this.sessionId});
+  const index=shared('juhas.review-tabs.v1')||[],entry={key,root:this.controller.state.repo?.root||this.contextProps.folder,machine:this.contextProps.machine??null,spaceId:space.id};
+  if(!index.some(item=>item.key===key&&item.root===entry.root))setShared('juhas.review-tabs.v1',[...index.filter(item=>item.key!==key),entry].slice(-100));
+  if(record?.origin)this.closeReviewOrigin(record.origin);
+  return true;
  }
 
 
@@ -215,14 +216,19 @@ export default class Juhas extends View {
   this.closeReviewOrigin({sidebar:true});
  }
  openReviewTab(){
-  const s=this.controller.state,repo=s.repo||(this.activeContext?.folder?{root:this.activeContext.folder,machine:this.activeContext.machine??null}:null);if(!repo)return;this.publish();const key=reviewTabKey(repo,this.activeContext?.spaceId),record=shared(key),sourceContext=this.recipientContext(),origin=this.reviewOrigin();
-  if(liveReviewTab(record,spaces(),panes())){setShared(key,{...record,sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':origin?.paneId?'pane':record.sourcePresentation||'sidebar'});setShared(contextStorageKey('selection',record.sessionId,record.context),shared(this.selectionKey));run('tab.select',{id:record.tabId});this.closeReviewOrigin(origin);return;}
-  if(record?.opening&&Date.now()-record.opening<5000)return;
-  const p={...reviewTabProps(repo,this.activeContext,this.sessionId),config:this.contextProps?.config},selectionKey=contextStorageKey('selection',this.sessionId,p.reviewContext);
+  const context=this.activeContext;
+  const repo=this.controller.state.repo||(context?.folder?{root:context.folder,machine:context.machine??null}:null);
+  if(!repo||!context)return;
+  this.publish();
+  const sourceContext=this.recipientContext(),origin=this.reviewOrigin();
+  const p={...reviewTabProps(repo,context,this.sessionId,uid()),config:this.contextProps?.config};
+  const key=p.reviewTabKey,selectionKey=contextStorageKey('selection',this.sessionId,p.reviewContext);
   p.reviewContext.folder=this.activeContext?.folder||repo.root;
   setShared(selectionKey,shared(this.selectionKey));for(const kind of ['composer','review']){const previous=shared(contextStorageKey(kind,this.sessionId,this.activeContext));if(previous)setShared(contextStorageKey(kind,this.sessionId,p.reviewContext),previous);}
   const snapshot=this.viewSnapshots().get(this.selectionKey);if(snapshot)this.viewSnapshots().set(selectionKey,snapshot);
-  setShared(key,{opening:Date.now(),sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':'pane',origin,previousTabIds:spaces().find(space=>space.id===this.activeContext?.spaceId)?.tabs?.map(tab=>tab.id)||[]});run('tab.new',{name:`Review · ${repo.root.replace(/\\/g,'/').split('/').at(-1)}`,space:this.activeContext?.spaceId,folder:repo.root,mod:'juhas',props:p});if(origin?.sidebar)this.closeReviewOrigin(origin);
+  setShared(key,{sourceContext,sourceSessionId:this.sessionId,sourcePresentation:origin?.sidebar?'sidebar':'pane',origin,previousTabIds:spaces().find(space=>space.id===context.spaceId)?.tabs?.map(tab=>tab.id)||[]});
+  run('tab.new',{name:`Review · ${repo.root.replace(/\\/g,'/').split('/').at(-1)}`,space:context.spaceId,folder:repo.root,mod:'juhas',props:p});
+  if(origin?.sidebar)this.closeReviewOrigin(origin);
  }
  returnToSidebar(cx){
   const fail=message=>{this.message=message;cx?.notify();return false;};

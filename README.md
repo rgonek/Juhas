@@ -59,11 +59,12 @@ changing layouts, toolbar mods or review data. Open a native pane:
 herdr-app do pane.split --direction right --mod juhas
 ```
 
-Juhas follows the project where you open it. The new-tab action opens or reuses a review
-tab for that exact repository/worktree within the space. The review tab keeps
-its source when you work in another terminal. With the optional toolbar integration, clicking Juhas on the source tab
-focuses its existing review tab; clicking Juhas in that review returns to the sidebar,
-preserving the selected commit, file and unsaved comment. Pane management uses Herdr controls.
+Juhas follows the project where you open it. The new-tab action creates a review
+tab in the current space and keeps the selected repository, worktree and source
+tab with that review. From a terminal tab, the toolbar opens or toggles Juhas
+locally. From the review tab, clicking Juhas returns to its source view and
+preserves the selected commit, file and unsaved comment. Pane management uses
+Herdr controls.
 
 ## Your first review
 

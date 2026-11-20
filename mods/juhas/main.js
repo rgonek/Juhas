@@ -618,10 +618,19 @@ export default class Juhas extends View {
  }
  editDraft(d,cx){if(this.hasUnsavedComment()){if(this.editId===d.id){this.panel='comment';this.inputs.comment.focus();if(!this.composerIsVisible())this.resumeComment(cx);else this.notifyEditor(cx,true);}else{this.message='Save or cancel the current comment before editing another';cx.notify();}return;}this.editId=d.id;this.target=d;this.detachedComposer=false;this.composerComparison=this.controller.state.comparison?.id===d.comparisonId?this.controller.state.comparison:null;this.selectedStart=null;this.inputs.comment.set_value(d.body);this.inputs.comment.focus();this.panel='comment';this.persistComposer();if(!this.composerIsVisible())this.resumeComment(cx);else this.notifyEditor(cx,true);}
  queueComposerSave(cx){
-  if(!this.target||this.restoringComposer||this.composerSavePending)return;
-  const pending={};
+  if(!this.target||this.restoringComposer)return;
+  const delay=300,deadline=Date.now()+delay;
+  if(this.composerSavePending){this.composerSavePending.deadline=deadline;return;}
+  const pending={deadline};
   this.composerSavePending=pending;
-  cx.timer.after(300,()=>{if(this.composerSavePending===pending)this.persistComposer();});
+  // Shared writes invalidate the diff, so wait for a pause in typing.
+  const flush=cx=>{
+   if(this.composerSavePending!==pending)return;
+   const remaining=pending.deadline-Date.now();
+   if(remaining>0)cx.timer.after(remaining,flush);
+   else this.persistComposer();
+  };
+  cx.timer.after(delay,flush);
  }
  persistComposer(){if(this.restoringComposer)return;this.composerSavePending=null;if(!this.target)return;const key=this.composerKey||`git-review.v1.composer.${this.sessionId}`,value={target:this.target,body:this.inputs.comment.value(),id:this.editId||null,comparison:this.composerComparison||null};this.seenComposer=JSON.stringify(value);if(JSON.stringify(shared(key))!==this.seenComposer)setShared(key,value);}
  syncComposer(cx){if(this.composerSavePending)return;const value=shared(this.composerKey||`git-review.v1.composer.${this.sessionId}`)||null;const serialised=JSON.stringify(value);if(this.seenComposer===serialised)return;this.seenComposer=serialised;

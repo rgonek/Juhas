@@ -17,22 +17,25 @@ function fixture(data=new Map()){
  const field=()=>{let value='';return {value:()=>value,set_value:next=>value=next,focus(){}};};v.inputs={comment:field(),review:field(),note:field()};v.handle={focus(){}};v.inlineEditor={};v.diffMode='split';v.diffScroll={scroll_to_item(){}};v.patchRows=comments.annotatePatch(patch,[],'c','a');v.diffRows=models.splitRows(v.patchRows);v.composerKey='composer';v.reviewKey='review';v.currentContext=()=>({key:'context',spaceId:'space',tabId:'tab'});v.activeContext=v.currentContext();v.work=(_cx,action)=>v.pending=action(_cx);v.publish=()=>{};
  const cx={notify(){},spawn:action=>action(cx)};return {v,cx,data,saved};
 }
-test('typing batches draft writes without notifying the diff for each character',()=>{
- const {v,cx,data}=fixture(),timers=[];
+test('continuous typing defers shared draft writes until a pause',({mock})=>{
+ mock.timers.enable({apis:['Date','setTimeout']});
+ const {v,cx,data}=fixture();
  v.selectLine('h0l1',cx);
- const typing={timer:{after:(_ms,callback)=>timers.push(callback)},notify:()=>assert.fail('typing redrew the diff')};
- for(const value of ['a','ab','abc']){
+ const typing={timer:{after:(ms,callback)=>setTimeout(()=>callback(typing),ms)},notify:()=>assert.fail('typing redrew the diff')};
+ for(const value of ['a','ab','abc','abcd']){
   v.inputs.comment.set_value(value);
   v.queueComposerSave(typing);
+  mock.timers.tick(100);
+  assert.equal(data.get('composer').body,'');
  }
- assert.equal(timers.length,1);
+ mock.timers.tick(199);
  assert.equal(data.get('composer').body,'');
- timers.shift()();
- assert.equal(data.get('composer').body,'abc');
+ mock.timers.tick(1);
+ assert.equal(data.get('composer').body,'abcd');
  v.inputs.comment.set_value('discard');
  v.queueComposerSave(typing);
  v.cancelComment(cx);
- timers.shift()();
+ mock.timers.tick(300);
  assert.equal(data.get('composer'),null);
 });
 test('clicking a visible diff line leaves the diff scroll where it is',()=>{

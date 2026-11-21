@@ -245,7 +245,7 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  const source=row?.text||'',supported=source.length<=8192;
  // A native text run keeps identical geometry on hover. Use its measured width
  // for fixed-width ASCII and precomposed Latin letters. A tab spans four cells.
- const fixedWidth=/^(?:monospace|Consolas|Courier New|Cascadia Mono|JetBrains Mono|Iosevka|DejaVu Sans Mono|Liberation Mono|Menlo|SF Mono)(?: NF)?$/i.test(font);
+ const fixedWidth=/^(?:monospace|Consolas|Courier New|Cascadia Mono|Cascadia Code|JetBrains Mono|Geist Mono|Fira Code|Fira Mono|Hack|IBM Plex Mono|Source Code Pro|Ubuntu Mono|Roboto Mono|Berkeley Mono|Iosevka|DejaVu Sans Mono|Liberation Mono|Menlo|SF Mono|MesloLGS)(?: NF| Nerd Font)?$/i.test(font);
  const fixedText=/^[\t -~\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f]*$/;
  const compact=!wrap&&fixedWidth&&fixedText.test(source);
  const spans=prepared??decorateLine(source,path,changed,matches,!wrap),selection=interaction.selectedOffsets();
@@ -293,42 +293,63 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  const rendered=[];
  if(supported&&!compact){
   let spanIndex=0,spanEnd=spans[0]?.text.length||0,runStart=null,runEnd=0,runStyle=null;
-  let word=[],afterBreak=false;
-  const append=node=>(wrap?word:rendered).push(node);
-  const flushWord=()=>{
-   if(!word.length)return;
-   rendered.push(h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(word));
-   word=[];
-  };
+  let wordGlyphs=[],afterBreak=false;
+  const emitGlyph=(glyph,span)=>base(span,div().flex_none().when(!wrap,e=>e.h(type.px(22))))
+   .when(selectedBetween(glyph.start,glyph.end),e=>e.text_color(t.foreground).bg(t.selection))
+   .on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx))
+   .on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));
   const flush=()=>{
    if(runStart==null)return;
    const text=source.slice(runStart,runEnd);
-   append(hitTarget(renderRun({...runStyle,text},runStart,true),text,runStart));
+   rendered.push(hitTarget(renderRun({...runStyle,text},runStart,true),text,runStart));
    runStart=null;
+  };
+  const flushWord=()=>{
+   if(!wordGlyphs.length)return;
+   if(fixedWidth&&wordGlyphs.length<=40){
+    const parts=[];let wStart=null,wEnd=0,wStyle=null;
+    const flushPart=()=>{
+     if(wStart==null)return;
+     const text=source.slice(wStart,wEnd);
+     parts.push(hitTarget(renderRun({...wStyle,text},wStart,true),text,wStart));
+     wStart=null;
+    };
+    for(const {glyph,span} of wordGlyphs){
+     if(glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
+      if(wStart!=null&&wStyle!==span)flushPart();
+      if(wStart==null){wStart=glyph.start;wStyle=span;}
+      wEnd=glyph.end;
+      continue;
+     }
+     flushPart();
+     parts.push(emitGlyph(glyph,span));
+    }
+    flushPart();
+    rendered.push(h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(parts));
+   }else{
+    rendered.push(h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(wordGlyphs.map(({glyph,span})=>emitGlyph(glyph,span))));
+   }
+   wordGlyphs=[];
   };
   for(const glyph of graphemes(source)){
    while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}
    const span=spans[spanIndex]||{};
    if(wrap){
     const space=/^[\t ]+$/.test(glyph.text);
-    if(afterBreak&&!space){flush();flushWord();}
+    if(afterBreak&&!space)flushWord();
     const decimalPoint=glyph.text==='.'&&/\d$/.test(source[glyph.start-1]||'')&&/^\d/.test(source[glyph.end]||'');
     afterBreak=space||(glyph.text==='.'&&!decimalPoint);
+    wordGlyphs.push({glyph,span});
+    continue;
    }
-   // The wrapped group moves together when it fits. Its grapheme targets
-   // let the group itself wrap when it is wider than the whole column.
-   if(!wrap&&fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
+   if(fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
     if(runStart!=null&&runStyle!==span)flush();
     if(runStart==null){runStart=glyph.start;runStyle=span;}
     runEnd=glyph.end;
     continue;
    }
    flush();
-   const target=base(span,div().flex_none().when(!wrap,e=>e.h(type.px(22))))
-    .when(selectedBetween(glyph.start,glyph.end),e=>e.text_color(t.foreground).bg(t.selection))
-    .on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx))
-    .on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));
-   append(target);
+   rendered.push(emitGlyph(glyph,span));
   }
   flush();
   if(wrap)flushWord();

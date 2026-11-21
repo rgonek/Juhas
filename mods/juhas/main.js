@@ -131,7 +131,7 @@ export default class Juhas extends View {
   }
   if(previous?.rows===rows&&previous.render===render&&previous.source===source&&range.start>=previous.start&&range.end<=previous.end)return;
   this.pendingDiffRows={rows,render,split,source,start,end};if(this.diffRowsQueued)return;this.diffRowsQueued=true;cx.timer.after(1,cx=>{this.diffRowsQueued=false;const pending=this.pendingDiffRows;if(this.closed||pending?.source!==this.diffChangeKey())return;this.buildDiffRows(pending,cx);});}
- selectionLayoutKey(metrics=uiMetrics()){return JSON.stringify([this.readingOptions?.wrap,this.diffWidth,metrics]);}
+ selectionLayoutKey(metrics=uiMetrics()){return `${Boolean(this.readingOptions?.wrap)}|${this.diffWidth||0}|${metrics.scale}|${metrics.fontSize}`;}
  buildDiffRows({rows,render,split,source,start=0,end=rows.length},cx){
   this.diffRowViews??=new Map();
   if(this.experimentalDiff&&!this.diffSelection){
@@ -164,8 +164,8 @@ export default class Juhas extends View {
    this.selectionScale=metrics.scale;
    selection.update(rows,split,source,this.selectionLayoutKey(metrics));
   }
-  const style=JSON.stringify([selection?.version,theme(),settings().font_family,split,this.readingOptions,this.diffWidth,metrics,
-   this.findQuery,this.findCursor,this.target&&[this.target.comparisonId,this.target.newPath,this.target.side,this.target.startLine,this.target.endLine]]);
+  const t=theme();
+  const style=`${selection?.version??''}|${t.background}|${t.foreground}|${t.accent}|${t.selection}|${settings().font_family||''}|${split}|${Boolean(this.readingOptions?.wrap)}|${this.diffWidth||0}|${metrics.scale}|${metrics.fontSize}|${this.findQuery||''}|${this.findCursor??''}|${this.target?`${this.target.comparisonId}:${this.target.newPath}:${this.target.side}:${this.target.startLine}:${this.target.endLine}`:''}`;
   const keys=new Set(),matches=this.findMatches;
   let mounted=false;
   for(let index=start;index<end;index++){

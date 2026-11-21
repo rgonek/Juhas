@@ -28,7 +28,7 @@ export default class DiffRow extends View {
   const runtime=this.p.owner.experimentalDiff&&this.p.owner.diffSelection?.model?this.p.owner.diffSelection:null;
   const gesture=(type)=>runtime.send({type,version,source:this.p.source,rowId:row.id,side:this.side});
   return div().id('code-'+row.id).relative().w_full().min_w(0).when(Boolean(runtime),e=>e.on_hover(hover))
-   .on_mouse_move((event,cx)=>{this.pointer(event,cx);if(runtime?.drag)runtime.send({type:'row-move',version,source:this.p.source,rowId:row.id,side:this.side,bounds:event.bounds});})
+   .on_mouse_move((event,cx)=>{if(split)this.pointer(event,cx);if(runtime?.drag)runtime.send({type:'row-move',version,source:this.p.source,rowId:row.id,side:this.side,bounds:event.bounds});})
    .when(Boolean(this.p.owner.readingOptions?.wrap),e=>e.on_size_change(size=>this.measure(size,version,source)))
    .child(content(this.interaction()))
    .when(Boolean(runtime&&this.hovered&&line),root=>{

@@ -43,7 +43,7 @@ export function popover(id,label,open,change,content,{tooltip=label,width=380,he
  const t=theme();return Popover.new(id).open(Boolean(open)).on_open_change(change).trigger(button(`${id}-trigger`,label,null,{tooltip}))
   .when(Boolean(open),el=>el.content(v_flex().w(width).min_h(0).min_w(0).p(4).rounded(6).border_1().border_color(t.border).bg(t.background).text_color(t.foreground).child(content())));
 }
-export function selector(id,label,open,change,content,{tooltip=label,width=300,triggerFocus,listFocus,context,onMove,onChoose,compact=false}={}){const type=uiMetrics(),t=theme();
+export function selector(id,label,open,change,content,{tooltip=label,width=300,triggerFocus,listFocus,context,onMove,onChoose,compact=false,trigger=null}={}){const type=uiMetrics(),t=theme();
  const root=Select.new(id).open(Boolean(open)).on_open_change(change)
   .when(Boolean(triggerFocus),e=>e.track_focus(triggerFocus)).when(Boolean(listFocus),e=>e.content_focus_handle(listFocus))
   .accessibility_label(tooltip);
@@ -53,7 +53,7 @@ export function selector(id,label,open,change,content,{tooltip=label,width=300,t
   .on_action('juhas.picker.previous',(_e,cx)=>{cx.stop_propagation();onMove?.(-1,cx);})
   .on_action('juhas.picker.next',(_e,cx)=>{cx.stop_propagation();onMove?.(1,cx);})
   .on_action('juhas.picker.choose',(_e,cx)=>{cx.stop_propagation();onChoose?.(cx);}).child(content());
- return root.child(Popup.new(`${id}-popup`,button(`${id}-trigger`,label,(_e,cx)=>{cx.stop_propagation();change(!open,cx);},{tooltip}).when(compact,e=>e.w(type.px(20)).px(0).rounded(0)))
+ return root.child(Popup.new(`${id}-popup`,trigger||button(`${id}-trigger`,label,(_e,cx)=>{cx.stop_propagation();change(!open,cx);},{tooltip}).when(compact,e=>e.w(type.px(20)).px(0).rounded(0)))
   .when(Boolean(open),e=>e.content(surface())));
 }
 export function field(state,_placeholder,width){const type=uiMetrics();const t=theme();return Input.new(state).h(type.px(32)).min_w(0).when(Boolean(width),e=>e.w(width)).when(!width,e=>e.flex_1()).px(8).rounded(8).border_1().border_color(t.border).bg(t.background).text_color(t.foreground).text_size(type.body).line_height(type.lineHeight);}
@@ -95,6 +95,10 @@ function panelHeader(title,detail){
    .child(text(title).flex_none().font_semibold())
    .when(Boolean(detail),e=>e.child(text(detail,true).min_w(0).truncate())));
 }
+function panelPositionControl(view,kind){
+ const type=uiMetrics(),t=theme(),label=kind==='files'?'Files':kind==='history'?'History':'Comments',key=kind+'HeaderPosition',position=view.panelPosition(kind);
+ return selector('header-position-'+kind,svg(`mods/juhas/icons/panel-${position}.svg`).size(type.px(14)).text_color(t.muted),view.panel===key,(open,cx)=>{view.panel=open?key:null;cx.notify();},()=>v_flex().gap(2).children(['top','bottom','left','right'].map(place=>button(`header-position-${kind}-${place}`,h_flex().w_full().gap(8).items_center().child(svg(`mods/juhas/icons/panel-${place}.svg`).size(15).flex_none()).child(place[0].toUpperCase()+place.slice(1)),(_e,cx)=>view.positionPanel(kind,place,cx),{active:place===position,tooltip:`Show ${label} at the ${place}`}).w_full().justify_start())),{tooltip:`${label} panel position: ${position}`,width:150,compact:true});
+}
 export function draftsPane(view,cx){const type=uiMetrics();
  const repoKey=view.controller.state.repo?.key,drafts=filterDrafts(view.controller.session().drafts,{repoKey}),status=view.draftStatus||'all',source=view.draftSource||'all',visible=filterDrafts(drafts,{status,source}),sources=[...new Map(drafts.map(d=>[d.comparisonId,d])).values()];
  const sourceLabel=d=>d.targetOid?`${d.baseOid?.slice(0,8)||'empty'} → ${d.targetOid.slice(0,8)}`:'Working tree';
@@ -104,7 +108,8 @@ export function draftsPane(view,cx){const type=uiMetrics();
   .child(panelHeader('Comments',visible.length===drafts.length?String(drafts.length):`${visible.length}/${drafts.length}`)
    .when(Boolean(view.navigateComment),e=>e.child(headerButton('comment-previous','arrow-up',(_e,cx)=>view.navigateComment(-1,cx),'Previous comment')).child(headerButton('comment-next','arrow-down',(_e,cx)=>view.navigateComment(1,cx),'Next comment')))
    .when(Boolean(view.generalComment),e=>e.child(headerButton('general-comment','comment',(_e,cx)=>view.generalComment(cx),'General comment')))
-   .child(headerButton('clear-comments','trash',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},'Delete all saved comments in this repository, including comments hidden by filters').disabled(!drafts.length)))
+   .child(headerButton('clear-comments','trash',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},'Delete all saved comments in this repository, including comments hidden by filters').disabled(!drafts.length))
+   .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'comments'))))
   .child(h_flex().min_h(type.px(36)).flex_none().px(8).py(type.px(4)).gap(6).flex_wrap().items_center()
    .child(buttonGroup('draft-status',[{value:'all',label:'All'},{value:'current',label:'Current'},{value:'outdated',label:'Outdated'}],status,(value,cx)=>{view.draftStatus=value;cx.notify();}))
    .child(popover('draft-source',source==='all'?'All comparisons':sourceLabel(sources.find(d=>d.comparisonId===source)||{}),Boolean(view.draftSourcePicker),(open,cx)=>{view.draftSourcePicker=open;cx.notify();},()=>v_flex().size_full().min_h(0)
@@ -128,18 +133,36 @@ export function graphCell(row){const type=uiMetrics();
  for(const e of row.edges)paths.push(window.paint_path(PathBuilder.stroke(1.5).move_to(x(e.from),mid).line_to(x(e.to),height).build(),colors[e.to%colors.length]).absolute().inset_0());
  return div().relative().w(Math.min(120,Math.max(28,(Math.max(row.before.length,row.after.length)+1)*11))).h(height).flex_none().overflow_hidden().children(paths).child(div().absolute().left(x(row.lane)-3).top(mid-3).size(6).rounded(3).bg(colors[row.lane%colors.length]));
 }
+const UNCOMMITTED_ROW_ID='__uncommitted__';
+function uncommittedGraphCell(rows){
+ const type=uiMetrics(),height=type.px(LIST_ROW_HEIGHT),mid=height/2,t=theme(),lane=rows[0]?.lane??0,x=8+lane*11;
+ const width=rows.length?Math.min(120,Math.max(28,(Math.max(rows[0].before.length,rows[0].after.length)+1)*11)):28;
+ return div().relative().w(width).h(height).flex_none().overflow_hidden()
+  .when(rows.length>0,e=>e.child(window.paint_path(PathBuilder.stroke(1.5).move_to(x,mid).line_to(x,height).build(),t.accent).absolute().inset_0()))
+  .child(div().absolute().left(x-3.5).top(mid-3.5).size(7).rounded(4).border_1().border_color(t.accent).bg(t.background));
+}
 export function historyPane(view,cx){const type=uiMetrics();
  const s=view.controller.state,t=theme(),rows=layoutGraph(s.history).rows,width=view.historyPaneWidth??view.width??480;
+ const filtered=Boolean(view.inputs?.query?.value()?.trim()||view.inputs?.author?.value()?.trim()||view.inputs?.path?.value()?.trim());
+ const showUncommitted=s.hasWorkingChanges===true&&!filtered;
+ const items=showUncommitted?[{oid:UNCOMMITTED_ROW_ID,uncommitted:true},...s.history]:s.history;
  const first=s.history.findIndex(c=>c.oid===(view.commitAnchor||s.comparison?.scope.base)),last=s.history.findIndex(c=>c.oid===s.comparison?.targetOid);
- const selected=(c,i)=>view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
- const list=virtualList(`${view.scrollIdentity?.()||view.id}-history`,s.history,type.px(LIST_ROW_HEIGHT),c=>{const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
+ const selected=(c,i)=>s.comparison?.scope.kind==='working-tree'?false:view.rangePicking?c.oid===view.commitAnchor:s.comparison?.scope.kind==='range'?i>=Math.min(first,last)&&i<=Math.max(first,last):s.comparison?.targetOid===c.oid;
+ const list=virtualList(`${view.scrollIdentity?.()||view.id}-history`,items,type.px(LIST_ROW_HEIGHT),c=>{
+  if(c.uncommitted){
+   return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(s.comparison?.scope.kind==='working-tree',e=>e.bg(t.selected))
+    .tooltip('Uncommitted changes in working tree · Click to review')
+    .child(uncommittedGraphCell(rows))
+    .child(div().flex_1().min_w(0).truncate().text_size(type.body).font_semibold().text_color(t.foreground).child('Uncommitted changes'));
+  }
+  const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
   .child(graphCell(rows[i]))
   .when(Boolean(refs.length),e=>e.child(h_flex().max_w(160).min_w(0).gap(3).items_center().children(refs.slice(0,1).map(ref=>h_flex().min_w(0).max_w(130).h(type.px(24)).px(4).gap(3).items_center().rounded(4).border_1().border_color(ref.current?t.accent:t.border).bg(ref.current?t.selected:t.chrome).tooltip(ref.full)
    .child(text(ref.current?'\u2713':ref.tag?'\u25c7':'\u2442',true)).child(text(ref.label).min_w(0).truncate().text_ellipsis_middle()))).when(refs.length>1,e=>e.child(text(`+${refs.length-1}`,true).flex_none().tooltip(refs.slice(1).map(ref=>ref.full).join('\n'))))))
   .child(div().flex_1().min_w(0).truncate().text_size(type.body).text_color(c.parents.length>1?t.muted:t.foreground).child(c.subject))
   .when(width>=type.px(900),e=>e.child(div().w(75).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(c.author)))
-  .when(width>=type.px(720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>view.selectCommit(id,cx),view.reviewIsVisible?.()===false?null:view.historyScroll);
+  .when(width>=type.px(720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child(formatCommitTime(c.timestamp))));},(id,cx)=>{if(id===UNCOMMITTED_ROW_ID)view.chooseReviewSource?.('uncommitted',cx);else view.selectCommit(id,cx);},view.reviewIsVisible?.()===false?null:view.historyScroll);
  const commit=s.history.find(c=>c.oid===s.comparison?.targetOid);
  const scope=view.historyRef==='all'?'all branches':view.historyFull?'':s.featureBaseOid?'branch':'HEAD';
  return v_flex().size_full().min_w(0).min_h(0).on_size_change((size,cx)=>{const width=Math.round(size.width);if(view.historyPaneWidth!==width){view.historyPaneWidth=width;cx.notify();}})
@@ -153,7 +176,8 @@ export function historyPane(view,cx){const type=uiMetrics();
    .when(Boolean(view.historyAdvanced),e=>e.child(button('history-full','Show full history',(_e,cx)=>view.setHistoryView('full',cx)))
     .child(button('history-all','All branches',(_e,cx)=>view.setHistoryView('all',cx)))
     .child(checkbox('graph-remotes','Include remotes',view.remotes,(checked,cx)=>{view.remotes=checked;view.work(cx,()=>view.controller.loadHistory(view.filters()));}))
-    .child(button('history-branch-picker','Browse branches…',(_e,cx)=>view.setReferencePicker(true,true,cx)))),{tooltip:'History options'})))
+    .child(button('history-branch-picker','Browse branches…',(_e,cx)=>view.setReferencePicker(true,true,cx)))),{tooltip:'History options'}))
+  .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'history'))))
   .when(Boolean(view.filtersOpen),e=>e.child(v_flex().px(8).pb(6).gap(4)
    .child(field(view.inputs.query,'Text or hash')).child(field(view.inputs.author,'Author')).child(field(view.inputs.path,'Path'))
    .child(button('apply-filters','Search',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters()))))))
@@ -168,7 +192,8 @@ export function filesPane(view){const type=uiMetrics();
  return v_flex().size_full().min_w(0).min_h(0).child(panelHeader('Files',String(s.files.length))
   .child(toggle('hide-tests',svg('mods/juhas/icons/flask-conical-off.svg').size(15),Boolean(view.hideTests),(pressed,cx)=>view.setHideTests?.(pressed,cx),{tooltip:'Hide test files'}))
   .when(Boolean(view.inputs?.fileQuery),e=>e.child(button('toggle-file-filter',svg('mods/juhas/icons/search.svg').size(14),(_e,cx)=>{view.fileFilterOpen=!view.fileFilterOpen;if(view.fileFilterOpen)view.inputs.fileQuery.focus();cx.notify();},{active:Boolean(view.fileFilterOpen||query),tooltip:'Filter files by path'})))
-  .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'})))
+  .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'}))
+  .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'files'))))
  .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(type.px(38)).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
  .when(!rows.length,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(type.px(10))))
  .child(virtualList(`${view.scrollIdentity?.()||view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,s.file?.id===f.id])})),type.px(LIST_ROW_HEIGHT),f=>{

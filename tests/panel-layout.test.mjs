@@ -56,3 +56,19 @@ test('bottom panels follow the diff and share a horizontal group',()=>{
  const tree=view.reviewPanels(cx);assert.equal(tree.kind,'vertical');assert.deepEqual(tree.nodes.map(n=>leaves(n)),[['diff'],['files','history','comments']]);assert.equal(tree.nodes[1].nodes[0].kind,'horizontal');
  view.panelControl('files',cx);controls.get('position-files').content();assert.ok(controls.has('position-files-bottom'));
 });
+
+test('toolbar panel toggle has no border or chevron and right-click toggles position menu',()=>{
+ const {view,cx,controls}=fixture();
+ const wrapper=view.panelControl('files',cx);
+ assert.equal(wrapper.values.border_1,undefined);
+ assert.equal(controls.get('position-files').label,null);
+ const files=controls.get('toggle-files');
+ const [buttonKind,handler]=files.values.on_mouse_down;
+ assert.equal(buttonKind,'right');
+ let stopped=0;
+ handler({}, {stop_propagation(){stopped++;},notify(){}});
+ assert.equal(stopped,1);
+ assert.equal(view.panel,'filesPosition');
+ handler({}, {stop_propagation(){stopped++;},notify(){}});
+ assert.equal(view.panel,null);
+});

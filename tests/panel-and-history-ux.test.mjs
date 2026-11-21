@@ -89,14 +89,17 @@ test('historyPane shows Uncommitted changes row above HEAD when dirty and select
  assert.deepEqual(lists.get(listKey()).keys,['aaa111']);
 });
 
-test('panel headers expose a position control for Files, History, and Comments',()=>{
+test('panel headers expose position and close controls for Files, History, and Comments',()=>{
  const {historyPane,filesPane,draftsPane,controls}=uiFixture();
- const moved=[];
+ const closed=[];
  const view={
   id:'v',width:600,panel:null,
   filePanelPosition:'left',historyPanelPosition:'top',commentPanelPosition:'right',
   panelPosition:kind=>kind==='files'?'left':kind==='history'?'top':'right',
-  positionPanel:(kind,place)=>moved.push([kind,place]),
+  positionPanel(){},
+  toggleFiles:open=>closed.push(['files',open]),
+  toggleHistory:open=>closed.push(['history',open]),
+  toggleComments:open=>closed.push(['comments',open]),
   inputs:{query:{value:()=>''},author:{value:()=>''},path:{value:()=>''},fileQuery:{value:()=>''}},
   controller:{state:{repo:{key:'r'},files:[],history:[],hasWorkingChanges:false,comparison:{scope:{kind:'branch'}}},session:()=>({drafts:[]})}
  };
@@ -107,4 +110,50 @@ test('panel headers expose a position control for Files, History, and Comments',
  assert.ok(controls.has('header-position-files-trigger'),'Files header has position button');
  assert.ok(controls.has('header-position-history-trigger'),'History header has position button');
  assert.ok(controls.has('header-position-comments-trigger'),'Comments header has position button');
+ assert.ok(controls.has('close-panel-files'),'Files header has close button');
+ assert.ok(controls.has('close-panel-history'),'History header has close button');
+ assert.ok(controls.has('close-panel-comments'),'Comments header has close button');
+ controls.get('close-panel-files').values.on_click({},cx);
+ controls.get('close-panel-history').values.on_click({},cx);
+ controls.get('close-panel-comments').values.on_click({},cx);
+ assert.deepEqual(closed,[['files',false],['history',false],['comments',false]]);
+});
+
+test('filesPane shows visible/total count when hideTests filters files and prompts to include uncommitted when empty',()=>{
+ const {filesPane,controls,walk}=uiFixture();
+ let included=null;
+ const allFiles=[{id:'1',newPath:'src/a.js',status:'M'},{id:'2',newPath:'tests/a.test.js',status:'M'},{id:'3',newPath:'tests/b.test.js',status:'M'}];
+ const view={
+  id:'v',width:600,panel:null,hideTests:true,includeWorking:false,
+  visibleFiles:()=>[allFiles[0]],
+  setIncludeWorking:(checked)=>{included=checked;},
+  inputs:{fileQuery:{value:()=>''}},
+  controller:{state:{repo:{key:'r'},files:allFiles,hasWorkingChanges:true,comparison:{scope:{kind:'branch'}}},session:()=>({drafts:[]})}
+ };
+ const cx={notify(){}};
+ const filteredTree=filesPane(view,cx);
+ assert.ok(walk(filteredTree).some(n=>n.nodes?.includes('1/3')),'header shows visible/total count when tests are hidden');
+
+ // Empty committed comparison with dirty working tree shows Include uncommitted CTA
+ view.controller.state.files=[];
+ view.visibleFiles=()=>[];
+ filesPane(view,cx);
+ assert.ok(controls.has('files-include-uncommitted'));
+ controls.get('files-include-uncommitted').values.on_click({},cx);
+ assert.equal(included,true);
+});
+
+test('toolbar comments toggle and Submit review button display saved draft count for the active repo',()=>{
+ const element=(id)=>{let p;const data={nodes:[],values:{}};if(id)data.id=id;p=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...args)=>{if(k==='id')t.id=args[0];else if(k==='child')t.nodes.push(args[0]);else if(k==='children')t.nodes.push(...args[0]);else if(k==='when'){if(args[0])args[1](p);}else t.values[k]=args.length===1?args[0]:args;return p;}});return p;};
+ const controls=new Map(),control=(id,label,action,options)=>{const n=element(id);Object.assign(n,{label,action,options});controls.set(id,n);return n;};
+ const deps={uiMetrics:()=>typography(14,16),theme:()=>({accent:'accent-c',muted:'muted-c',foreground:'fg-c',ansi1:'r',ansi2:'g'}),div:element,section:element,h_flex:element,v_flex:element,nativeFrame:element,svg:element,text:(label)=>{const n=element();n.label=label;return n;},button:control,buttonGroup:control,checkbox:(id,label,checked,action,options)=>control(id,label,action,{...options,checked}),toggle:(id,label,pressed,action,options)=>control(id,label,action,{...options,pressed}),popover:(id,label,open,action,content,options)=>control(id,label,action,options),selector:(id,label,open,action,content,options)=>control(id,label,action,options),h_resizable:element,v_resizable:element,resizable_panel:element,filesPane:()=>element('f'),historyPane:()=>element('h'),draftsPane:()=>element('c'),diffPane:()=>element('d'),shared:()=>null};
+ const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
+ const Native=new Function('View','currentBranchFits',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},()=>true,...Object.values(deps));
+ const view=Object.create(Native.prototype);
+ const drafts=[{id:'d1',repoKey:'repo1'},{id:'d2',repoKey:'repo1'},{id:'d3',repoKey:'other'}];
+ Object.assign(view,{id:'v',role:'pane',width:900,contextProps:{},config:{},inputs:{},deferSync(){},baseChoice:()=>({ref:'refs/heads/main'}),hasUnsavedComment:()=>false,footer:()=>null,controller:{base:()=>'',state:{repo:{key:'repo1'},branch:'main',files:[],history:[],refs:[],comparison:{id:'c',scope:{kind:'branch'}}},session:()=>({drafts})}});
+ view.render({notify(){}});
+ const walk=n=>n?[n,...(n.nodes||[]).flatMap(walk)]:[];
+ assert.equal(controls.get('submit-preview').label,'Submit review (2)');
+ assert.ok(walk(controls.get('toggle-comments').label).some(n=>n.label==='2'));
 });

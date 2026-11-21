@@ -99,6 +99,16 @@ function panelPositionControl(view,kind){
  const type=uiMetrics(),t=theme(),label=kind==='files'?'Files':kind==='history'?'History':'Comments',key=kind+'HeaderPosition',position=view.panelPosition(kind);
  return selector('header-position-'+kind,svg(`mods/juhas/icons/panel-${position}.svg`).size(type.px(14)).text_color(t.muted),view.panel===key,(open,cx)=>{view.panel=open?key:null;cx.notify();},()=>v_flex().gap(2).children(['top','bottom','left','right'].map(place=>button(`header-position-${kind}-${place}`,h_flex().w_full().gap(8).items_center().child(svg(`mods/juhas/icons/panel-${place}.svg`).size(15).flex_none()).child(place[0].toUpperCase()+place.slice(1)),(_e,cx)=>view.positionPanel(kind,place,cx),{active:place===position,tooltip:`Show ${label} at the ${place}`}).w_full().justify_start())),{tooltip:`${label} panel position: ${position}`,width:150,compact:true});
 }
+function panelCloseButton(view,kind){
+ const toggleFn=kind==='files'?view.toggleFiles:kind==='history'?view.toggleHistory:view.toggleComments;
+ if(!toggleFn)return null;
+ const type=uiMetrics(),t=theme(),label=kind==='files'?'Files':kind==='history'?'History':'Comments';
+ return button('close-panel-'+kind,'×',(_e,cx)=>toggleFn.call(view,false,cx),{tooltip:'Hide '+label}).w(type.px(22)).px(0).text_color(t.muted);
+}
+function canPromptUncommitted(view,s){
+ const scope=s.comparison?.scope;
+ return Boolean(s.hasWorkingChanges===true&&!view.includeWorking&&view.setIncludeWorking&&scope&&(scope.kind==='branch'||(scope.kind==='range'&&!scope.includeBase))&&!s.files?.length);
+}
 export function draftsPane(view,cx){const type=uiMetrics();
  const repoKey=view.controller.state.repo?.key,drafts=filterDrafts(view.controller.session().drafts,{repoKey}),status=view.draftStatus||'all',source=view.draftSource||'all',visible=filterDrafts(drafts,{status,source}),sources=[...new Map(drafts.map(d=>[d.comparisonId,d])).values()];
  const sourceLabel=d=>d.targetOid?`${d.baseOid?.slice(0,8)||'empty'} → ${d.targetOid.slice(0,8)}`:'Working tree';
@@ -109,7 +119,8 @@ export function draftsPane(view,cx){const type=uiMetrics();
    .when(Boolean(view.navigateComment),e=>e.child(headerButton('comment-previous','arrow-up',(_e,cx)=>view.navigateComment(-1,cx),'Previous comment')).child(headerButton('comment-next','arrow-down',(_e,cx)=>view.navigateComment(1,cx),'Next comment')))
    .when(Boolean(view.generalComment),e=>e.child(headerButton('general-comment','comment',(_e,cx)=>view.generalComment(cx),'General comment')))
    .child(headerButton('clear-comments','trash',(_e,cx)=>{view.controller.mutate(session=>({...session,drafts:session.drafts.filter(d=>d.repoKey!==repoKey)}));cx.notify();},'Delete all saved comments in this repository, including comments hidden by filters').disabled(!drafts.length))
-   .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'comments'))))
+   .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'comments')))
+   .when(Boolean(view.toggleComments),e=>e.child(panelCloseButton(view,'comments'))))
   .child(h_flex().min_h(type.px(36)).flex_none().px(8).py(type.px(4)).gap(6).flex_wrap().items_center()
    .child(buttonGroup('draft-status',[{value:'all',label:'All'},{value:'current',label:'Current'},{value:'outdated',label:'Outdated'}],status,(value,cx)=>{view.draftStatus=value;cx.notify();}))
    .child(popover('draft-source',source==='all'?'All comparisons':sourceLabel(sources.find(d=>d.comparisonId===source)||{}),Boolean(view.draftSourcePicker),(open,cx)=>{view.draftSourcePicker=open;cx.notify();},()=>v_flex().size_full().min_h(0)
@@ -177,7 +188,8 @@ export function historyPane(view,cx){const type=uiMetrics();
     .child(button('history-all','All branches',(_e,cx)=>view.setHistoryView('all',cx)))
     .child(checkbox('graph-remotes','Include remotes',view.remotes,(checked,cx)=>{view.remotes=checked;view.work(cx,()=>view.controller.loadHistory(view.filters()));}))
     .child(button('history-branch-picker','Browse branches…',(_e,cx)=>view.setReferencePicker(true,true,cx)))),{tooltip:'History options'}))
-  .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'history'))))
+  .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'history')))
+  .when(Boolean(view.toggleHistory),e=>e.child(panelCloseButton(view,'history'))))
   .when(Boolean(view.filtersOpen),e=>e.child(v_flex().px(8).pb(6).gap(4)
    .child(field(view.inputs.query,'Text or hash')).child(field(view.inputs.author,'Author')).child(field(view.inputs.path,'Path'))
    .child(button('apply-filters','Search',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters()))))))
@@ -186,16 +198,20 @@ export function historyPane(view,cx){const type=uiMetrics();
   .when(s.hasMore,e=>e.child(button('history-more',s.historyLoadingMore?'Loading...':'Load 300 more',(_e,cx)=>view.work(cx,()=>view.controller.loadHistory(view.filters(),true))).disabled(Boolean(s.historyLoading||s.historyBaseLoading))));
 }
 export function filesPane(view){const type=uiMetrics();
- const s=view.controller.state,t=theme(),session=view.controller.session(),drafts=session.drafts,query=view.inputs?.fileQuery?.value()||'',rows=fileRows(view.visibleFiles?.()||s.files,view.fileTree,view.collapsedDirs||new Set(),query);
+ const s=view.controller.state,t=theme(),session=view.controller.session(),drafts=session.drafts,query=view.inputs?.fileQuery?.value()||'',visible=view.visibleFiles?.()||s.files,rows=fileRows(visible,view.fileTree,view.collapsedDirs||new Set(),query);
+ const filesCount=visible.length===s.files.length?String(s.files.length):`${visible.length}/${s.files.length}`;
+ const promptUncommitted=!query&&canPromptUncommitted(view,s);
 
  const counts=new Map();for(const d of drafts)if(d.repoKey===s.repo?.key)counts.set(d.newPath,(counts.get(d.newPath)||0)+1);
- return v_flex().size_full().min_w(0).min_h(0).child(panelHeader('Files',String(s.files.length))
+ return v_flex().size_full().min_w(0).min_h(0).child(panelHeader('Files',filesCount)
   .child(toggle('hide-tests',svg('mods/juhas/icons/flask-conical-off.svg').size(15),Boolean(view.hideTests),(pressed,cx)=>view.setHideTests?.(pressed,cx),{tooltip:'Hide test files'}))
   .when(Boolean(view.inputs?.fileQuery),e=>e.child(button('toggle-file-filter',svg('mods/juhas/icons/search.svg').size(14),(_e,cx)=>{view.fileFilterOpen=!view.fileFilterOpen;if(view.fileFilterOpen)view.inputs.fileQuery.focus();cx.notify();},{active:Boolean(view.fileFilterOpen||query),tooltip:'Filter files by path'})))
   .child(toggle('file-tree',svg('mods/juhas/icons/tree.svg').size(15),view.fileTree,(pressed,cx)=>{view.fileTree=pressed;cx.notify();},{tooltip:'Show files as a directory tree'}))
-  .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'files'))))
+  .when(Boolean(view.positionPanel&&view.panelPosition),e=>e.child(panelPositionControl(view,'files')))
+  .when(Boolean(view.toggleFiles),e=>e.child(panelCloseButton(view,'files'))))
  .when(Boolean(view.inputs?.fileQuery&&(view.fileFilterOpen||query)),e=>e.child(h_flex().min_h(type.px(38)).flex_none().px(8).py(3).gap(6).items_center().child(field(view.inputs.fileQuery,'Filter files by path')).when(Boolean(query),e=>e.child(text(`${rows.filter(f=>!f.directory).length}/${s.files.length}`,true)).child(button('clear-file-filter','×',(_e,cx)=>{view.inputs.fileQuery.set_value('');cx.notify();},{tooltip:'Clear file filter'})))))
- .when(!rows.length,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(type.px(10))))
+ .when(!rows.length&&promptUncommitted,e=>e.child(v_flex().p(type.px(10)).gap(8).items_start().child(text('No committed changes in this comparison, but you have uncommitted changes.',true)).child(button('files-include-uncommitted','Include uncommitted changes',(_e,cx)=>view.setIncludeWorking(true,cx)))))
+ .when(!rows.length&&!promptUncommitted,e=>e.child(text(query?'No changed files match this path.':'No changed files in this comparison.',true).p(type.px(10))))
  .child(virtualList(`${view.scrollIdentity?.()||view.id}-files`,rows.map(f=>({...f,renderKey:JSON.stringify([f.id,counts.get(f.newPath)||0,s.file?.id===f.id])})),type.px(LIST_ROW_HEIGHT),f=>{
   if(f.directory)return h_flex().h(type.px(LIST_ROW_HEIGHT)).pl(9+f.depth*14).pr(9).min_w(0).gap(6).items_center().text_size(type.body).text_color(t.muted).tooltip(`${f.path}${query.trim()?' · Matching folders stay expanded while filtering':''}`).child(svg(`mods/juhas/icons/chevron-${f.closed?'right':'down'}.svg`).size(12).flex_none()).child(svg('mods/juhas/icons/folder.svg').size(14).flex_none()).child(div().min_w(0).truncate().text_ellipsis_middle().child(f.name));
   const count=counts.get(f.newPath)||0;return h_flex().h(type.px(LIST_ROW_HEIGHT)).pl(9+(f.depth||0)*14).pr(9).gap(7).items_center().when(s.file?.id===f.id,e=>e.bg(t.selected)).tooltip(f.newPath)
@@ -482,6 +498,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  let body;
  if(!projection)body=text('Preparing diff…',true).p(type.px(20));
  else if((!view.allFiles&&hiddenSelected)||(view.allFiles&&view.hideTests&&s.files?.length&&!sections.length))body=text('Test files are hidden',true).p(type.px(20));
+ else if(canPromptUncommitted(view,s))body=v_flex().p(type.px(20)).gap(10).items_start().child(text('No committed changes in this comparison, but you have uncommitted changes.',true)).child(button('diff-include-uncommitted','Include uncommitted changes',(_e,cx)=>view.setIncludeWorking(true,cx)));
  else if(!s.file&&!view.allFiles)body=text('Select a file to review').p(type.px(20));
  else if(!s.patch&&!view.allFiles)body=text(view.busy?'Reading diff…':'No diff loaded').p(type.px(20));
  else {const renderRow=(row,plain=false,interaction=null)=>{

@@ -211,37 +211,41 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  const base=(span,element)=>element.text_color(colors[span.kind]||t.foreground)
   .when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55'))
   .when(span.match,e=>e.bg(t.selected).underline());
- const renderRun=(span,first,hitEnabled)=>{
+ const hitTarget=(element,text,first)=>{
+  const length=text.length;
+  if(!length)return element;
+  const columns=text.includes('\t')?text.replace(/\t/g,'    ').length:length;
+  const tabbed=columns!==length;
+  const hit=event=>{
+   const cell=(event.local_position?.x||0)/(event.bounds?.width||1)*columns;
+   let index=Math.max(0,Math.min(length-1,Math.floor(cell))),start=index,width=1;
+   if(tabbed){
+    index=0;start=0;width=text[0]==='\t'?4:1;
+    while(index<length-1&&cell>=start+width){
+     start+=width;index++;width=text[index]==='\t'?4:1;
+    }
+   }
+   return [{start:first+index,end:first+index+1},{click_count:event.click_count,modifiers:event.modifiers,local_position:{x:cell-start},bounds:{width}}];
+  };
+  return element.on_mouse_down('left',(event,cx)=>interaction.down(...hit(event),cx))
+   .on_mouse_move(event=>interaction.move(...hit(event)));
+ };
+ const renderRun=(span,first,fixedDecoration)=>{
    const length=span.text.length,offset=first+length;
    const selectedStart=selection?Math.max(selection[0],first):offset;
    const selectedEnd=selection?Math.min(selection[1],offset):offset;
    const selected=selectedEnd>selectedStart;
    const display=span.text.replace(/\t/g,'    ');
-   const tabbed=hitEnabled&&display.length!==length;
+   const tabbed=fixedDecoration&&display.length!==length;
    const fragment=base(span,div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal()));
    // Keep the same shaped text run and hit target throughout a drag.
-   if(hitEnabled&&selected&&(selectedStart!==first||selectedEnd!==offset)){
+   if(fixedDecoration&&selected&&(selectedStart!==first||selectedEnd!==offset)){
     const column=offset=>tabbed?span.text.slice(0,offset).replace(/\t/g,'    ').length:offset;
     const percent=columns=>`${100*columns/display.length}%`;
     fragment.relative().child(div().absolute().top_0().bottom_0()
      .left(percent(column(selectedStart-first))).w(percent(column(selectedEnd-first)-column(selectedStart-first))).bg(t.selection));
    }else if(selected)fragment.bg(t.selection);
    fragment.child(display);
-   if(hitEnabled&&length){
-    const hit=event=>{
-     const cell=(event.local_position?.x||0)/(event.bounds?.width||1)*display.length;
-     let index=Math.max(0,Math.min(length-1,Math.floor(cell))),start=index,width=1;
-     if(tabbed){
-      index=0;start=0;width=span.text[0]==='\t'?4:1;
-      while(index<length-1&&cell>=start+width){
-       start+=width;index++;width=span.text[index]==='\t'?4:1;
-      }
-     }
-     return [{start:first+index,end:first+index+1},{click_count:event.click_count,modifiers:event.modifiers,local_position:{x:cell-start},bounds:{width}}];
-    };
-    fragment.on_mouse_down('left',(event,cx)=>interaction.down(...hit(event),cx))
-     .on_mouse_move(event=>interaction.move(...hit(event)));
-   }
    return fragment;
  };
  const rendered=[];
@@ -249,7 +253,8 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
   let spanIndex=0,spanEnd=spans[0]?.text.length||0,runStart=null,runEnd=0,runStyle=null;
   const flush=()=>{
    if(runStart==null)return;
-   rendered.push(renderRun({...runStyle,text:source.slice(runStart,runEnd)},runStart,true));
+   const text=source.slice(runStart,runEnd);
+   rendered.push(hitTarget(renderRun({...runStyle,text},runStart,true),text,runStart));
    runStart=null;
   };
   for(const glyph of graphemes(source)){
@@ -271,6 +276,10 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  }else{
   let offset=0;
   for(const span of spans){rendered.push(renderRun(span,offset,supported&&compact));offset+=span.text.length;}
+  if(supported&&compact&&rendered.length){
+   const text=rendered.length===1?rendered[0]:h_flex().flex_none().items_start().children(rendered);
+   rendered.splice(0,rendered.length,hitTarget(text,source,0));
+  }
  }
  if(interaction){const end={start:row?.text?.length||0,end:row?.text?.length||0};rendered.push(div().flex_1().min_w(1).h(type.px(22)).when(selectedBetween(end.start,end.end+1),e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(end,event,cx)).on_mouse_move(event=>interaction.move(end,event)));}
  return h_flex().when(Boolean(interaction?.height),e=>e.on_size_change(size=>interaction.height(size.height))).when(Boolean(interaction&&!supported),e=>e.tooltip('Text selection within this line is unavailable above 8192 characters.')).min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>interaction?e.flex_1():e.flex_none()).items_start()

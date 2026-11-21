@@ -484,3 +484,17 @@ test('mixed-width monospace lines group ordinary text without splitting Unicode 
  root.nodes[3].handlers.on_mouse_down({},{});
  assert.deepEqual(hits.map(({start,end})=>[start,end]),[[2,3],[7,12],[13,14],[19,21]]);
 });
+
+test('a fixed-width line shares one hit target across syntax and diff spans',()=>{
+ const ui=controls(),hits=[];
+ const interaction={selectedOffsets:()=>[6,9],down:(glyph,event)=>hits.push({glyph,width:event.bounds.width}),move(){}};
+ const root=ui.sourceText({text:'const a\t= 1;'},'a.js',{ansi5:'keyword',ansi2:'added',selection:'selected'},false,[{start:6,end:7}],[],'',interaction);
+ const target=root.nodes[0];
+ assert.ok(target.nodes.length>2);
+ assert.ok(target.nodes.some(span=>span.values.text_color==='keyword'));
+ assert.ok(target.nodes.every(span=>!span.handlers.on_mouse_down));
+ assert.equal(descendants(root).filter(node=>node.handlers?.on_mouse_down).length,2);
+ target.handlers.on_mouse_down({local_position:{x:96},bounds:{width:150}},{});
+ target.handlers.on_mouse_down({local_position:{x:111},bounds:{width:150}},{});
+ assert.deepEqual(hits,[{glyph:{start:7,end:8},width:4},{glyph:{start:8,end:9},width:1}]);
+});

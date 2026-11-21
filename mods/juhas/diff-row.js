@@ -11,14 +11,13 @@ export default class DiffRow extends View {
  }
  interaction(){const {owner,row,source}=this.p,runtime=owner.diffSelection,version=runtime?.version;if(!owner.experimentalDiff||!runtime?.model)return null;return {source:side=>runtime.point(row.id,side)?{
    selectedOffsets:()=>runtime.selectedOffsets(row.id,side),
-   height:owner.readingOptions?.wrap?height=>{if(runtime.version===version&&runtime.source===source&&runtime.measure(row.id,height,side))runtime.send({type:'measure',source,version});}:null,
+   height:owner.readingOptions?.wrap?height=>{if(runtime.version===version&&runtime.source===source)runtime.measure(row.id,height,side);}:null,
    down:(glyph,event,cx)=>{cx.stop_propagation();runtime.send({type:'down',source,version,rowId:row.id,side,start:glyph.start,end:glyph.end,click_count:event.click_count,modifiers:event.modifiers,local_position:event.local_position,bounds:event.bounds});},
    move:(glyph,event)=>{if(runtime.drag?.kind==='text')runtime.send({type:'move',source,version,rowId:row.id,side,start:glyph.start,end:glyph.end,local_position:event.local_position,bounds:event.bounds});}
   }:null};}
  measure(size,version,source){
   const runtime=this.p.owner.diffSelection;
-  if(runtime&&runtime.version===version&&runtime.source===source&&runtime.measure(this.p.row.id,size.height))
-   runtime.send({type:'measure',source,version});
+  if(runtime&&runtime.version===version&&runtime.source===source)runtime.measure(this.p.row.id,size.height);
  }
  render(){
   const {owner,content}=this.p;

@@ -510,15 +510,22 @@ test('selectable wrap keeps words together across syntax decorations and preserv
  assert.deepEqual(hits.map(({start,end})=>[start,end]),[[20,25]]);
 });
 
-test('wrapped virtual rows discard measurements from a different file with the same row IDs',()=>{
+test('selectable wrap breaks dotted identifiers and keeps decimal numbers intact',()=>{
+ const text='service.repository.name 12.34';
+ const root=controls().sourceText({text},'a.js',{},true,[],[],'',{selectedOffsets:()=>null,down(){},move(){}});
+ const words=root.nodes.slice(0,-1).map(word=>descendants(word).filter(x=>typeof x==='string').join(''));
+ assert.deepEqual(words,['service.','repository.','name ','12.34']);
+});
+
+test('wrapped selectable rows use native measurement scoped to the selected file',()=>{
  const ui=controls(),view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'next file'}]}]},null);
- view.experimentalDiff=true;view.readingOptions={wrap:true};
- view.diffSelection={source:'previous file',rows:[],heights:new Map([['h0l0',128]])};
- const list=descendants(ui.diffPane(view)).find(node=>node.kind==='virtual');
- const index=view.diffRows.findIndex(row=>row.id==='h0l0');
- assert.equal(list.sizes[index],22);
- view.diffSelection.source=view.diffChangeKey();view.diffSelection.rows=view.diffRows;
- assert.equal(descendants(ui.diffPane(view)).find(node=>node.kind==='virtual').sizes[index],128);
+ view.experimentalDiff=true;view.readingOptions={wrap:true};view.diffChangeKey=()=>view.controller.state.file.newPath;
+ const surface=()=>descendants(ui.diffPane(view)).find(node=>node.kind==='measured');
+ const first=surface();
+ view.controller.state.file={newPath:'b'};
+ const second=surface();
+ assert.notEqual(second.identity,first.identity);
+ assert.ok(second.renderRows().length>0);
 });
 
 test('opening an experimental comment inserts a row without preparing the large diff again',()=>{
@@ -529,15 +536,16 @@ test('opening an experimental comment inserts a row without preparing the large 
  while(callbacks.length)callbacks.shift()(cx);
  ui.diffPane(view,cx);
  const base=view.diffProjection,rows=view.diffRows,code=rows.find(row=>row.kind==='line'&&row.newLine===12);
- view.diffSelection={source:view.diffChangeKey(),baseProjection:base,rows,heights:new Map([[code.id,64]])};
+ const before=descendants(ui.diffPane(view,cx)).find(node=>node.kind==='measured');
  view.target={comparisonId:'c',newPath:'a',side:'new',startLine:12,endLine:12};
- const opened=ui.diffPane(view,cx),surface=descendants(opened).find(node=>node.kind==='virtual');
+ const opened=ui.diffPane(view,cx),surface=descendants(opened).find(node=>node.kind==='measured');
  assert.equal(callbacks.length,0);
  assert.equal(view.diffProjection,base);
  assert.equal(view.diffRows.find(row=>row.id===code.id),code);
  const index=view.diffRows.indexOf(code);
  assert.equal(view.diffRows[index+1].kind,'editor');
- assert.equal(surface.sizes[index],64);
+ assert.equal(surface.identity,before.identity);
+ assert.equal(surface.renderRows().length,before.renderRows().length);
  view.target=null;ui.diffPane(view,cx);
  assert.equal(view.diffRows,rows);
 });

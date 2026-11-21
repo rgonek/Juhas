@@ -252,7 +252,7 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  const rendered=[];
  if(supported&&!compact){
   let spanIndex=0,spanEnd=spans[0]?.text.length||0,runStart=null,runEnd=0,runStyle=null;
-  let word=[],afterSpace=false;
+  let word=[],afterBreak=false;
   const append=node=>(wrap?word:rendered).push(node);
   const flushWord=()=>{
    if(!word.length)return;
@@ -270,8 +270,9 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
    const span=spans[spanIndex]||{};
    if(wrap){
     const space=/^[\t ]+$/.test(glyph.text);
-    if(afterSpace&&!space){flush();flushWord();}
-    afterSpace=space;
+    if(afterBreak&&!space){flush();flushWord();}
+    const decimalPoint=glyph.text==='.'&&/\d$/.test(source[glyph.start-1]||'')&&/^\d/.test(source[glyph.end]||'');
+    afterBreak=space||(glyph.text==='.'&&!decimalPoint);
    }
    if(fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
     if(runStart!=null&&runStyle!==span)flush();
@@ -429,7 +430,7 @@ function inlineProjection(base,view,state){
  const rows=base.rows.slice();rows.splice(index,replace?1:0,row);
  const changes=replace?base.changes:base.changes.map(change=>change.index<index?change:{...change,index:change.index+1});
  const large=rows.length>VIRTUAL_DIFF_ROW_LIMIT;
- const projection={...base,rows,changes,large,uniform:false,measuredRows:large?measuredCommentRows(rows):null,fixedHeights:null,base};
+ const projection={...base,rows,changes,large,uniform:false,measuredRows:large?measuredCommentRows(rows):null,fixedHeights:null};
  inlineProjections.set(base,{key,projection});
  return projection;
 }
@@ -489,7 +490,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
  const uniformLarge=projection.large&&projection.uniform&&!wrap;
- const measured=projection.large&&!uniformLarge||wrap&&!view.experimentalDiff,measuredRows=measured?(projection.measuredRows??=measuredCommentRows(rows)):null,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}${view.experimentalDiff?'-experimental':''}-${type.body}`;
+ const measured=wrap||projection.large&&!uniformLarge,measuredRows=measured?(projection.measuredRows??=measuredCommentRows(rows)):null,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?(view.experimentalDiff&&!view.allFiles?'-wrap-'+clickSource:'-wrap'):''}${view.experimentalDiff?'-experimental':''}-${type.body}`;
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
  // Keep the scroll surface when a composer opens. Its retained view reports
  // its intrinsic height; wrapped annotations stay inside stable source items.
@@ -497,11 +498,6 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  let heights;
  if(!measured){
   if(uniformLarge)heights=type.px(22);
-  else if(wrap){
-   const selection=view.diffSelection;
-   const measuredHeights=selection&&selection.source===clickSource&&(selection.rows===rows||selection.baseProjection===(projection.base??projection))?selection.heights:null;
-   heights=rows.map(r=>measuredHeights?.get(r.id)??rowHeight(r));
-  }
   else{
    const previous=projection.fixedHeights,editorHeight=view.inlineEditorHeight||0;
    if(previous?.scale===type.scale&&previous.editorHeight===editorHeight)heights=previous.values;

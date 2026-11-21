@@ -160,7 +160,6 @@ export default class Juhas extends View {
   if(selection){
    this.selectionScale=metrics.scale;
    selection.update(rows,split,source,this.selectionLayoutKey(metrics));
-   selection.baseProjection=this.diffProjection;
   }
   const style=JSON.stringify([selection?.version,theme(),settings().font_family,split,this.readingOptions,this.diffWidth,metrics,
    this.findQuery,this.findCursor,this.target&&[this.target.comparisonId,this.target.newPath,this.target.side,this.target.startLine,this.target.endLine]]);
@@ -300,10 +299,12 @@ export default class Juhas extends View {
  scrollDiffToItem(index,strategy,rows=this.diffRows||[]){
   // Large native measured lists own their scroll position.
   if(this.isLargeMeasuredDiff(rows))return;
-  if(this.readingOptions?.wrap&&!this.experimentalDiff){
+  if(this.readingOptions?.wrap){
    const target=rows[index];if(!target)return;
-   index=measuredCommentRows(rows).findIndex(entry=>entry.id===target.id||[...entry.before,...entry.after].some(row=>row.id===target.id));
-   if(index<0)return;
+   const projection=this.renderedDiffProjection;
+   const entries=projection?.rows===rows?projection.measuredRows:measuredCommentRows(rows);
+   index=entries?.findIndex(entry=>entry.id===target.id||[...entry.before,...entry.after].some(row=>row.id===target.id));
+   if(index==null||index<0)return;
   }
   this.diffScroll?.scroll_to_item(index,strategy);
  }

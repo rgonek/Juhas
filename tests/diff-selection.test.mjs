@@ -48,3 +48,19 @@ test('drag invalidation snapshots only retained rows across a large range',()=>{
  f.send({type:'up'});
  assert.equal(f.comments[0].endLine,5000);
 });
+
+test('wrapped measurements coalesce and a replaced source cancels its pending redraw',()=>{
+ const f=fixture(),pending=[],notifications=[];
+ f.cx.notify=entity=>notifications.push(entity);
+ f.cx.timer.after=(_delay,callback)=>pending.push(callback);
+ f.state.measure('r1',60,'new');f.send({type:'measure'});
+ f.state.measure('r2',80,'new');f.send({type:'measure'});
+ assert.equal(pending.length,1);
+ assert.equal(notifications.length,0);
+ f.setSource('other');f.state.update(f.rows,false,'other');
+ pending.shift()(f.cx);
+ assert.equal(notifications.length,0);
+ f.state.measure('r1',120,'new');f.send({type:'measure'});
+ pending.shift()(f.cx);
+ assert.equal(notifications.length,1);
+});

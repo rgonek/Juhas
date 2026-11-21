@@ -498,3 +498,25 @@ test('a fixed-width line shares one hit target across syntax and diff spans',()=
  target.handlers.on_mouse_down({local_position:{x:111},bounds:{width:150}},{});
  assert.deepEqual(hits,[{glyph:{start:7,end:8},width:4},{glyph:{start:8,end:9},width:1}]);
 });
+
+test('selectable wrap keeps words together across syntax decorations and preserves glyph offsets',()=>{
+ const ui=controls(),hits=[];
+ const interaction={selectedOffsets:()=>null,down:glyph=>hits.push(glyph),move(){}};
+ const root=ui.sourceText({text:'const name42 = emoji👩‍💻;'},'a.js',{},true,[{start:7,end:9}],[],'',interaction);
+ const words=root.nodes.slice(0,-1).map(word=>descendants(word).filter(x=>typeof x==='string').join(''));
+ assert.deepEqual(words,['const ','name42 ','= ','emoji👩‍💻;']);
+ const emoji=descendants(root.nodes[3]).find(node=>node?.nodes?.includes('👩‍💻'));
+ emoji.handlers.on_mouse_down({},{});
+ assert.deepEqual(hits.map(({start,end})=>[start,end]),[[20,25]]);
+});
+
+test('wrapped virtual rows discard measurements from a different file with the same row IDs',()=>{
+ const ui=controls(),view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'next file'}]}]},null);
+ view.experimentalDiff=true;view.readingOptions={wrap:true};
+ view.diffSelection={source:'previous file',rows:[],heights:new Map([['h0l0',128]])};
+ const list=descendants(ui.diffPane(view)).find(node=>node.kind==='virtual');
+ const index=view.diffRows.findIndex(row=>row.id==='h0l0');
+ assert.equal(list.sizes[index],22);
+ view.diffSelection.source=view.diffChangeKey();view.diffSelection.rows=view.diffRows;
+ assert.equal(descendants(ui.diffPane(view)).find(node=>node.kind==='virtual').sizes[index],128);
+});

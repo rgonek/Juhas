@@ -69,7 +69,16 @@ export class DiffSelection {
   if(event.type==='row-move'){if(event.bounds)this.lastRow={id:event.rowId,bounds:event.bounds};this.scrollTop=null;if(this.drag?.kind!=='comment'||event.rowId===this.drag.end)return;}
   if(event.type==='move'&&this.drag?.kind!=='text')return;
   if(event.type==='copy'){if(!this.owner.inputFocused){const text=this.text();if(text)cx.write_to_clipboard(text);}return;}
-  if(event.type==='measure'){this.measurementQueued=false;cx.notify(this.owner.diffViewport);return;}
+  if(event.type==='measure'){
+   const version=this.version,source=this.source;
+   const flush=cx=>{
+    if(version!==this.version||source!==this.source||source!==this.owner.diffChangeKey())return;
+    this.measurementQueued=false;
+    cx.notify(this.owner.diffViewport);
+   };
+   if(cx.timer?.after)cx.timer.after(24,flush);else flush(cx);
+   return;
+  }
   const before=this.snapshot();
   if(event.type==='clear'){this.stop();this.selection=null;}
   else if(event.type==='cancel'||event.type==='leave'){this.stop();}

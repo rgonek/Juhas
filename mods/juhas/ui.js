@@ -203,9 +203,9 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  const source=row?.text||'',supported=source.length<=8192;
  // A native text run keeps identical geometry on hover. Use its measured width
  // for fixed-width ASCII and precomposed Latin letters. A tab spans four cells.
- const fixedWidth=!wrap&&/^(?:monospace|Consolas|Courier New|Cascadia Mono|JetBrains Mono|Iosevka|DejaVu Sans Mono|Liberation Mono|Menlo|SF Mono)(?: NF)?$/i.test(font);
+ const fixedWidth=/^(?:monospace|Consolas|Courier New|Cascadia Mono|JetBrains Mono|Iosevka|DejaVu Sans Mono|Liberation Mono|Menlo|SF Mono)(?: NF)?$/i.test(font);
  const fixedText=/^[\t -~\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f]*$/;
- const compact=fixedWidth&&fixedText.test(source);
+ const compact=!wrap&&fixedWidth&&fixedText.test(source);
  const spans=decorateLine(source,path,changed,matches,!wrap),selection=interaction.selectedOffsets();
  const selectedBetween=(start,end)=>Boolean(selection&&end>selection[0]&&start<selection[1]);
  const base=(span,element)=>element.text_color(colors[span.kind]||t.foreground)
@@ -237,7 +237,7 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
    const selected=selectedEnd>selectedStart;
    const display=span.text.replace(/\t/g,'    ');
    const tabbed=fixedDecoration&&display.length!==length;
-   const fragment=base(span,div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal()));
+   const fragment=base(span,div().min_w(0).when(fixedDecoration||!wrap,e=>e.flex_none()).when(wrap&&!fixedDecoration,e=>e.whitespace_normal()));
    // Keep the same shaped text run and hit target throughout a drag.
    if(fixedDecoration&&selected&&(selectedStart!==first||selectedEnd!==offset)){
     const column=offset=>tabbed?span.text.slice(0,offset).replace(/\t/g,'    ').length:offset;
@@ -251,15 +251,27 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  const rendered=[];
  if(supported&&!compact){
   let spanIndex=0,spanEnd=spans[0]?.text.length||0,runStart=null,runEnd=0,runStyle=null;
+  let word=[],afterSpace=false;
+  const append=node=>(wrap?word:rendered).push(node);
+  const flushWord=()=>{
+   if(!word.length)return;
+   rendered.push(h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(word));
+   word=[];
+  };
   const flush=()=>{
    if(runStart==null)return;
    const text=source.slice(runStart,runEnd);
-   rendered.push(hitTarget(renderRun({...runStyle,text},runStart,true),text,runStart));
+   append(hitTarget(renderRun({...runStyle,text},runStart,true),text,runStart));
    runStart=null;
   };
   for(const glyph of graphemes(source)){
    while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}
    const span=spans[spanIndex]||{};
+   if(wrap){
+    const space=/^[\t ]+$/.test(glyph.text);
+    if(afterSpace&&!space){flush();flushWord();}
+    afterSpace=space;
+   }
    if(fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
     if(runStart!=null&&runStyle!==span)flush();
     if(runStart==null){runStart=glyph.start;runStyle=span;}
@@ -267,12 +279,14 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
     continue;
    }
    flush();
-   rendered.push(base(span,div().flex_none().h(type.px(22)))
+   const target=base(span,div().flex_none().h(type.px(22)))
     .when(selectedBetween(glyph.start,glyph.end),e=>e.text_color(t.foreground).bg(t.selection))
     .on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx))
-    .on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    ')));
+    .on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));
+   append(target);
   }
   flush();
+  if(wrap)flushWord();
  }else{
   let offset=0;
   for(const span of spans){rendered.push(renderRun(span,offset,supported&&compact));offset+=span.text.length;}
@@ -394,7 +408,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  else if(!s.patch&&!view.allFiles)body=text(view.busy?'Reading diff…':'No diff loaded').p(type.px(20));
  else {const renderRow=(row,plain=false,interaction=null)=>{
   const retained=!plain&&retainRows&&view.diffRowViews?.get(clickSource+':'+row.id);
-  if(retained&&retained.p.row===row)return div().w_full().min_w(0).h_full().overflow_hidden().child(retained.entity);
+  if(retained&&retained.p.row===row)return div().w_full().min_w(0).when(!wrap,e=>e.h_full().overflow_hidden()).child(retained.entity);
   if(row.kind==='file-header'&&view.fileHeaderViews?.has(row.fileId))return div().h(type.px(34)).w_full().child(view.fileHeaderViews.get(row.fileId));
   if(row.kind==='file-header')return h_flex().h(type.px(34)).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(type.px(46)).p(type.px(12));
@@ -423,7 +437,11 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  let heights;
  if(!measured){
   if(uniformLarge)heights=type.px(22);
-  else if(wrap)heights=rows.map(r=>view.diffSelection?.heights.get(r.id)??rowHeight(r));
+  else if(wrap){
+   const selection=view.diffSelection;
+   const measuredHeights=selection&&selection.source===clickSource&&selection.rows===rows?selection.heights:null;
+   heights=rows.map(r=>measuredHeights?.get(r.id)??rowHeight(r));
+  }
   else{
    const previous=projection.fixedHeights,editorHeight=view.inlineEditorHeight||0;
    if(previous?.scale===type.scale&&previous.editorHeight===editorHeight)heights=previous.values;

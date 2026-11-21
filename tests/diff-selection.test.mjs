@@ -15,7 +15,7 @@ test('source changes, focus loss and input copy cancel or ignore stale gestures'
 test('viewport edge scrolling uses native row measurements and stops on release',()=>{const f=fixture(),scroll=[];f.owner.diffScroll={scroll_to_item:(...a)=>scroll.push(a)};f.state.measure('r1',44);f.state.measure('r2',22);f.send(down('r2'));f.send({type:'row-move',rowId:'r2',side:'new',bounds:{x:0,y:44,width:400,height:22}});f.send({type:'viewport',bounds:{x:0,y:0,width:400,height:66},position:{x:100,y:64}});f.timers.at(-1).fn(f.cx);assert.ok(scroll.length);assert.equal(scroll[0][1],'top');f.send({type:'up'});const count=scroll.length;f.timers.at(-1).fn(f.cx);assert.equal(scroll.length,count);});
 test('queued gestures from a replaced patch cannot select its replacement with identical row IDs',()=>{const f=fixture();f.state.send(down('r1',0,1,2));f.state.update(f.rows.map(row=>({...row,text:'replacement'})),false,'source');f.flush();assert.equal(f.state.text(),'');assert.equal(f.state.drag,null);});
 test('coalescing never moves pointer events across release and a new press',()=>{const f=fixture();for(const event of [down('r1'),{...down('r2',2,3),type:'move'},{type:'up'},down('r2'),{...down('r3',3,4),type:'move'},{type:'up'}])f.state.send(event);f.flush();assert.equal(f.state.text(),'line 2\nlin');});
-test('split invalidation distinguishes equal offsets on opposite sides of one row',()=>{const f=fixture();f.state.update([{id:'pair',kind:'pair',old:{side:'old',oldLine:1,text:'same'},next:{side:'new',newLine:1,text:'same'}}],true,'source');f.send({...down('pair',0,1,2),side:'old'});f.send({type:'up'});const previous=f.state.snapshot();f.send(down('pair',0,1,2));assert.notDeepEqual(f.state.snapshot(),previous);});
+test('split invalidation distinguishes equal offsets on opposite sides of one row',()=>{const f=fixture();f.state.update([{id:'pair',kind:'pair',old:{side:'old',oldLine:1,text:'same'},next:{side:'new',newLine:1,text:'same'}}],true,'source');f.send({...down('pair',0,1,2),side:'old'});f.send({type:'up'});f.owner.diffRowViews.set('source:pair',{p:{row:{id:'pair'}},entity:{}});const previous=f.state.snapshot();f.send(down('pair',0,1,2));assert.notDeepEqual(f.state.snapshot(),previous);});
 test('auto-scroll rebuilds the parent list so native pending scroll requests apply',()=>{const f=fixture();let parent=0;f.cx.notify=entity=>{if(!entity)parent++;};f.send(down('r2'));f.send({type:'row-move',rowId:'r2',side:'new',bounds:{x:0,y:22,width:400,height:22}});f.send({type:'viewport',bounds:{x:0,y:0,width:400,height:44},position:{x:100,y:43}});f.timers.at(-1).fn(f.cx);assert.ok(parent>0);});
 test('intrinsic wrapped cell heights take precedence over a constrained virtual row',()=>{const f=fixture();f.state.measure('r1',120,'old');f.state.measure('r1',80,'new');f.state.measure('r1',22);assert.equal(f.state.heights.get('r1'),120);f.state.measure('r1',44,'old');f.state.measure('r1',60,'new');assert.equal(f.state.heights.get('r1'),60);});
 test('growing comment editors publish intrinsic height only to their live source version',()=>{const f=fixture();f.state.update([...f.rows,{id:'editor',kind:'editor'}],false,'source');f.state.measureEditor(168,f.state.version);f.flush();assert.equal(f.state.heights.get('editor'),168);f.state.measureEditor(200,f.state.version-1);assert.equal(f.state.heights.get('editor'),168);f.state.measure('editor',112);assert.equal(f.state.heights.get('editor'),168);});
@@ -31,4 +31,20 @@ test('plus opens a single comment on click and previews only after a drag',()=>{
  assert.deepEqual([f.state.preview().startLine,f.state.preview().endLine],[2,3]);
  f.send({type:'up'});
  assert.deepEqual(f.comments.map(range=>[range.startLine,range.endLine]),[[2,2],[2,3]]);
+});
+
+test('drag invalidation snapshots only retained rows across a large range',()=>{
+ const f=fixture(),rows=Array.from({length:5000},(_,i)=>({id:'r'+i,kind:'line',side:'new',newLine:i+1,text:'line '+i}));
+ f.state.update(rows,false,'source');
+ for(const row of rows.slice(2500,2532))f.owner.diffRowViews.set('source:'+row.id,{p:{row},entity:{}});
+ f.send(down(rows[0].id));
+ f.send({...down(rows.at(-1).id,3,4),type:'move'});
+ assert.equal(f.state.snapshot().size,32);
+ assert.equal(f.state.text().split('\n').length,5000);
+ f.send({type:'up'});
+ f.send({type:'comment-down',rowId:rows[0].id,side:'new'});
+ f.send({type:'row-move',rowId:rows.at(-1).id,side:'new'});
+ assert.equal(f.state.snapshot().size,32);
+ f.send({type:'up'});
+ assert.equal(f.comments[0].endLine,5000);
 });

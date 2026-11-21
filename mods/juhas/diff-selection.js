@@ -34,8 +34,24 @@ export class DiffSelection {
  }
  preview(){return this.drag?.kind==='comment'&&this.drag.moved?this.drag.range:null;}
  marked(id,side){const range=this.preview();if(!range)return false;const entry=this.model?.entry(this.point(id,side)),line=side==='old'?entry?.oldLine:entry?.newLine;return entry?.fileId===range.fileId&&entry?.comparisonId===range.comparisonId&&side===range.side&&line>=range.startLine&&line<=range.endLine;}
- snapshot(){const result=new Map(),range=selectionRange(this.selection);if(range){const [a,b]=range;for(const entry of this.model.groups.get(a.key)?.slice(a.line,b.line+1)||[])result.set(entry.rowId,`${entry.key}:${entry.line===a.line?a.offset:0}:${entry.line===b.line?b.offset:entry.text.length}`);}
-  const preview=this.preview();if(preview)for(const entry of this.model.entries){const line=preview.side==='old'?entry.oldLine:entry.newLine;if(entry.fileId===preview.fileId&&entry.comparisonId===preview.comparisonId&&line>=preview.startLine&&line<=preview.endLine)result.set(entry.rowId,(result.get(entry.rowId)||'')+'#'+preview.side);}return result;}
+ snapshot(){
+  const result=new Map(),range=selectionRange(this.selection),preview=this.preview();
+  if(!range&&!preview)return result;
+  for(const {p:{row}} of this.owner.diffRowViews?.values()||[]){
+   if(range){
+    const [start,end]=range;
+    for(const side of this.split?['old','new']:['new']){
+     const point=this.point(row.id,side);
+     if(!point||point.key!==start.key||point.line<start.line||point.line>end.line)continue;
+     const entry=this.model.entry(point);
+     result.set(row.id,`${point.key}:${point.line===start.line?start.offset:0}:${point.line===end.line?end.offset:entry.text.length}`);
+     break;
+    }
+   }
+   if(preview&&this.marked(row.id,preview.side))result.set(row.id,(result.get(row.id)||'')+'#'+preview.side);
+  }
+  return result;
+ }
  invalidate(before,cx){const after=this.snapshot();for(const id of new Set([...before.keys(),...after.keys()]))if(before.get(id)!==after.get(id)){const entity=this.owner.diffRowViews?.get(this.source+':'+id)?.entity;if(entity)cx.notify(entity);}}
  stop(){this.drag=null;this.timer?.cancel();this.timer=null;this.scrollTop=null;}
  close(){this.stop();this.moves?.clear();}

@@ -209,35 +209,36 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null){
  if(detailed){let spanIndex=0,spanEnd=spans[0]?.text.length||0;rendered=graphemes(row?.text||'').map(glyph=>{while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}const span=spans[spanIndex]||{},selected=interaction.selected(glyph.start,glyph.end);return div().flex_none().h(type.px(22)).text_color(selected?t.foreground:colors[span.kind]||t.foreground).when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55')).when(span.match,e=>e.bg(t.selected).underline()).when(selected,e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx)).on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));});}
 
  else {
-  const selection=interaction?.selectedOffsets?.(), fragments=[];
-  let start=0;
-  for(const span of spans){
-   const end=start+span.text.length;
-   const cuts=selection?.filter(offset=>offset>start&&offset<end)||[];
-   let from=start;
-   for(const to of [...new Set(cuts),end]){
-    const selected=selection&&from>=selection[0]&&from<selection[1];
-    const fragment=div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
-     .text_color(selected?t.foreground:colors[span.kind]||t.foreground)
-     .when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55'))
-     .when(span.match,e=>e.bg(t.selected).underline()).when(Boolean(selected),e=>e.bg(t.selection))
-     .child(span.text.slice(from-start,to-start).replace(/\t/g,'    '));
-    if(interaction&&supported&&compact&&to>from){
-     const first=from,last=to;
-     const hit=event=>{
-      const cell=(event.local_position?.x||0)/(event.bounds?.width||1)*(last-first);
-      const index=Math.max(0,Math.min(last-first-1,Math.floor(cell)));
-      return [{start:first+index,end:first+index+1},{click_count:event.click_count,modifiers:event.modifiers,local_position:{x:cell-index},bounds:{width:1}}];
-     };
-     fragment.on_mouse_down('left',(event,cx)=>interaction.down(...hit(event),cx))
-      .on_mouse_move(event=>interaction.move(...hit(event)));
-    }
-    fragments.push(fragment);
-    from=to;
+  const selection=interaction.selectedOffsets?.();
+  let offset=0;
+  rendered=spans.map(span=>{
+   const first=offset,length=span.text.length;
+   offset+=length;
+   const selectedStart=selection?Math.max(selection[0],first):offset;
+   const selectedEnd=selection?Math.min(selection[1],offset):offset;
+   const selected=selectedEnd>selectedStart;
+   const fragment=div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
+    .text_color(colors[span.kind]||t.foreground)
+    .when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55'))
+    .when(span.match,e=>e.bg(t.selected).underline());
+   // Keep the same shaped text run and hit target throughout a drag.
+   if(compact&&selected&&(selectedStart!==first||selectedEnd!==offset)){
+    const percent=columns=>`${100*columns/length}%`;
+    fragment.relative().child(div().absolute().top_0().bottom_0()
+     .left(percent(selectedStart-first)).w(percent(selectedEnd-selectedStart)).bg(t.selection));
+   }else if(selected)fragment.bg(t.selection);
+   fragment.child(span.text.replace(/\t/g,'    '));
+   if(supported&&compact&&length){
+    const hit=event=>{
+     const cell=(event.local_position?.x||0)/(event.bounds?.width||1)*length;
+     const index=Math.max(0,Math.min(length-1,Math.floor(cell)));
+     return [{start:first+index,end:first+index+1},{click_count:event.click_count,modifiers:event.modifiers,local_position:{x:cell-index},bounds:{width:1}}];
+    };
+    fragment.on_mouse_down('left',(event,cx)=>interaction.down(...hit(event),cx))
+     .on_mouse_move(event=>interaction.move(...hit(event)));
    }
-   start=end;
-  }
-  rendered=fragments;
+   return fragment;
+  });
  }
  if(interaction){const end={start:row?.text?.length||0,end:row?.text?.length||0};rendered.push(div().flex_1().min_w(1).h(type.px(22)).when(interaction.selected(end.start,end.end+1),e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(end,event,cx)).on_mouse_move(event=>interaction.move(end,event)));}
  return h_flex().when(Boolean(interaction?.height),e=>e.on_size_change(size=>interaction.height(size.height))).when(Boolean(interaction&&!supported),e=>e.tooltip('Text selection within this line is unavailable above 8192 characters.')).min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>interaction?e.flex_1():e.flex_none()).items_start()

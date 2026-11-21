@@ -11,9 +11,9 @@ import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from '../mods/j
 import {fileReviewKey,setFileReviewed} from '../mods/juhas/progress.js';
 function controls(overrides={}){
  let layout=false;
- const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args[0];}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
+ const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args.at(-1);}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
  const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,pierreFileIcon,image:path=>element('image',path),...comments,...reading,formatCommitTime,fileRows,splitRows,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
- Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
+ Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {sourceText,optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
 test('opening, growing and closing a comment keeps the same diff scroll surface',()=>{
@@ -395,4 +395,23 @@ test('standard diff prepares fresh rows and leaves the experimental projection u
  view.experimentalDiff=false;
  ui.diffPane(view);
  assert.notEqual(view.diffRows,experimentalRows);
+});
+
+test('partial selection preserves the original text run and pointer offsets',()=>{
+ const ui=controls(),hits=[];
+ let offsets=null;
+ const interaction={selected:()=>false,selectedOffsets:()=>offsets,down:glyph=>hits.push(glyph),move(){}};
+ const render=()=>ui.sourceText({text:'a=>b'},'a.txt',{selection:'selected'},false,[],[],'',interaction);
+ const before=render();
+ offsets=[1,3];
+ const after=render(),run=after.nodes[0];
+ assert.equal(after.nodes.length,before.nodes.length);
+ assert.ok(before.nodes[0].nodes.includes('a=>b'));
+ assert.ok(run.nodes.includes('a=>b'));
+ const highlight=run.nodes.find(node=>node.values?.bg==='selected');
+ assert.ok(highlight&&Object.hasOwn(highlight.values,'absolute'));
+ assert.equal(highlight.values.left,'25%');
+ assert.equal(highlight.values.w,'50%');
+ for(const root of [before,after])root.nodes[0].handlers.on_mouse_down({local_position:{x:25},bounds:{width:40}},{});
+ assert.deepEqual(hits,[{start:2,end:3},{start:2,end:3}]);
 });

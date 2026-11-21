@@ -274,14 +274,16 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
     const decimalPoint=glyph.text==='.'&&/\d$/.test(source[glyph.start-1]||'')&&/^\d/.test(source[glyph.end]||'');
     afterBreak=space||(glyph.text==='.'&&!decimalPoint);
    }
-   if(fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
+   // The wrapped group moves together when it fits. Its grapheme targets
+   // let the group itself wrap when it is wider than the whole column.
+   if(!wrap&&fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
     if(runStart!=null&&runStyle!==span)flush();
     if(runStart==null){runStart=glyph.start;runStyle=span;}
     runEnd=glyph.end;
     continue;
    }
    flush();
-   const target=base(span,div().flex_none().h(type.px(22)))
+   const target=base(span,div().flex_none().when(!wrap,e=>e.h(type.px(22))))
     .when(selectedBetween(glyph.start,glyph.end),e=>e.text_color(t.foreground).bg(t.selection))
     .on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx))
     .on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));

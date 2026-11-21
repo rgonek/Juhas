@@ -517,6 +517,18 @@ test('selectable wrap breaks dotted identifiers and keeps decimal numbers intact
  assert.deepEqual(words,['service.','repository.','name ','12.34']);
 });
 
+test('oversized selectable words wrap between graphemes without losing source hit offsets',()=>{
+ const hash='2wOycCqMyg9Tu+SDP03FFwDEWBni/3xOKgt0bRXplOvyeIcUJmWO7m3gTCF2mIdtQLROLtOP5VwWRT8YBwP/bA==';
+ const text='        "contentHash": "'+hash+'"',hits=[];
+ const root=controls().sourceText({text},'a.json',{},true,[],[],'',{selectedOffsets:()=>null,down:glyph=>hits.push(glyph),move(){}});
+ const group=root.nodes.find(word=>word.nodes?.map(node=>node.nodes.join('')).join('')==='"'+hash+'"');
+ assert.equal(group.values.max_w,'100%');
+ assert.ok(Object.hasOwn(group.values,'flex_wrap'));
+ const offset=hash.indexOf('/')+1;
+ group.nodes[offset].handlers.on_mouse_down({},{});
+ assert.deepEqual(hits.map(glyph=>text.slice(glyph.start,glyph.end)),['/']);
+});
+
 test('wrapped selectable rows use native measurement scoped to the selected file',()=>{
  const ui=controls(),view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'next file'}]}]},null);
  view.experimentalDiff=true;view.readingOptions={wrap:true};view.diffChangeKey=()=>view.controller.state.file.newPath;

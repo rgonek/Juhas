@@ -1,3 +1,4 @@
+import {DIFF_BATCH_SIZE,finishDiffBatches} from './reading.js';
 // Source coordinates stay separate from gutters, expanded tabs and comment rows.
 let segmenter;
 export function graphemes(text){
@@ -9,14 +10,18 @@ export function graphemes(text){
   offset+=char.length;regional=flag?regional+1:0;
  }return result;
 }
-export function buildSelectionModel(rows,split,context={}){
- const groups=new Map(),points=new Map(),entries=[],rowIndices=new Map();
+export function buildSelectionModel(rows,split,context={}){return finishDiffBatches(selectionModelBatches(rows,split,context));}
+export function* selectionModelBatches(rows,split,context={}){
+ const groups=new Map(),points=new Map(),entries=[],rowIndices=new Map(),signature=[];
  const add=(row,line,side,index)=>{if(!line||typeof line.text!=='string')return;const fileId=row.fileId??context.fileId,comparisonId=row.comparisonId??context.comparisonId,key=JSON.stringify([comparisonId,fileId,split?side:'unified']);
   let group=groups.get(key);if(!group){group=[];groups.set(key,group);}const entry={key,line:group.length,rowId:row.id,fileId,comparisonId,text:line.text,side,oldLine:line.oldLine,newLine:line.newLine,source:line,displayIndex:index};
-  group.push(entry);entries.push(entry);points.set(row.id+'\0'+(split?side:''),entry);
+  group.push(entry);entries.push(entry);signature.push(JSON.stringify([key,row.id,line.text,line.oldLine,line.newLine]));points.set(row.id+'\0'+(split?side:''),entry);
  };
- rows.forEach((row,index)=>{rowIndices.set(row.id,index);if(row.kind==='pair'){add(row,row.old,'old',index);add(row,row.next,'new',index);}else if(row.kind==='line'){if(split&&row.side==='context'){add(row,row,'old',index);add(row,row,'new',index);}else add(row,row,row.side==='old'?'old':'new',index);}});
- return {groups,entries,rowIndices,signature:JSON.stringify(entries.map(e=>[e.key,e.rowId,e.text,e.oldLine,e.newLine])),point:(id,side)=>{const e=points.get(id+'\0'+(split?side:''));return e?{key:e.key,line:e.line,offset:0,rowId:e.rowId}:null;},entry:point=>point&&groups.get(point.key)?.[point.line]};
+ for(let index=0;index<rows.length;index++){
+  if(index&&index%DIFF_BATCH_SIZE===0)yield;
+  const row=rows[index];rowIndices.set(row.id,index);if(row.kind==='pair'){add(row,row.old,'old',index);add(row,row.next,'new',index);}else if(row.kind==='line'){if(split&&row.side==='context'){add(row,row,'old',index);add(row,row,'new',index);}else add(row,row,row.side==='old'?'old':'new',index);}
+ }
+ return {groups,entries,rowIndices,signature:signature.join(','),point:(id,side)=>{const e=points.get(id+'\0'+(split?side:''));return e?{key:e.key,line:e.line,offset:0,rowId:e.rowId}:null;},entry:point=>point&&groups.get(point.key)?.[point.line]};
 }
 export function selectionRange(selection){
  if(!selection?.anchor||!selection?.end||selection.anchor.key!==selection.end.key)return null;

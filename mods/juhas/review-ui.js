@@ -1,3 +1,4 @@
+import {DIFF_BATCH_SIZE,finishDiffBatches} from './reading.js';
 // Pure presentation models; retain original patch rows for comment anchors.
 export function currentBranchFits(width,current,base,fontSize=13,summary=''){
  if(!width)return true;const textWidth=value=>String(value||'').length*fontSize*0.56;
@@ -32,18 +33,21 @@ export function fileRows(files,tree=false,collapsed=new Set(),query=''){
  };
  walk(root);return rows;
 }
-export function splitRows(rows,skipEmptyGroups=false){
+export function splitRows(rows){return finishDiffBatches(splitRowBatches(rows));}
+export function* splitRowBatches(rows){
  const result=[];let removed=[],added=[],comments=new Map(),lastChange=null;
- const flush=()=>{
-  for(let i=0;i<Math.max(removed.length,added.length);i++){const old=removed[i],next=added[i];result.push({id:'split:'+(next?.id||old.id),kind:'pair',old,next});result.push(...(comments.get(old?.id)||[]),...(comments.get(next?.id)||[]));}
+ let count=0;
+ function* flush(){
+  for(let i=0;i<Math.max(removed.length,added.length);i++){if(++count%DIFF_BATCH_SIZE===0)yield;const old=removed[i],next=added[i];result.push({id:'split:'+(next?.id||old.id),kind:'pair',old,next});result.push(...(comments.get(old?.id)||[]),...(comments.get(next?.id)||[]));}
   removed=[];added=[];comments=new Map();lastChange=null;
  };
  for(const row of rows){
+  if(++count%DIFF_BATCH_SIZE===0)yield;
   if(row.kind==='line'&&(row.side==='old'||row.side==='new')){(row.side==='old'?removed:added).push(row);lastChange=row;}
   else if((row.kind==='comment'||row.kind==='editor')&&lastChange){if(!comments.has(lastChange.id))comments.set(lastChange.id,[]);comments.get(lastChange.id).push(row);}
-  else{if(!skipEmptyGroups||removed.length||added.length)flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}
+  else{if(removed.length||added.length)yield* flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}
  }
- flush();return result;
+ yield* flush();return result;
 }
 export function changeGroups(rows){
  const groups=[];let changing=false;

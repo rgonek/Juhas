@@ -1,8 +1,9 @@
+import {selectionModelBatches} from './selection.js';
 import DiffRow from './diff-row.js';
 import {DiffSelection} from './diff-selection.js';
 import {View,div,svg} from 'gpui-kit';
 import {h_flex,v_flex,InputState,TextareaState,Textarea,Editor,EditorState,h_resizable,v_resizable,resizable_panel,ScrollHandle,VirtualListScrollHandle} from 'gpui-base';
-import {exec,shared,setShared,props,focused,spaces,panes,terminals,theme,run,appHome,nextCommand,readTextFile,agents,layout} from 'herdr';
+import {exec,shared,setShared,props,focused,spaces,panes,terminals,theme,settings,run,appHome,nextCommand,readTextFile,agents,layout} from 'herdr';
 import {Controller} from './controller.js';
 import {createRunner,uid,fingerprint,utf8Bytes} from './git.js';
 import {createCache} from './cache.js';
@@ -23,7 +24,7 @@ import {listHistory} from './history.js';
 import {createRefreshScheduler,createRefreshCoordinator,reviewVisible} from './refresh.js';
 import {generalTarget} from './review.js';
 import {reviewedState,setFileReviewed,nextUnreviewed} from './progress.js';
-import {findInPatch,withLineInfo} from './reading.js';
+import {findInPatch,withLineInfo,runDiffBatches} from './reading.js';
 import {reviewTabKey,liveReviewTab,reviewTabProps} from './review-tab.js';
 
 // Each mod copy has its own module generation; durable drafts use Herdr shared state.
@@ -98,13 +99,13 @@ export default class Juhas extends View {
  releaseExperimentalDiff(){
   this.selectionHandle?.release();
   this.selectionHandle=null;
-  this.experimentalDiffProjection=null;
   if(this.diffSelection){
    this.diffSelection.close();
    this.diffSelectionVersion=this.diffSelection.version+1;
    this.diffSelection=null;
   }
   this.pendingDiffRows=null;
+  this.pendingSelectionModel=null;
   for(const entry of this.diffRowViews?.values()||[])entry.entity.release();
   this.diffRowViews?.clear();
  }
@@ -118,11 +119,73 @@ export default class Juhas extends View {
  }
  prepareDiffRows(rows,render,cx,split,range={start:0,end:80}){
   if(!this.experimentalDiff||!cx?.timer)return;
-  const source=this.diffChangeKey(),start=Math.max(0,range.start-32),end=Math.min(rows.length,range.end+32);
+  const source=this.diffChangeKey();
+  let start=Math.max(0,range.start-32),end=Math.min(rows.length,range.end+32);
   const previous=this.pendingDiffRows;
+  if(range.measured&&this.diffRowsQueued&&previous?.rows===rows&&previous.render===render&&previous.source===source){
+   start=Math.min(start,previous.start);
+   end=Math.max(end,previous.end);
+  }
   if(previous?.rows===rows&&previous.render===render&&previous.source===source&&range.start>=previous.start&&range.end<=previous.end)return;
   this.pendingDiffRows={rows,render,split,source,start,end};if(this.diffRowsQueued)return;this.diffRowsQueued=true;cx.timer.after(1,cx=>{this.diffRowsQueued=false;const pending=this.pendingDiffRows;if(this.closed||!this.experimentalDiff||pending?.source!==this.diffChangeKey())return;this.buildDiffRows(pending,cx);});}
- buildDiffRows({rows,render,split,source,start=0,end=rows.length},cx){this.diffRowViews??=new Map();if(!this.diffSelection){this.diffSelection=new DiffSelection(this);this.diffSelection.version=this.diffSelectionVersion||0;}this.selectionScale=uiMetrics().scale;this.diffSelection.update(rows,split,source,JSON.stringify([this.readingOptions?.wrap,this.diffWidth,uiMetrics()]),this.experimentalDiff===true);let changed=false;const keys=new Set(),lineKey=line=>line&&[line.id,line.text,line.side,line.oldLine,line.newLine],styleKey=JSON.stringify([this.experimentalDiff,this.diffSelection.version,theme(),split,this.readingOptions,this.diffWidth,uiMetrics(),this.findQuery,this.findCursor,this.target&&[this.target.comparisonId,this.target.newPath,this.target.side,this.target.startLine,this.target.endLine]]);for(let index=start;index<end;index++){const row=rows[index];if(!['line','pair'].includes(row.kind))continue;const key=source+':'+row.id;keys.add(key);const signature=JSON.stringify([row.kind,row.id,row.text,row.side,row.oldLine,row.newLine,row.filePath,row.comparisonId,lineKey(row.old),lineKey(row.next),row.draft,styleKey]);let entry=this.diffRowViews.get(key);if(!entry){const p={owner:this,row,source,split,content:interaction=>render(row,true,interaction)};entry={p,signature,entity:cx.new(DiffRow,p)};this.diffRowViews.set(key,entry);changed=true;}else{Object.assign(entry.p,{row,source,split,content:interaction=>render(row,true,interaction)});if(entry.signature!==signature){entry.signature=signature;cx.notify(entry.entity);}}}for(const [key,entry] of this.diffRowViews)if(!keys.has(key)){entry.entity.release();this.diffRowViews.delete(key);changed=true;}if(changed)cx.notify();}
+ selectionLayoutKey(metrics=uiMetrics()){return JSON.stringify([this.readingOptions?.wrap,this.diffWidth,metrics]);}
+ buildDiffRows({rows,render,split,source,start=0,end=rows.length},cx){
+  this.diffRowViews??=new Map();
+  if(!this.diffSelection){
+   this.diffSelection=new DiffSelection(this);
+   this.diffSelection.version=this.diffSelectionVersion||0;
+  }
+  if(rows.length>=2048&&(rows!==this.diffSelection.rows||source!==this.diffSelection.source||split!==this.diffSelection.split)){
+   const pending=this.pendingSelectionModel;
+   if(!pending||pending.rows!==rows||pending.source!==source||pending.split!==split){
+    const request={rows,source,split};
+    this.pendingSelectionModel=request;
+    const state=this.controller.state;
+    const current=()=>{
+     if(this.pendingSelectionModel!==request)return false;
+     if(!this.closed&&this.experimentalDiff&&this.pendingDiffRows?.rows===rows&&this.diffChangeKey()===source)return true;
+     this.pendingSelectionModel=null;
+     return false;
+    };
+    runDiffBatches(cx,selectionModelBatches(rows,split,{fileId:state.file?.id,comparisonId:state.comparison?.id}),current,(model,cx)=>{
+     this.pendingSelectionModel=null;
+     this.diffSelection.update(rows,split,source,this.selectionLayoutKey(),true,model);
+     this.buildDiffRows(this.pendingDiffRows,cx);
+    });
+   }
+   return;
+  }
+  const metrics=uiMetrics();
+  this.selectionScale=metrics.scale;
+  this.diffSelection.update(rows,split,source,this.selectionLayoutKey(metrics));
+  const style=JSON.stringify([this.diffSelection.version,theme(),settings().font_family,split,this.readingOptions,this.diffWidth,metrics,
+   this.findQuery,this.findCursor,this.target&&[this.target.comparisonId,this.target.newPath,this.target.side,this.target.startLine,this.target.endLine]]);
+  const keys=new Set(),matches=this.findMatches;
+  let mounted=false;
+  for(let index=start;index<end;index++){
+   const row=rows[index];
+   if(row.kind!=='line'&&row.kind!=='pair')continue;
+   const key=source+':'+row.id;
+   keys.add(key);
+   const entry=this.diffRowViews.get(key);
+   if(entry?.p.row===row&&entry.style===style&&entry.matches===matches)continue;
+   const p={owner:this,row,source,split,content:interaction=>render(row,true,interaction)};
+   if(entry){
+    Object.assign(entry.p,p);
+    entry.style=style;
+    entry.matches=matches;
+    cx.notify(entry.entity);
+   }else{
+    this.diffRowViews.set(key,{p,style,matches,entity:cx.new(DiffRow,p)});
+    mounted=true;
+   }
+  }
+  for(const [key,entry] of this.diffRowViews)if(!keys.has(key)){
+   entry.entity.release();
+   this.diffRowViews.delete(key);
+  }
+  if(mounted)cx.notify();
+ }
  commitCommentRange(range,cx){
   const controller=this.controller,comparison=controller.state.comparison,file=controller.state.files.find(f=>f.id===range.fileId);if(!file||comparison?.id!==range.comparisonId)return;
   if(this.hasUnsavedComment()){this.message='Save or cancel the current comment before opening another';cx.notify();return;}
@@ -193,7 +256,20 @@ export default class Juhas extends View {
   this.copyEditor.set_value(patchCode(s.patch,side));this.copySide=side;this.copySource=this.diffChangeKey();this.copyPath=s.file?.newPath;this.panel='copy-code';cx.notify();
  }
  diffChangeKey(){const s=this.controller.state;return JSON.stringify([s.comparison?.id,s.file?.id,this.diffMode,Boolean(this.hideTests)]);}
- scrollDiffToItem(index,strategy,rows=this.diffRows||[]){if(this.readingOptions?.wrap&&!this.experimentalDiff){const target=rows[index];if(!target)return;index=measuredCommentRows(rows).findIndex(entry=>entry.id===target.id||[...entry.before,...entry.after].some(row=>row.id===target.id));if(index<0)return;}this.diffScroll?.scroll_to_item(index,strategy);}
+ isLargeMeasuredDiff(rows){
+  const projection=this.diffProjection;
+  return projection?.rows===rows&&projection.large&&(!projection.uniform||this.readingOptions?.wrap);
+ }
+ scrollDiffToItem(index,strategy,rows=this.diffRows||[]){
+  // Large native measured lists own their scroll position.
+  if(this.isLargeMeasuredDiff(rows))return;
+  if(this.readingOptions?.wrap&&!this.experimentalDiff){
+   const target=rows[index];if(!target)return;
+   index=measuredCommentRows(rows).findIndex(entry=>entry.id===target.id||[...entry.before,...entry.after].some(row=>row.id===target.id));
+   if(index<0)return;
+  }
+  this.diffScroll?.scroll_to_item(index,strategy);
+ }
  revealDiffRow(cx,kind,strategy,current,onReveal=null){
   const fileId=this.controller.state.file?.id;
   const ready=()=>!this.closed&&this.reviewIsVisible?.()!==false&&current();

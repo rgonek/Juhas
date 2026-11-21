@@ -6,9 +6,10 @@ import * as comments from '../mods/juhas/comments.js';
 import * as models from '../mods/juhas/review-ui.js';
 import * as submission from '../mods/juhas/submit.js';
 import {Controller} from '../mods/juhas/controller.js';
+import {DiffSelection} from '../mods/juhas/diff-selection.js';
 function fixture(data=new Map()){
  const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];let serial=0;
- const deps={...comments,...models,...submission,withLineInfo,theme:()=>({}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
+ const deps={...comments,...models,...submission,withLineInfo,DiffSelection,DiffRow:class{},theme:()=>({}),settings:()=>({font_family:'monospace'}),uiMetrics:()=>({scale:1}),uid:()=>`draft-${++serial}`,shared:k=>data.get(k),setShared:(k,v)=>data.set(k,structuredClone(v)),terminals:()=>[],agents:()=>[]};
  const Native=new Function('View',...Object.keys(deps),'class Juhas extends View'+source+'\nreturn Juhas;')(class{},...Object.values(deps)),v=Object.create(Native.prototype);
  const patch={hunks:[{header:'@@',lines:[{side:'old',oldLine:1,newLine:null,text:'before'},{side:'new',oldLine:null,newLine:1,text:'after'},{side:'context',oldLine:2,newLine:2,text:'shared'}]}]};
  const comparison={id:'c',repoKey:'r',baseOid:'a'.repeat(40),targetOid:'b'.repeat(40)},files=[{id:'a',newPath:'a',oldPath:'a'},{id:'b',newPath:'b',oldPath:'b'}],saved={drafts:[],submittedBatches:[]};
@@ -124,4 +125,23 @@ test('native editor height changes wake the owner through its action queue once 
  resize({height:112.2});assert.equal(owner.inlineEditorHeight,113);assert.deepEqual(actions,[{kind:'editor-size'}]);
  resize({height:112.8});resize({height:0});assert.equal(actions.length,1);
  resize({height:180});assert.equal(owner.inlineEditorHeight,180);assert.equal(actions.length,2);
+});
+
+test('experimental viewport retains unchanged row entities and refreshes new decorations',()=>{
+ const {v}=fixture(),notified=[],released=[];
+ const cx={new:(_type,p)=>({id:p.row.id,release(){released.push(this.id);}}),notify:entity=>notified.push(entity?.id)};
+ const rows=Array.from({length:4},(_,i)=>({kind:'line',id:'r'+i,side:'new',newLine:i+1,text:'line '+i}));
+ const input={rows,source:'source',split:false,render:()=>null};
+ v.buildDiffRows({...input,start:0,end:3},cx);
+ const existing=v.diffRowViews.get('source:r1');
+ assert.deepEqual(notified,[undefined]);
+ notified.length=0;
+ v.buildDiffRows({...input,start:1,end:4},cx);
+ assert.equal(v.diffRowViews.get('source:r1'),existing);
+ assert.deepEqual(released,['r0']);
+ assert.deepEqual(notified,[undefined]);
+ notified.length=0;
+ v.findMatches=[{side:'new',line:2,start:0,end:1}];
+ v.buildDiffRows({...input,start:1,end:4},cx);
+ assert.deepEqual(notified,['r1','r2','r3']);
 });

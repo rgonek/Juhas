@@ -5,10 +5,10 @@ import {h_flex,v_flex,v_virtual_list,Scrollbar,Input,Button,Checkbox,Toggle,Swit
 import {theme,settings} from 'herdr';
 import {typography} from './typography.js';
 import {layoutGraph} from './graph.js';
-import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from './review-ui.js';
-import {annotatePatch,annotateExperimentalPatch,composerRows,measuredCommentRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
+import {fileRows,splitRowBatches,changeGroups,filterDrafts,isTestFile} from './review-ui.js';
+import {annotatePatchBatches,composerRows,measuredCommentRows,measuredCommentRowBatches,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 import {formatCommitTime} from './commit-time.js';
-import {decorateLine,intraline,multiFileRows,withLineInfo} from './reading.js';
+import {decorateLine,intraline,multiFileRowBatches,lineInfoBatches,DIFF_BATCH_SIZE,VIRTUAL_DIFF_ROW_LIMIT,finishDiffBatches,runDiffBatches} from './reading.js';
 const REVIEW_PANEL_TOOLBAR_HEIGHT=36;
 
 export function uiMetrics(){const look=settings();return typography(look.ui_font_size,window.rem_size());}
@@ -194,18 +194,17 @@ function standardSourceText(row,path,t,wrap,changed,matches,prefix=''){
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
  return h_flex().min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>e.flex_none()).items_start()
   .when(Boolean(prefix),e=>e.child(div().flex_none().child(prefix)))
-  .children(decorateLine(row?.text||'',path,changed,matches).map(span=>div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
+  .children(decorateLine(row?.text||'',path,changed,matches,!wrap).map(span=>div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
    .text_color(colors[span.kind]||t.foreground).when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55')).when(span.match,e=>e.bg(t.selected).underline()).child(span.text.replace(/\t/g,'    '))));
 }
-function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null){
+function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,type=uiMetrics(),font=settings().font_family||''){
  if(!interaction)return standardSourceText(row,path,t,wrap,changed,matches,prefix);
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
- const source=row?.text||'',supported=source.length<=8192,type=uiMetrics();
- const font=settings().font_family||'';
+ const source=row?.text||'',supported=source.length<=8192;
  // A native text run keeps identical geometry on hover. Use its measured width
  // for hit testing only when every source character occupies one fixed cell.
  const compact=!wrap&&/^(?:monospace|Consolas|Courier New|Cascadia Mono|JetBrains Mono|Iosevka|DejaVu Sans Mono|Liberation Mono|Menlo|SF Mono)(?: NF)?$/i.test(font)&&/^[ -~]*$/.test(source);
- const detailed=interaction&&supported&&!compact,spans=decorateLine(source,path,changed,matches);let rendered;
+ const detailed=interaction&&supported&&!compact,spans=decorateLine(source,path,changed,matches,!wrap);let rendered;
  if(detailed){let spanIndex=0,spanEnd=spans[0]?.text.length||0;rendered=graphemes(row?.text||'').map(glyph=>{while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}const span=spans[spanIndex]||{},selected=interaction.selected(glyph.start,glyph.end);return div().flex_none().h(type.px(22)).text_color(selected?t.foreground:colors[span.kind]||t.foreground).when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55')).when(span.match,e=>e.bg(t.selected).underline()).when(selected,e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx)).on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));});}
 
  else {
@@ -245,51 +244,110 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null){
   .when(Boolean(prefix),e=>e.child(div().flex_none().child(prefix)))
 .children(rendered);
 }
-function codeCell(row,side,t,wrap,path,changed=[],matches=[],selected=false,interaction=null){const type=uiMetrics();
+function codeCell(row,side,t,wrap,path,changed=[],matches=[],selected=false,interaction=null,type=uiMetrics(),font){
  const line=row?.[side==='old'?'oldLine':'newLine'];return h_flex().flex_1().min_w(0).when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).gap(8).px(8).overflow_hidden()
   .bg(selected?t.selected:row?.side==='old'?t.ansi1+'18':row?.side==='new'?t.ansi2+'18':t.background)
   .child(div().w(36).flex_none().text_right().text_color(selected?t.accent:t.dim).child(String(line??'')))
-  .child(sourceText(row,path,t,wrap,changed,matches,'',interaction));
+  .child(sourceText(row,path,t,wrap,changed,matches,'',interaction,type,font));
 }
 function commentCard(row,view,width='100%'){const type=uiMetrics();const retained=view.commentCards?.get(row.draft.id);if(retained)return div().h(type.px(commentHeight(row.text))).w_full().max_w(width||'100%').child(retained.view);return h_flex().h(type.px(commentHeight(row.text))).w_full().min_w(0).px(12).py(type.px(6)).bg(theme().raised).child(text(row.text).whitespace_normal());}
-function standardDiffProjection(view,s,drafts,split,hiddenSelected){
- const annotated=hiddenSelected?[]:annotatePatch(s.patch,drafts,s.comparison?.id,s.file?.newPath);
- const activeTarget=view.inlineEditor&&view.target?.comparisonId===s.comparison?.id&&view.target?.newPath===s.file?.newPath?view.target:null,composed=composerRows(annotated,activeTarget,view.editId);
- const present=(source,patch)=>{const visible=withLineInfo(source),display=split?splitRows(visible):visible;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
- const sections=view.allFiles?(view.allFileSections||[]).filter(section=>!view.hideTests||!isTestFile(section.file)).map(section=>{const source=section.patch?annotatePatch(section.patch,drafts,section.comparison?.id,section.file.newPath):null,target=view.target?.comparisonId===section.comparison?.id&&view.target?.newPath===section.file.newPath?view.target:null;return {...section,source,rows:source?present(composerRows(source,target,view.editId),section.patch):null};}):null;
- const rows=sections?multiFileRows(sections):present(composed,s.patch),changes=changeGroups(rows),emphasis=new Map(),pairs=new Map();
- const paired=(source,fileId='')=>{for(const row of splitRows(source))if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const pair={old:row.old,next:row.next,fileId};pairs.set(fileId+':'+row.old.id,pair);pairs.set(fileId+':'+row.next.id,pair);}};if(sections){for(const section of sections)if(section.source&&!section.collapsed&&!section.limited)paired(section.source,section.file.id);}else paired(annotated);
- return {annotated,sections,rows,changes,emphasis,pairs};
+function* prepareDiffProjection({patch,comparison,file,sectionsInput,drafts,split,hiddenSelected,target,inlineEditor,editId,hideTests}){
+ const annotate=(patch,comparison,file)=>annotatePatchBatches(patch,drafts,comparison?.id,file?.newPath);
+ const annotated=hiddenSelected?[]:yield* annotate(patch,comparison,file);
+ const matchesTarget=(comparison,file)=>target&&target.comparisonId===comparison?.id&&target.newPath===file?.newPath;
+ function* present(source,patch){
+  const visible=yield* lineInfoBatches(source);
+  const display=split?yield* splitRowBatches(visible):visible;
+  if(patch?.binary||patch?.modeOnly)display.unshift({id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'});
+  return display;
+ }
+ let sections=null,rows;
+ if(sectionsInput){
+  sections=[];
+  for(const section of sectionsInput){
+   if(hideTests&&isTestFile(section.file))continue;
+   let source=null,rows=null;
+   if(!section.collapsed&&!section.limited&&section.patch){
+    source=section.patch===patch&&section.comparison?.id===comparison?.id&&section.file.newPath===file?.newPath
+     ?annotated:yield* annotate(section.patch,section.comparison,section.file);
+    rows=yield* present(composerRows(source,matchesTarget(section.comparison,section.file)?target:null,editId),section.patch);
+   }
+   sections.push({...section,source,rows});
+  }
+  rows=yield* multiFileRowBatches(sections);
+ }else rows=yield* present(composerRows(annotated,inlineEditor&&matchesTarget(comparison,file)?target:null,editId),patch);
+ const emphasis=new Map(),pairs=new Map();
+ function* collectPairs(source,fileId=''){
+  for(let i=0;i<source.length;i++){
+   if(i&&i%DIFF_BATCH_SIZE===0)yield;
+   const row=source[i];
+   if(row.kind!=='pair'||!row.old||!row.next||row.old===row.next)continue;
+   const pair={old:row.old,next:row.next,fileId};
+   pairs.set(fileId+':'+row.old.id,pair);
+   pairs.set(fileId+':'+row.next.id,pair);
+  }
+ }
+ if(sections){
+  for(const section of sections)if(section.source)yield* collectPairs(split?section.rows:yield* splitRowBatches(section.source),section.file.id);
+ }else yield* collectPairs(split?rows:yield* splitRowBatches(annotated));
+ yield;
+ const rowsById=new Map();
+ let uniform=true;
+ for(let i=0;i<rows.length;i++){
+  if(i&&i%DIFF_BATCH_SIZE===0)yield;
+  const row=rows[i];
+  rowsById.set(row.id,row);
+  if(row.kind!=='line'&&row.kind!=='pair'&&row.kind!=='hunk')uniform=false;
+ }
+ yield;
+ const changes=changeGroups(rows);
+ const large=rows.length>VIRTUAL_DIFF_ROW_LIMIT;
+ const measuredRows=large?yield* measuredCommentRowBatches(rows):null;
+ return {annotated,sections,rows,rowsById,changes,emphasis,pairs,measuredRows,large,uniform};
 }
-function experimentalDiffProjection(view,s,drafts,split,hiddenSelected){
+function matchesProjection(candidate,patch,key,sectionPatches){
+ return candidate&&candidate.patch===patch&&candidate.key===key&&sectionPatches.every((patch,index)=>patch===candidate.sectionPatches[index]);
+}
+function diffProjection(view,s,drafts,split,hiddenSelected,cx){
+ const {patch,comparison,file}=s,{target,editId,hideTests}=view,inlineEditor=Boolean(view.inlineEditor);
  const sectionsInput=view.allFiles?(view.allFileSections||[]):null;
  const sectionPatches=sectionsInput?.map(section=>section.patch)||[];
- const key=JSON.stringify([s.comparison?.id,s.file?.newPath,split,hiddenSelected,view.hideTests,
-  view.target,Boolean(view.inlineEditor),view.editId,drafts,
+ const key=JSON.stringify([comparison?.id,file?.newPath,split,hiddenSelected,hideTests,
+  target,inlineEditor,editId,drafts,
   sectionsInput?.map(({file,comparison,collapsed,loading,limited})=>[file.id,file.newPath,comparison?.id,collapsed,loading,limited])]);
- const cached=view.experimentalDiffProjection;
- if(cached?.patch===s.patch&&cached.key===key&&sectionPatches.every((patch,index)=>patch===cached.sectionPatches[index]))return cached;
- const annotated=hiddenSelected?[]:annotateExperimentalPatch(s.patch,drafts,s.comparison?.id,s.file?.newPath);
- const activeTarget=view.inlineEditor&&view.target?.comparisonId===s.comparison?.id&&view.target?.newPath===s.file?.newPath?view.target:null;
- const composed=sectionsInput?null:composerRows(annotated,activeTarget,view.editId);
- const present=(source,patch)=>{const visible=withLineInfo(source),display=split?splitRows(visible,true):visible;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
- const sections=sectionsInput?sectionsInput.filter(section=>!view.hideTests||!isTestFile(section.file)).map(section=>{const source=!section.collapsed&&!section.limited&&section.patch?(section.patch===s.patch&&section.comparison?.id===s.comparison?.id&&section.file.newPath===s.file?.newPath?annotated:annotateExperimentalPatch(section.patch,drafts,section.comparison?.id,section.file.newPath)):null,target=view.target?.comparisonId===section.comparison?.id&&view.target?.newPath===section.file.newPath?view.target:null;return {...section,source,rows:source?present(composerRows(source,target,view.editId),section.patch):null};}):null;
- const rows=sections?multiFileRows(sections):present(composed,s.patch),changes=changeGroups(rows),emphasis=new Map(),pairs=new Map();
- const paired=(source,fileId='')=>{for(const row of source)if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const pair={old:row.old,next:row.next,fileId};pairs.set(fileId+':'+row.old.id,pair);pairs.set(fileId+':'+row.next.id,pair);}};if(sections){for(const section of sections)if(section.source)paired(split?section.rows:splitRows(section.source,true),section.file.id);}else paired(split?rows:splitRows(annotated,true));
- return view.experimentalDiffProjection={key,patch:s.patch,sectionPatches,annotated,sections,rows,changes,emphasis,pairs};
+ if(matchesProjection(view.diffProjection,patch,key,sectionPatches)){
+  view.pendingDiffProjection=null;
+  return view.diffProjection;
+ }
+ if(matchesProjection(view.pendingDiffProjection,patch,key,sectionPatches))return null;
+ const count=patch=>patch?.hunks?.reduce((total,hunk)=>total+hunk.lines.length,0)||0;
+ const lines=count(patch)+(sectionsInput?.reduce((total,section)=>total+(!section.collapsed&&!section.limited&&section.patch!==patch?count(section.patch):0),0)||0);
+ const request={key,patch,sectionPatches};
+ const steps=prepareDiffProjection({patch,comparison,file,sectionsInput:sectionsInput?.map(section=>({...section})),drafts,split,hiddenSelected,target,inlineEditor,editId,hideTests});
+ if(lines<2048||!cx?.timer){
+  view.pendingDiffProjection=null;
+  return view.diffProjection={...request,...finishDiffBatches(steps)};
+ }
+ view.pendingDiffProjection=request;
+ runDiffBatches(cx,steps,()=>!view.closed&&view.pendingDiffProjection===request,(result,cx)=>{
+  view.pendingDiffProjection=null;
+  view.diffProjection={...request,...result};
+  cx.notify();
+ });
+ return null;
 }
-export function diffPane(view,cx){const type=uiMetrics();
+export function diffPane(view,cx){const look=settings(),type=typography(look.ui_font_size,window.rem_size()),font=look.font_family;
  const s=view.controller.state,t=theme(),hiddenSelected=Boolean(view.hideTests&&isTestFile(s.file)),drafts=view.controller.session().drafts,split=view.diffMode==='split',wrap=Boolean(view.readingOptions?.wrap);
- const {annotated,sections,rows,changes,emphasis,pairs}=view.experimentalDiff
-  ?experimentalDiffProjection(view,s,drafts,split,hiddenSelected)
-  :standardDiffProjection(view,s,drafts,split,hiddenSelected);
+ const projection=diffProjection(view,s,drafts,split,hiddenSelected,cx);
+ const {annotated=[],sections=null,rows=[],rowsById,changes=[],emphasis,pairs}=projection||{};
  const clickSource=view.diffChangeKey();
  const selectedLine=(row,side,container=row)=>{if(view.experimentalDiff&&view.diffSelection?.marked(container?.id,side))return true;const target=view.target,line=row?.[side==='old'?'oldLine':'newLine'];return Boolean(target&&line!=null&&target.comparisonId===(container?.comparisonId||s.comparison?.id)&&target.newPath===(container?.filePath||s.file?.newPath)&&target.side===side&&line>=target.startLine&&line<=target.endLine);};
  const ranges=(row,side)=>{const line=row?.[side==='old'?'oldLine':'newLine'];return (view.findMatches||[]).filter(m=>m.side===side&&m.line===line&&(!view.allFiles||m.fileId===row.fileId));};
  const fragments=row=>{const key=(row?.fileId||'')+':'+(row?.sourceId||row?.id),pair=pairs.get(key);if(pair&&!emphasis.has(key)){const result=intraline(pair.old.text,pair.next.text);emphasis.set(pair.fileId+':'+pair.old.id,result.old);emphasis.set(pair.fileId+':'+pair.next.id,result.new);}return emphasis.get(key)||[];};
  view.patchRows=annotated;view.diffRows=rows;view.diffRowsKey=view.diffChangeKey();const activeChange=view.changeCursor?.source===view.diffRowsKey?changes.findIndex(change=>change.id===view.changeCursor.id):-1;
  let body;
- if((!view.allFiles&&hiddenSelected)||(view.allFiles&&view.hideTests&&s.files?.length&&!sections.length))body=text('Test files are hidden',true).p(type.px(20));
+ if(!projection)body=text('Preparing diff…',true).p(type.px(20));
+ else if((!view.allFiles&&hiddenSelected)||(view.allFiles&&view.hideTests&&s.files?.length&&!sections.length))body=text('Test files are hidden',true).p(type.px(20));
  else if(!s.file&&!view.allFiles)body=text('Select a file to review').p(type.px(20));
  else if(!s.patch&&!view.allFiles)body=text(view.busy?'Reading diff…':'No diff loaded').p(type.px(20));
  else {const renderRow=(row,plain=false,interaction=null)=>{
@@ -304,25 +362,44 @@ export function diffPane(view,cx){const type=uiMetrics();
    return h_flex().when(row.kind==='editor',e=>e.min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT))).when(row.kind!=='editor',e=>e.h(height)).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0));
   }
   if(row.kind==='hunk')return h_flex().h(type.px(22)).px(10).items_center().bg(t.raised).text_color(t.muted).text_size(type.caption).child(row.text);
-  if(row.kind==='pair'){const old=row.old?{...row.old,fileId:row.fileId}:null,next=row.next?{...row.next,fileId:row.fileId}:null;return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_stretch()).when(!wrap,e=>e.h(type.px(22))).font_family(settings().font_family).text_size(type.code).line_height(type.lineHeight).child(codeCell(old,'old',t,wrap,row.filePath||s.file?.newPath,fragments(old),ranges(old,'old'),selectedLine(old,'old',row),interaction?.source('old'))).child(div().w(1).bg(t.border)).child(codeCell(next,'new',t,wrap,row.filePath||s.file?.newPath,fragments(next),ranges(next,'new'),selectedLine(next,'new',row),interaction?.source('new')));}
+  if(row.kind==='pair'){const old=row.old?{...row.old,fileId:row.fileId}:null,next=row.next?{...row.next,fileId:row.fileId}:null;return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_stretch()).when(!wrap,e=>e.h(type.px(22))).font_family(font).text_size(type.code).line_height(type.lineHeight).child(codeCell(old,'old',t,wrap,row.filePath||s.file?.newPath,fragments(old),ranges(old,'old'),selectedLine(old,'old',row),interaction?.source('old'),type,font)).child(div().w(1).bg(t.border)).child(codeCell(next,'new',t,wrap,row.filePath||s.file?.newPath,fragments(next),ranges(next,'new'),selectedLine(next,'new',row),interaction?.source('new'),type,font));}
   const mark=row.side==='new'?'+':row.side==='old'?'-':' ';
   const selected=selectedLine(row,row.side==='context'?(view.target?.side||'new'):row.side==='old'?'old':'new');
-  return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).px(8).gap(8).font_family(settings().font_family).text_size(type.code).line_height(type.lineHeight).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
+  return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).px(8).gap(8).font_family(font).text_size(type.code).line_height(type.lineHeight).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
    .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.oldLine??''))).child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.newLine??'')))
-   .child(sourceText(row,row.filePath||s.file?.newPath,t,wrap,fragments(row),ranges(row,row.side==='old'?'old':'new'),`${mark} `,interaction?.source(row.side==='old'?'old':'new')));
- };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rows.find(r=>r.id===id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
+   .child(sourceText(row,row.filePath||s.file?.newPath,t,wrap,fragments(row),ranges(row,row.side==='old'?'old':'new'),`${mark} `,interaction?.source(row.side==='old'?'old':'new'),type,font));
+ };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rowsById.get(id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
   if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}if(view.experimentalDiff)return;
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
- const measured=wrap&&!view.experimentalDiff,measuredRows=measured?measuredCommentRows(rows):null,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}${view.experimentalDiff?'-experimental':''}-${type.body}`;
+ const uniformLarge=projection.large&&projection.uniform&&!wrap;
+ const measured=projection.large&&!uniformLarge||wrap&&!view.experimentalDiff,measuredRows=measured?(projection.measuredRows??=measuredCommentRows(rows)):null,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?'-wrap':''}${view.experimentalDiff?'-experimental':''}-${type.body}`;
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
  // Keep the scroll surface when a composer opens. Its retained view reports
  // its intrinsic height; wrapped annotations stay inside stable source items.
- body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>(view.experimentalDiff?view.diffSelection?.heights.get(r.id):undefined)??(r.kind==='editor'?Math.max(type.px(INLINE_EDITOR_HEIGHT),Math.min(type.px(INLINE_EDITOR_MAX_HEIGHT),view.inlineEditorHeight||0)):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22))),renderRow,click,scroller,null,view.experimentalDiff?range=>{
+ const rowHeight=r=>r.kind==='editor'?Math.max(type.px(INLINE_EDITOR_HEIGHT),Math.min(type.px(INLINE_EDITOR_MAX_HEIGHT),view.inlineEditorHeight||0)):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22);
+ let heights;
+ if(!measured){
+  if(uniformLarge)heights=type.px(22);
+  else if(wrap)heights=rows.map(r=>view.diffSelection?.heights.get(r.id)??rowHeight(r));
+  else{
+   const previous=projection.fixedHeights,editorHeight=view.inlineEditorHeight||0;
+   if(previous?.scale===type.scale&&previous.editorHeight===editorHeight)heights=previous.values;
+   else{
+    heights=rows.map(rowHeight);
+    projection.fixedHeights={scale:type.scale,editorHeight,values:heights};
+   }
+  }
+ }
+ body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];
+ if(view.experimentalDiff&&entry.sourceIndex!=null)view.prepareDiffRows?.(rows,renderRow,cx,split,{start:entry.sourceIndex,end:entry.sourceIndex+1,measured:true});
+ return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,heights,renderRow,click,scroller,null,view.experimentalDiff?range=>{
   view.prepareDiffRows?.(rows,renderRow,cx,split,range);
   if(view.diffSelection)view.diffSelection.visibleRange=range;
  }:null);}
- const minWidth=wrap||s.patch?.binary||s.patch?.modeOnly?0:split?Math.max(800,...rows.filter(r=>r.kind==='pair').map(r=>100+Math.max(r.old?.text.length||0,r.next?.text.length||0)*14.6)):Math.max(600,...annotated.filter(r=>r.kind!=='comment').map(r=>100+r.text.length*7.3));
+ const minWidth=!projection||wrap||s.patch?.binary||s.patch?.modeOnly?0:(projection.minWidth??=split
+  ?rows.reduce((width,row)=>row.kind==='pair'?Math.max(width,100+Math.max(row.old?.text.length||0,row.next?.text.length||0)*14.6):width,800)
+  :annotated.reduce((width,row)=>row.kind!=='comment'?Math.max(width,100+row.text.length*7.3):width,600));
  return v_flex().size_full().min_w(0).min_h(0)
   .on_size_change((size,cx)=>{if(view.diffWidth!==size.width){view.diffWidth=size.width;view.prepareFileHeaders?.(cx);}})
   .child(h_flex().min_h(type.px(REVIEW_PANEL_TOOLBAR_HEIGHT)).flex_none().px(8).gap(6).flex_wrap().items_center().border_b(1).border_color(t.border)

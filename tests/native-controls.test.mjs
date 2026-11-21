@@ -7,12 +7,12 @@ import * as comments from '../mods/juhas/comments.js';
 import {formatCommitTime} from '../mods/juhas/commit-time.js';
 import * as reading from '../mods/juhas/reading.js';
 import {pierreFileIcon} from '../mods/juhas/file-icons.js';
-import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from '../mods/juhas/review-ui.js';
+import {fileRows,splitRows,splitRowBatches,changeGroups,filterDrafts,isTestFile} from '../mods/juhas/review-ui.js';
 import {fileReviewKey,setFileReviewed} from '../mods/juhas/progress.js';
 function controls(overrides={}){
  let layout=false;
  const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args.at(-1);}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
- const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,pierreFileIcon,image:path=>element('image',path),...comments,...reading,formatCommitTime,fileRows,splitRows,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
+ const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,pierreFileIcon,image:path=>element('image',path),...comments,...reading,formatCommitTime,fileRows,splitRows,splitRowBatches,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
  Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {sourceText,optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
@@ -308,11 +308,40 @@ test('unified anchor highlight supports old context and clears after saving',()=
  const row=()=>descendants(ui.diffPane(view)).find(n=>n.kind==='virtual').renderRows()[0];assert.equal(row().values.bg,'selection');view.target=null;assert.equal(row().values.bg,'background');
 });
 
-test('large diffs keep rows virtual and do not prepare retained entities',()=>{
- const view=diffView({hunks:[{header:'@@',lines:Array.from({length:10000},(_,i)=>({side:'new',newLine:i+1,text:'code'}))}]},null);
- view.prepareDiffRows=()=>assert.fail('eager per-row entities defeat virtualization');
- const root=controls().diffPane(view,{timer:{after(){assert.fail('no row creation timer');}}});
- assert.ok(descendants(root).some(n=>n.kind==='virtual'));assert.equal(view.diffRows.length,10000);
+test('large diffs prepare in batches and preserve every row past the virtual size limit',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:Array.from({length:10001},(_,i)=>({side:'new',newLine:i+1,text:'code'}))}]},null);
+ view.prepareDiffRows=()=>assert.fail('standard mode must not prepare retained code entities');
+ const ui=controls(),callbacks=[];
+ let notifications=0;
+ const cx={timer:{after:(_delay,callback)=>callbacks.push(callback)},notify:()=>notifications++};
+ const first=ui.diffPane(view,cx);
+ assert.ok(descendants(first).includes('Preparing diff…'));
+ assert.equal(view.diffRows.length,0);
+ assert.equal(callbacks.length,1);
+ while(callbacks.length)callbacks.shift()(cx);
+ assert.equal(notifications,1);
+ const finished=ui.diffPane(view,cx);
+ const list=descendants(finished).find(node=>node.kind==='virtual');
+ assert.equal(typeof list.sizes,'number');
+ assert.equal(view.diffRows.length,10001);
+ assert.equal(view.diffRows.at(-1).newLine,10001);
+ view.controller.session=()=>({drafts:[{id:'comment',comparisonId:'c',newPath:'a',side:'new',endLine:5000,body:'Saved comment'}]});
+ ui.diffPane(view,cx);
+ while(callbacks.length)callbacks.shift()(cx);
+ assert.ok(descendants(ui.diffPane(view,cx)).some(node=>node.kind==='measured'));
+ assert.equal(view.diffRows.length,10002);
+ assert.equal(view.diffRows.at(-1).newLine,10001);
+});
+
+test('pending large diff work cannot publish rows from a replaced patch',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:Array.from({length:3000},(_,i)=>({side:'new',newLine:i+1,text:'stale'}))}]},null);
+ const ui=controls(),callbacks=[];
+ const cx={timer:{after:(_delay,callback)=>callbacks.push(callback)},notify:()=>assert.fail('obsolete batch published')};
+ ui.diffPane(view,cx);
+ view.controller.state.patch={hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'current'}]}]};
+ ui.diffPane(view,cx);
+ while(callbacks.length)callbacks.shift()(cx);
+ assert.deepEqual(view.diffProjection.rows.map(row=>row.text),['current']);
 });
 
 test('history columns follow the panel width rather than the wide review window',()=>{
@@ -377,24 +406,20 @@ test('experimental diff uses deferred row preparation only when enabled',()=>{
  assert.ok(calls[0][0].some(row=>row.text==='code'));
 });
 
-test('standard diff prepares fresh rows and leaves the experimental projection unused',()=>{
- const patch={hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'first'}]}]};
- const view=diffView(patch,null),ui=controls();
- ui.diffPane(view);
- const standardRows=view.diffRows;
- assert.equal(view.experimentalDiffProjection,undefined);
- patch.hunks[0].lines[0].text='updated';
- ui.diffPane(view);
- assert.notEqual(view.diffRows,standardRows);
- assert.equal(view.diffRows.find(row=>row.kind==='line').text,'updated');
- view.experimentalDiff=true;
- ui.diffPane(view);
- const experimentalRows=view.diffRows;
- ui.diffPane(view);
- assert.equal(view.diffRows,experimentalRows);
- view.experimentalDiff=false;
- ui.diffPane(view);
- assert.notEqual(view.diffRows,experimentalRows);
+test('both diff modes reuse layout work and refresh when a new patch arrives',()=>{
+ const patch=text=>({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text}]}]});
+ for(const experimentalDiff of [false,true]){
+  const view=diffView(patch('first'),null),ui=controls();
+  view.experimentalDiff=experimentalDiff;
+  const render=()=>descendants(ui.diffPane(view)).find(node=>node.kind==='virtual');
+  const first=render(),originalRows=view.diffRows;
+  assert.equal(render().sizes,first.sizes);
+  assert.equal(view.diffRows,originalRows);
+  view.controller.state.patch=patch('updated');
+  assert.notEqual(render().sizes,first.sizes);
+  assert.notEqual(view.diffRows,originalRows);
+  assert.equal(view.diffRows.find(row=>row.kind==='line').text,'updated');
+ }
 });
 
 test('partial selection preserves the original text run and pointer offsets',()=>{

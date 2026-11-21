@@ -34,3 +34,13 @@ test('multifile sections retain exact file and comparison identity, with unloade
  assert.equal(rows.filter(r=>r.kind==='file-header').length,3);assert.ok(rows.some(r=>r.kind==='notice'&&r.text.includes('limited')));
  assert.equal(new Set(rows.map(r=>r.id)).size,rows.length);
 });
+
+test('unwrapped runs merge only adjacent text with identical decoration',()=>{
+ const text='const value = items.length + 3;';
+ const changed=[{start:6,end:11}],matches=[{start:14,end:19}];
+ const plain=decorateLine(text,'sample.js',changed,matches);
+ const compact=decorateLine(text,'sample.js',changed,matches,true);
+ const positions=spans=>spans.flatMap(({text,...style})=>Array.from(text,char=>[char,style]));
+ assert.ok(compact.length<plain.length);
+ assert.deepEqual(positions(compact),positions(plain));
+});

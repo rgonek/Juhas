@@ -1,3 +1,4 @@
+import {DIFF_BATCH_SIZE,finishDiffBatches} from './reading.js';
 export function commentTarget(c,file,start=null,end=null,lines=[]){
  const common={repoKey:c.repoKey,root:c.root,comparisonId:c.id,baseOid:c.baseOid,targetOid:c.targetOid,...(c.mutableTarget?{mutableTarget:true,baseTree:c.baseTree,targetTree:c.targetTree}:{}),oldPath:file.oldPath,newPath:file.newPath};
  if(!start)return {...common,side:null,startLine:null,endLine:null,quote:''};
@@ -7,18 +8,8 @@ export function commentTarget(c,file,start=null,end=null,lines=[]){
  const lo=Math.min(a,b),hi=Math.max(a,b);const selected=lines.length?lines.filter(l=>l[field]!=null&&l[field]>=lo&&l[field]<=hi):[start];
  return {...common,side,startLine:lo,endLine:hi,quote:selected.map(l=>l.text).join('\n')};
 }
-export function annotatePatch(patch,drafts,comparisonId,path){
- const relevant=drafts.filter(d=>d.comparisonId===comparisonId&&d.newPath===path);const comment=d=>({id:`comment-${d.id}`,kind:'comment',draft:d,text:d.body});
- const rows=relevant.filter(d=>d.side==null).map(comment);
- for(const [hi,h] of (patch?.hunks||[]).entries()){
-  rows.push({id:`h${hi}`,kind:'hunk',hunk:h,text:h.header});
-  for(const [i,line] of h.lines.entries()){
-   rows.push({...line,id:`h${hi}l${i}`,kind:'line',hunk:h});
-   for(const d of relevant)if(d.side&&d.endLine===(d.side==='old'?line.oldLine:line.newLine))rows.push(comment(d));
-  }
- }return rows;
-}
-export function annotateExperimentalPatch(patch,drafts,comparisonId,path){
+export function annotatePatch(patch,drafts,comparisonId,path){return finishDiffBatches(annotatePatchBatches(patch,drafts,comparisonId,path));}
+export function* annotatePatchBatches(patch,drafts,comparisonId,path){
  const relevant=drafts.filter(d=>d.comparisonId===comparisonId&&d.newPath===path);const comment=d=>({id:`comment-${d.id}`,kind:'comment',draft:d,text:d.body});
  const rows=[],byOldLine=new Map(),byNewLine=new Map();
  for(const [index,draft] of relevant.entries()){
@@ -29,11 +20,13 @@ export function annotateExperimentalPatch(patch,drafts,comparisonId,path){
   if(!atLine)indexByLine.set(draft.endLine,atLine=[]);
   atLine.push({draft,index});
  }
- const hunks=patch?.hunks||[];
+ const hunks=patch?.hunks||[];let count=0;
  for(let hi=0;hi<hunks.length;hi++){
+  if(++count%DIFF_BATCH_SIZE===0)yield;
   const h=hunks[hi];
   rows.push({id:`h${hi}`,kind:'hunk',hunk:h,text:h.header});
   for(let i=0;i<h.lines.length;i++){
+   if(++count%DIFF_BATCH_SIZE===0)yield;
    const line=h.lines[i];
    rows.push({...line,id:`h${hi}l${i}`,kind:'line',hunk:h});
    const old=byOldLine.get(line.oldLine),next=byNewLine.get(line.newLine);
@@ -56,12 +49,15 @@ export function commentHeight(value){return 38+21*(Math.min(6,Math.max(1,String(
 
 // Keep measured-list source items stable when annotations appear or disappear.
 // Herdr resets a measured list's native scroll when its item count changes.
-export function measuredCommentRows(rows){
+export function measuredCommentRows(rows){return finishDiffBatches(measuredCommentRowBatches(rows));}
+export function* measuredCommentRowBatches(rows){
  const result=[],leading=[];
- for(const row of rows){
+ for(let index=0;index<rows.length;index++){
+  if(index&&index%DIFF_BATCH_SIZE===0)yield;
+  const row=rows[index];
   if(row.kind==='comment'||row.kind==='editor'){
    if(result.length)result.at(-1).after.push(row);else leading.push(row);
-  }else result.push({id:row.id,row,before:result.length?[]:leading.splice(0),after:[]});
+  }else result.push({id:row.id,row,sourceIndex:index,before:result.length?[]:leading.splice(0),after:[]});
  }
  if(leading.length)result.push({id:'diff-annotations',row:null,before:leading,after:[]});
  return result;

@@ -7,18 +7,18 @@ import {listChangedFiles,listChangedFileMetadata,loadChangedFileStats,loadPatch}
 import {createCache,createRequestGate} from './cache.js';
 import {loadSession,mutateSession} from './storage.js';
 import {addDraft,markSeen,lastCheckpoint} from './review.js';
-import {observeWorking} from './working-observation.js';
+import {observeWorking,hasWorkingChanges} from './working-observation.js';
 function patchKey(c,file,full=false){return JSON.stringify([c.repoKey,c.baseTree,c.mutableTarget?file.contentIdentity||c.targetTree:c.targetTree,file.id,'patch',full]);}
 export class Controller {
- constructor({run,store,sessionId='default',cache=createCache(),onChange=()=>{}}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.onChange=onChange;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.refreshGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false,historyLoading:false,historyLoadingMore:false,fileStatsLoading:false,fileStatsError:null};}
+ constructor({run,store,sessionId='default',cache=createCache(),onChange=()=>{}}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.onChange=onChange;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.refreshGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false,historyLoading:false,historyLoadingMore:false,fileStatsLoading:false,fileStatsError:null,hasWorkingChanges:null};}
  session(){return loadSession(this.store,this.sessionId);}
  mutate(fn){return mutateSession(this.store,this.sessionId,fn);}
  async openRepo(machine,folder,{repo:providedRepo,loadHistory=true}={}){
   this.automaticVersion=(this.automaticVersion||0)+1;this.automaticRequest=null;this.refreshGate.begin('repo');
   const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');this.state.historyLoading=false;this.state.historyLoadingMore=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;
   const repo=providedRepo||await resolveRepo(this.run,machine,folder);if(!this.gate.isCurrent(token))return;if(!repo)throw new Error('Folder is not inside a Git repository; use Discover to find nested repositories');
-  const [refs,branch,head]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD']),this.run(repo,['rev-parse','--verify','HEAD'])]);if(!this.gate.isCurrent(token))return;
-  this.state={...this.state,repo,automaticChoice:null,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null};
+  const [refs,branch,head,workingDirty]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD']),this.run(repo,['rev-parse','--verify','HEAD']),hasWorkingChanges(this.run,repo).catch(()=>null)]);if(!this.gate.isCurrent(token))return;
+  this.state={...this.state,repo,automaticChoice:null,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null,hasWorkingChanges:workingDirty};
   if(head.code!==0){this.state.empty=true;this.state.observedHead=null;return;}
   this.state.empty=false;this.state.observedHead=head.stdout.trim();if(loadHistory)await this.loadHistory({},false,head.stdout.trim());
  }
@@ -185,7 +185,7 @@ export class Controller {
   const current=()=>this.refreshGate.isCurrent(token)&&this.state.repo===repo&&this.state.comparison===comparison&&this.state.file===file;
   this.state.refreshing=true;this.state.refreshError=null;this.onChange();
   this.refreshPromise=(async()=>{try{
-   const [refs,branchResult,headResult]=await Promise.all([listRefs(run,repo),run(repo,['symbolic-ref','--short','-q','HEAD']),run(repo,['rev-parse','--verify','HEAD'])]);
+   const [refs,branchResult,headResult,workingDirty]=await Promise.all([listRefs(run,repo),run(repo,['symbolic-ref','--short','-q','HEAD']),run(repo,['rev-parse','--verify','HEAD']),hasWorkingChanges(run,repo).catch(()=>this.state.hasWorkingChanges)]);
    if(!current())return false;
    const branch=branchResult.stdout.trim()||'(detached)',head=headResult.code===0?headResult.stdout.trim():null;
    if(branch!==this.state.branch){this.state.branchChanged={previous:this.state.branch,current:branch};return false;}
@@ -227,7 +227,7 @@ export class Controller {
    const {candidate,files,nextFile,nextPatch,missingFile,sourceUnavailable,sourceStale,pendingPatch}=diffResult;
    if(changed||candidate?.mutableTarget){const finalHead=await run(repo,['rev-parse','--verify','HEAD']);if((finalHead.code===0?finalHead.stdout.trim():null)!==head)throw new Error('Repository changed during refresh; previous source retained');if(!current())return false;}
    if(pendingPatch)this.cache.set(pendingPatch.key,pendingPatch.patch);
-   Object.assign(this.state,{observedHead:head,refs,history:history.commits,hasMore:history.hasMore,historyRef:history.ref,historyExclude:history.exclude,featureBaseOid:featureBase,empty:!head,newHead:comparison?.scope.kind==='commit'&&head&&head!==comparison.targetOid?head:null,branchChanged:null,comparison:candidate,details:candidate===comparison?this.state.details:null,files,file:nextFile,patch:nextPatch,missingFile,sourceUnavailable,sourceStale});
+   Object.assign(this.state,{observedHead:head,refs,history:history.commits,hasMore:history.hasMore,historyRef:history.ref,historyExclude:history.exclude,featureBaseOid:featureBase,empty:!head,newHead:comparison?.scope.kind==='commit'&&head&&head!==comparison.targetOid?head:null,branchChanged:null,comparison:candidate,details:candidate===comparison?this.state.details:null,files,file:nextFile,patch:nextPatch,missingFile,sourceUnavailable,sourceStale,hasWorkingChanges:workingDirty});
    if(candidate!==comparison){this.state.sourceStale=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;}
    if(candidate&&(changed||candidate.mutableTarget||this.session().drafts.some(d=>d.repoKey===repo.key&&d.mutableTarget)))await this.reconcileComments(candidate,{run,headOid:head,validatedWorking:candidate.mutableTarget&&!this.state.sourceStale?candidate:null});
    return true;

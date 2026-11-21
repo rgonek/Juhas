@@ -41,7 +41,7 @@ export function splitRows(rows){
  for(const row of rows){
   if(row.kind==='line'&&(row.side==='old'||row.side==='new')){(row.side==='old'?removed:added).push(row);lastChange=row;}
   else if((row.kind==='comment'||row.kind==='editor')&&lastChange){if(!comments.has(lastChange.id))comments.set(lastChange.id,[]);comments.get(lastChange.id).push(row);}
-  else{flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}
+  else{if(removed.length||added.length)flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}
  }
  flush();return result;
 }

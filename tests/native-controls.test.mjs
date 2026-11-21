@@ -363,3 +363,16 @@ test('file panel uses extension icons and status colors in both layouts',()=>{
   assert.ok(rows.some(row=>row.values.tooltip===files[0].newPath));
  }
 });
+
+test('experimental diff uses deferred row preparation only when enabled',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);
+ const calls=[];view.prepareDiffRows=(...args)=>calls.push(args);
+ const render=()=>{const root=controls().diffPane(view);descendants(root).find(node=>node.kind==='virtual').renderRows();return root;};
+ const standard=render();
+ assert.equal(calls.length,0);
+ assert.equal(standard.nodes[0].nodes.at(-1).identity,'diff-experimental');
+ view.experimentalDiff=true;
+ render();
+ assert.equal(calls.length,1);
+ assert.ok(calls[0][0].some(row=>row.text==='code'));
+});

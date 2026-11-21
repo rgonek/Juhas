@@ -4,11 +4,13 @@ import {commentHeight,INLINE_EDITOR_HEIGHT} from './comments.js';
 // The parent processes gestures; retained rows only report source coordinates.
 export class DiffSelection {
  constructor(owner){this.owner=owner;this.selection=null;this.drag=null;this.heights=new Map();this.cellHeights=new Map();this.source=null;this.pendingMove=null;this.version=0;this.motionBatch=0;}
- update(rows,split,source,layoutKey){
-  const state=this.owner.controller?.state||{},next=buildSelectionModel(rows,split,{fileId:state.file?.id,comparisonId:state.comparison?.id});
-  if(source!==this.source||next.signature!==this.model?.signature){this.stop();this.selection=null;this.heights.clear();this.cellHeights.clear();this.moves?.clear();this.measurementQueued=false;this.visibleRange=null;this.version++;}
+ update(rows,split,source,layoutKey,enabled=true){
+  if(rows===this.rows&&source===this.source&&layoutKey===this.layoutKey&&split===this.split&&enabled===this.enabled)return;
+  this.split=split;
+  const state=this.owner.controller?.state||{},next=enabled?buildSelectionModel(rows,split,{fileId:state.file?.id,comparisonId:state.comparison?.id}):null;
+  if(source!==this.source||next?.signature!==this.model?.signature||enabled!==this.enabled){this.stop();this.selection=null;this.heights.clear();this.cellHeights.clear();this.moves?.clear();this.measurementQueued=false;this.visibleRange=null;this.version++;}
   if(layoutKey!==this.layoutKey){this.stop();this.heights.clear();this.cellHeights.clear();this.measurementQueued=false;this.moves?.clear();this.visibleRange=null;this.version++;}this.layoutKey=layoutKey;
-  this.rows=rows;this.model=next;this.source=source;
+  this.rows=rows;this.model=next;this.source=source;this.enabled=enabled;
  }
  send(event){
   event={...event,source:event.source??this.source,version:event.version??this.version};
@@ -23,7 +25,14 @@ export class DiffSelection {
  text(){return this.model?selectionText(this.model,this.selection):'';}
  point(id,side,offset=0){const point=this.model?.point(id,side);return point?{...point,offset}:null;}
  selected(id,side,start,end){return glyphSelected(this.selection,this.point(id,side),start,end);}
- preview(){return this.drag?.kind==='comment'?this.drag.range:null;}
+ selectedOffsets(id,side){
+  const range=selectionRange(this.selection),point=this.point(id,side);
+  if(!range||!point)return null;
+  const [start,end]=range;
+  if(point.key!==start.key||point.line<start.line||point.line>end.line)return null;
+  return [point.line===start.line?start.offset:0,point.line===end.line?end.offset:Infinity];
+ }
+ preview(){return this.drag?.kind==='comment'&&this.drag.moved?this.drag.range:null;}
  marked(id,side){const range=this.preview();if(!range)return false;const entry=this.model?.entry(this.point(id,side)),line=side==='old'?entry?.oldLine:entry?.newLine;return entry?.fileId===range.fileId&&entry?.comparisonId===range.comparisonId&&side===range.side&&line>=range.startLine&&line<=range.endLine;}
  snapshot(){const result=new Map(),range=selectionRange(this.selection);if(range){const [a,b]=range;for(const entry of this.model.groups.get(a.key)?.slice(a.line,b.line+1)||[])result.set(entry.rowId,`${entry.key}:${entry.line===a.line?a.offset:0}:${entry.line===b.line?b.offset:entry.text.length}`);}
   const preview=this.preview();if(preview)for(const entry of this.model.entries){const line=preview.side==='old'?entry.oldLine:entry.newLine;if(entry.fileId===preview.fileId&&entry.comparisonId===preview.comparisonId&&line>=preview.startLine&&line<=preview.endLine)result.set(entry.rowId,(result.get(entry.rowId)||'')+'#'+preview.side);}return result;}
@@ -49,11 +58,14 @@ export class DiffSelection {
   else if(event.type==='cancel'||event.type==='leave'){this.stop();}
   else if(event.type==='copy'){if(!this.owner.inputFocused){const text=this.text();if(text)cx.write_to_clipboard(text);}}
   else if(event.type==='viewport'){this.viewport=event.bounds;this.position=event.position;}
-  else if(event.type==='row-move'){if(event.bounds)this.lastRow={id:event.rowId,bounds:event.bounds};this.scrollTop=null;if(this.drag?.kind==='comment')this.moveComment(event.rowId);}
+  else if(event.type==='row-move'){
+   this.moveComment(event.rowId);
+   if(this.drag.moved&&!this.timer)this.startTimer(cx);
+  }
   else if(event.type==='comment-down'){
    if(this.owner.hasUnsavedComment?.()){this.owner.message='Save or cancel the current comment before opening another';cx.notify();return;}
    const range=commentSelection(this.model,event.rowId,event.side);if(!range)return;
-   this.selection=null;this.drag={kind:'comment',start:event.rowId,side:range.side,end:event.rowId,range};this.owner.selectionHandle?.focus();this.startTimer(cx);
+   this.selection=null;this.drag={kind:'comment',start:event.rowId,side:range.side,end:event.rowId,range};this.owner.selectionHandle?.focus();
   }else if(event.type==='down'||event.type==='move'){
    const offset=event.local_position&&event.bounds&&event.local_position.x>=event.bounds.width/2?event.end:event.start,point=this.point(event.rowId,event.side,offset);if(!point)return;
    if(event.type==='down'){
@@ -62,11 +74,11 @@ export class DiffSelection {
     this.drag={kind:'text',unit,unitAnchor:unit==='character'?null:this.selection};this.owner.selectionHandle?.focus();this.startTimer(cx);
    }else if(this.drag?.kind==='text'&&point.key===this.selection?.anchor.key)this.selection=this.drag.unitAnchor?extendUnit(this.drag.unitAnchor,unitSelection(this.model,point,this.drag.unit,event.start)):{...this.selection,end:point};
   }else if(event.type==='up'){
-   const range=this.preview();this.stop();this.invalidate(before,cx);if(range)this.owner.commitCommentRange(range,cx);return;
+   const range=this.drag?.kind==='comment'?this.drag.range:null;this.stop();this.invalidate(before,cx);if(range)this.owner.commitCommentRange(range,cx);return;
   }
   this.invalidate(before,cx);
  }
- moveComment(id){const range=commentSelection(this.model,this.drag.start,this.drag.side,id);if(range){this.drag.end=id;this.drag.range=range;}}
+ moveComment(id){const range=commentSelection(this.model,this.drag.start,this.drag.side,id);if(range){this.drag.moved ||= id!==this.drag.start;this.drag.end=id;this.drag.range=range;}}
  tick(cx){
   if(!this.drag)return;
   const before=this.snapshot();

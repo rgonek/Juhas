@@ -19,3 +19,16 @@ test('split invalidation distinguishes equal offsets on opposite sides of one ro
 test('auto-scroll rebuilds the parent list so native pending scroll requests apply',()=>{const f=fixture();let parent=0;f.cx.notify=entity=>{if(!entity)parent++;};f.send(down('r2'));f.send({type:'row-move',rowId:'r2',side:'new',bounds:{x:0,y:22,width:400,height:22}});f.send({type:'viewport',bounds:{x:0,y:0,width:400,height:44},position:{x:100,y:43}});f.timers.at(-1).fn(f.cx);assert.ok(parent>0);});
 test('intrinsic wrapped cell heights take precedence over a constrained virtual row',()=>{const f=fixture();f.state.measure('r1',120,'old');f.state.measure('r1',80,'new');f.state.measure('r1',22);assert.equal(f.state.heights.get('r1'),120);f.state.measure('r1',44,'old');f.state.measure('r1',60,'new');assert.equal(f.state.heights.get('r1'),60);});
 test('growing comment editors publish intrinsic height only to their live source version',()=>{const f=fixture();f.state.update([...f.rows,{id:'editor',kind:'editor'}],false,'source');f.state.measureEditor(168,f.state.version);f.flush();assert.equal(f.state.heights.get('editor'),168);f.state.measureEditor(200,f.state.version-1);assert.equal(f.state.heights.get('editor'),168);f.state.measure('editor',112);assert.equal(f.state.heights.get('editor'),168);});
+
+test('plus opens a single comment on click and previews only after a drag',()=>{
+ const f=fixture();
+ f.send({type:'comment-down',rowId:'r2',side:'new'});
+ assert.equal(f.state.preview(),null);
+ f.send({type:'up'});
+ assert.deepEqual(f.comments.map(range=>[range.startLine,range.endLine]),[[2,2]]);
+ f.send({type:'comment-down',rowId:'r2',side:'new'});
+ f.send({type:'row-move',rowId:'r3',side:'new'});
+ assert.deepEqual([f.state.preview().startLine,f.state.preview().endLine],[2,3]);
+ f.send({type:'up'});
+ assert.deepEqual(f.comments.map(range=>[range.startLine,range.endLine]),[[2,2],[2,3]]);
+});

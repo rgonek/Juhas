@@ -111,6 +111,22 @@ test('diff interaction entities are created after render and reused until their 
  v.prepareDiffRows([],()=>null,cx,false);callback(cx);assert.equal(released,1);
 });
 
+test('retained interaction entities stay bounded to the visible diff range',()=>{
+ const {v}=fixture();v.experimentalDiff=true;v.diffChangeKey=()=> 'source';let callback;
+ const cx={timer:{after:(_delay,fn)=>callback=fn},new:()=>({release(){}}),notify(){}};
+ const rows=Array.from({length:5000},(_,i)=>({kind:'line',id:String(i),text:'code',side:'new',newLine:i+1}));
+ const render=()=>null;
+ v.prepareDiffRows(rows,render,cx,false,{start:0,end:30});callback(cx);
+ assert.equal(v.diffRowViews.size,62);
+ const selection=v.diffSelection.model;
+ v.prepareDiffRows(rows,render,cx,false,{start:2500,end:2530});callback(cx);
+ assert.equal(v.diffRowViews.size,94);
+ assert.ok(v.diffRowViews.has('source:2500'));
+ assert.ok(!v.diffRowViews.has('source:0'));
+ assert.equal(v.diffSelection.model,selection);
+ assert.ok(v.diffSelection.point('4999','new'));
+});
+
 test('an async file expansion invalidates the diff viewport explicitly after the patch arrives',async()=>{
  const {v}=fixture(),viewport={id:'diff-viewport'},notified=[];let complete,task;
  v.allFiles=true;v.diffViewport=viewport;v.isFileReviewed=()=>false;
@@ -149,4 +165,13 @@ test('an awaited range cannot reopen a closed or superseded presentation',async(
   const {v,cx}=fixture();v.allFiles=true;let release;v.controller.selectFile=async id=>{await new Promise(resolve=>release=resolve);v.controller.state.file=v.controller.state.files.find(file=>file.id===id);};
   v.commitCommentRange({fileId:'b',comparisonId:'c',side:'old',startLine:1,endLine:2,quote:'before\nshared'},cx);change(v);release();await v.pending;assert.equal(v.target,undefined);
  }
+});
+
+test('experimental diff is opt-in and survives a new view',()=>{
+ const {v,cx,data}=fixture();
+ assert.equal(v.loadExperimentalDiff(),false);
+ v.toggleExperimentalDiff(true,cx);
+ assert.equal(fixture(data).v.loadExperimentalDiff(),true);
+ v.toggleExperimentalDiff(false,cx);
+ assert.equal(fixture(data).v.loadExperimentalDiff(),false);
 });

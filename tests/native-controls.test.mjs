@@ -110,7 +110,7 @@ test('saved general feedback has a review label without a fabricated file anchor
  const root=controls().draftsPane(view,{});assert.ok(descendants(root).some(n=>n?.nodes?.includes('General review')));
 });
 test('variable-height rows embed the growing editor without callbacks during layout',()=>{
- const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(Object.hasOwn(list,'sizes'),true);assert.equal(root.nodes[0].nodes.at(-1).identity,'select-code');
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},{comparisonId:'c',newPath:'a',side:'new',endLine:1});const root=controls().diffPane(view),list=descendants(root).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);const editorRow=rows.find(row=>descendants(row).includes(view.inlineEditor));assert.ok(editorRow);assert.equal(editorRow.values.min_h,comments.INLINE_EDITOR_HEIGHT);assert.equal(editorRow.values.max_h,comments.INLINE_EDITOR_MAX_HEIGHT);assert.equal(Object.hasOwn(list,'sizes'),true);assert.equal(root.nodes[0].nodes.at(-1).identity,'diff-experimental');assert.ok(!descendants(root).some(node=>node.identity==='select-code'));
 });
 test('binary and mode-only file comments still display the same inline editor',()=>{
  for(const patch of [{binary:true,hunks:[]},{modeOnly:true,hunks:[]}]){const view=diffView(patch,{comparisonId:'c',newPath:'a',side:null});const list=descendants(controls().diffPane(view)).find(node=>node?.kind==='virtual'),rows=list.renderRows();assert.equal(rows.length,2);assert.equal(rows[0].values.h,46);assert.equal(Object.hasOwn(list,'sizes'),true);assert.ok(descendants(rows[1]).includes(view.inlineEditor));}
@@ -298,4 +298,38 @@ test('selecting a newline also highlights the remaining source-cell space',()=>{
 test('pathological single lines cannot allocate unbounded character handlers',()=>{
  const interaction={selected:()=>false,down(){},move(){}},root=controls().sourceText({text:'x'.repeat(20000)},'a.js',{},false,[],[],'',interaction);
  assert.ok(descendants(root).filter(n=>n.handlers?.on_mouse_down).length<10);assert.match(root.values.tooltip,/8192/);
+});
+
+test('fixed-width source uses the same text runs on hover and maps pointer offsets',()=>{
+ const ui=controls(),hits=[],interaction={selected:()=>false,selectedOffsets:()=>[2,4],down:(glyph,event)=>hits.push([glyph,event.local_position.x]),move(){}};
+ const render=()=>ui.sourceText({text:'abcdef'},'a.js',{selection:'selected'},false,[],[],'',interaction);
+ const root=render(),runs=descendants(root).filter(node=>node.handlers?.on_mouse_down);
+ assert.equal(runs.length,4);
+ assert.equal(descendants(root).filter(node=>node.values?.bg==='selected').length,1);
+ runs[1].handlers.on_mouse_down({local_position:{x:15},bounds:{width:20}}, {});
+ assert.deepEqual(hits,[[{start:3,end:4},0.5]]);
+ assert.deepEqual(render().nodes.map(node=>node.nodes),root.nodes.map(node=>node.nodes));
+});
+
+test('ASCII source renders a bounded number of interactive runs',()=>{
+ const ui=controls(),interaction={selected:()=>false,down(){},move(){}};
+ let targets=0;
+ for(let i=0;i<100;i++){
+  const root=ui.sourceText({text:'x'.repeat(120)},'a.js',{},false,[],[],'',interaction);
+  targets+=descendants(root).filter(node=>node.handlers?.on_mouse_down).length;
+ }
+ assert.equal(targets,200);
+});
+
+test('ordinary Split rows open comments on the clicked side',()=>{
+ const view=diffView({hunks:[{header:'@@',lines:[{side:'context',oldLine:1,newLine:1,text:'code'}]}]},null);
+ view.diffMode='split';
+ let render;view.prepareDiffRows=(rows,renderRow)=>{render=()=>renderRow(rows[0],true);};
+ const actions=[];view.headerAction=action=>actions.push(action);
+ const list=descendants(controls().diffPane(view)).find(node=>node.kind==='virtual');
+ list.renderRows();
+ const cells=descendants(render()).filter(node=>node.handlers?.on_click);
+ assert.equal(cells.length,2);
+ for(const cell of cells)cell.handlers.on_click({},{stop_propagation(){}});
+ assert.deepEqual(actions.map(action=>action.side),['old','new']);
 });

@@ -83,7 +83,7 @@ test('hiding tests preserves the selected source and drafts and excludes tests f
 
 test('expand all loads visible files sequentially and obeys the retained row budget',async()=>{
  const {view,state,cx}=fixture();view.allFiles=true;view.hideTests=true;state.files=[{id:'one',newPath:'one.js'},{id:'test',newPath:'tests/one.js'},{id:'two',newPath:'two.js'}];view.rebuildAllSections();view.prepareFileHeaders=()=>{};view.setFindQuery=()=>{};view.work=(_cx,action)=>view.pending=action(cx);
- const reads=[];view.controller.readFilePatch=async file=>{reads.push(file.id);return {hunks:[{lines:Array.from({length:file.id==='one'?20000:1},()=>({text:'code'}))}]};};
+ const reads=[];view.controller.readFilePatches=async (files,_comparison,{rowBudget})=>{assert.equal(rowBudget,20000);reads.push(files[0].id);return [{patch:{hunks:[{lines:Array.from({length:20000},()=>({text:'code'}))}]}}];};
  view.expandAllFiles(cx);await view.pending;assert.deepEqual(reads,['one']);assert.equal(view.allFileSections.find(s=>s.file.id==='test').collapsed,true);assert.equal(view.allFileSections.find(s=>s.file.id==='two').limited,true);
 });
 

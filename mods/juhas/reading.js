@@ -18,7 +18,7 @@ export function finishDiffBatches(steps){
  return step.value;
 }
 // Decoration only: offsets are UTF-16 source offsets; nothing mutates patch text.
-const tokenCache=new Map();let cachedBytes=0;
+const tokenCache=new Map(),decoratedTokens=new WeakMap();let cachedBytes=0;
 const MAX_LINE=8192,MAX_CACHE=512,MAX_BYTES=1024*1024;
 const keywords=new Set('const let var function return if else for while class import export from new async await throw try catch public private static void using namespace def in None True False SELECT FROM WHERE JOIN AS INSERT UPDATE DELETE CREATE TABLE null true false'.split(' '));
 export function tokenizeLine(text,path=''){
@@ -46,6 +46,23 @@ export function findInPatch(patch,query){
  for(const hunk of patch?.hunks||[]){rowIndex++;for(const row of hunk.lines){for(const side of ['old','new']){const line=row[side==='old'?'oldLine':'newLine'];if(line==null)continue;let start=0,index;while((index=row.text.indexOf(query,start))>=0){if(result.length===10000){result.limited=true;return result;}result.push({side,line,start:index,end:index+query.length,rowIndex});start=index+query.length;}}rowIndex++;}}
  return result;
 }
+const findMatchIndexes=new WeakMap();
+export function findMatchRanges(matches,allFiles){
+ if(!matches?.length)return ()=>[];
+ const previous=findMatchIndexes.get(matches);
+ if(previous?.allFiles===allFiles)return previous.lookup;
+ const files=new Map(),empty=[];
+ for(const match of matches){
+  const fileId=allFiles?match.fileId:null;
+  let sides=files.get(fileId);
+  if(!sides){sides={old:new Map(),new:new Map()};files.set(fileId,sides);}
+  const lines=sides[match.side],line=lines.get(match.line);
+  if(line)line.push(match);else lines.set(match.line,[match]);
+ }
+ const lookup=(row,side)=>row?(files.get(allFiles?row.fileId:null)?.[side].get(row[side==='old'?'oldLine':'newLine'])||empty):empty;
+ findMatchIndexes.set(matches,{allFiles,lookup});
+ return lookup;
+}
 export function decorateLine(text,path,changed=[],matches=[],compact=false){
  const result=[];
  const push=(text,kind,changed,match)=>{
@@ -56,8 +73,13 @@ export function decorateLine(text,path,changed=[],matches=[],compact=false){
  };
  const tokens=tokenizeLine(text,path);
  if(!changed.length&&!matches.length){
+  const slot=compact?1:0,cached=decoratedTokens.get(tokens);
+  if(cached?.[slot])return cached[slot];
   for(const token of tokens)push(token.text,token.kind,false,false);
-  return result;
+  const variants=cached||[];
+  variants[slot]=Object.freeze(result.map(Object.freeze));
+  if(!cached)decoratedTokens.set(tokens,variants);
+  return variants[slot];
  }
  const ranges=[...changed,...matches];
  let offset=0;

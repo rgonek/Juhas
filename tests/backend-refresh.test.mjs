@@ -27,6 +27,42 @@ test('refresh preserves more than one thousand loaded history rows',async()=>{co
 
 test('explicit snapshot baseline rejects a deleted private ref even while tree exists',async t=>{const f=fixture(t);const tree=f.git('mktree'),repo=await resolveRepo(run,null,f.root),cp={id:'gone',repoKey:repo.key,kind:'working-snapshot',treeOid:tree,refName:'refs/git-review/snapshots/gone'};await assert.rejects(()=>comparisons.resolveComparison(run,repo,{kind:'since-review',checkpointId:cp.id,includeWorking:true},[cp]),/unavailable/);});
 
+test('cached detached patches validate the working tree once and reject changed content',async t=>{
+ const f=fixture(t),calls=[];
+ f.commit('base');
+ writeFileSync(join(f.root,'file.txt'),'dirty');
+ const c=controller(async(repo,args)=>{calls.push(args);return run(repo,args);});
+ await c.openRepo(null,f.root);
+ await c.selectScope({kind:'working-tree'});
+ const file=c.state.files[0],comparison=c.state.comparison;
+ const patch=await c.readFilePatch(file);
+ calls.length=0;
+ assert.equal(await c.readFilePatch(file),patch);
+ assert.equal(calls.filter(args=>args[0]==='hash-object').length,1);
+ writeFileSync(join(f.root,'file.txt'),'changed');
+ await assert.rejects(()=>c.readFilePatch(file,comparison),/detached patch source is stale/);
+});
+test('a detached patch read interrupted by a working change cannot populate the cache',async t=>{
+ const f=fixture(t);
+ f.commit('base');
+ const path=join(f.root,'file.txt');
+ writeFileSync(path,'first');
+ let interrupt=true;
+ const c=controller(async(repo,args)=>{
+  if(interrupt&&args[0]==='diff'&&args.some(arg=>arg.startsWith(':(literal)'))){
+   interrupt=false;
+   writeFileSync(path,'second');
+  }
+  return run(repo,args);
+ });
+ await c.openRepo(null,f.root);
+ await c.selectScope({kind:'working-tree'});
+ const file=c.state.files[0];
+ await assert.rejects(()=>c.readFilePatch(file),/detached patch source is stale/);
+ writeFileSync(path,'first');
+ const patch=await c.readFilePatch(file);
+ assert.ok(patch.hunks.some(hunk=>hunk.lines.some(line=>line.side==='new'&&line.text==='first')));
+});
 test('detached patch verification obeys the supplied operation runner',async t=>{const f=fixture(t);f.commit('base');writeFileSync(join(f.root,'file.txt'),'dirty');const c=controller();await c.openRepo(null,f.root);await c.selectScope({kind:'working-tree'});await assert.rejects(()=>c.readFilePatch(c.state.files[0],c.state.comparison,{run:async()=>{throw new Error('operation budget exhausted');}}),/operation budget exhausted/);});
 
 test('scope publishes files before a retained patch finishes and reports loading',async t=>{const f=fixture(t);f.commit('base');f.commit('next');const c=controller();await c.openRepo(null,f.root);await c.selectScope({kind:'commit',commit:'HEAD'});await c.selectFile(c.state.files[0].id);let release;const wait=new Promise(r=>release=r);c.readFilePatch=async()=>{await wait;return {hunks:[]};};const pending=c.selectScope({kind:'commit',commit:'HEAD'});assert.equal(c.state.scopeLoading,true);await new Promise(r=>setTimeout(r,20));try{assert.equal(c.state.patchLoading,true);assert.equal(c.state.patch,null);assert.ok(c.state.files.length);}finally{release();await pending;}assert.equal(c.state.scopeLoading,false);assert.equal(c.state.patchLoading,false);});
@@ -70,4 +106,121 @@ test('committing unchanged working contents and empty commits update counts with
  assert.equal(c.state.comparison.id,source);assert.equal(c.state.comparison.committedTargetOid,committed);assert.equal(c.state.comparison.commitCount,2);assert.equal(c.state.patch,patch);
  f.git('commit','--allow-empty','-m','Empty commit');const empty=f.git('rev-parse','HEAD');assert.equal(await c.refresh({preserveComposer:true}),true);assert.equal(c.state.comparison.committedTargetOid,empty);assert.equal(c.state.comparison.commitCount,3);assert.equal(c.state.comparison.id,source);assert.equal(c.state.patch,patch);
  assert.equal(await c.refresh(),true);assert.equal(commands.filter(args=>args[0]==='rev-list'&&args.includes('--count')).length,3);
+});
+
+test('changing comparison publishes the retained patch while commit count is still pending',async t=>{
+ const f=fixture(t),base=f.commit('base');
+ f.commit('next');
+ let hold=false,release,started;
+ const blocked=new Promise(resolve=>started=resolve),wait=new Promise(resolve=>release=resolve);
+ const c=controller(async(repo,args)=>{
+  if(hold&&args[0]==='rev-list'&&args.includes('--count')){started();await wait;}
+  return run(repo,args);
+ });
+ await c.openRepo(null,f.root);
+ await c.selectScope({kind:'commit',commit:'HEAD'});
+ await c.selectFile(c.state.files[0].id);
+ hold=true;
+ let painted;
+ const published=new Promise(resolve=>painted=resolve);
+ c.onChange=()=>{if(c.state.patch&&c.state.comparison?.scope.kind==='range')painted();};
+ const pending=c.selectScope({kind:'range',base,target:'HEAD'});
+ let timer;
+ try{
+  await blocked;
+  await Promise.race([published,new Promise((_resolve,reject)=>{timer=setTimeout(()=>reject(new Error('patch waited for commit count')),1500);})]);
+  assert.equal(c.state.comparison.commitCount,undefined);
+  assert.equal(c.state.patchLoading,false);
+ }finally{clearTimeout(timer);release();await pending;}
+ assert.equal(c.state.comparison.commitCount,1);
+});
+
+test('cached working file navigation verifies the comparison once and never reads another patch',async t=>{
+ const f=fixture(t);
+ f.commit('base A','one.txt');f.commit('base B','two.txt');
+ writeFileSync(join(f.root,'one.txt'),'dirty A');
+ writeFileSync(join(f.root,'two.txt'),'dirty B');
+ const calls=[],c=controller((repo,args)=>{calls.push(args);return run(repo,args);});
+ await c.openRepo(null,f.root,{loadHistory:false});
+ await c.selectScope({kind:'working-tree'});
+ const first=c.state.files.find(file=>file.newPath==='one.txt');
+ const second=c.state.files.find(file=>file.newPath==='two.txt');
+ await c.selectFile(first.id);
+ const cached=c.state.patch;
+ await c.selectFile(second.id);
+ calls.length=0;
+ await c.selectFile(first.id);
+ assert.equal(c.state.patch,cached);
+ assert.equal(calls.filter(args=>args[0]==='ls-files'&&args.includes('--others')).length,1);
+ assert.ok(!calls.some(args=>args[0]==='diff'&&!args.includes('--raw')));
+});
+
+test('expanding several working patches shares verification and publishes only verified data',async t=>{
+ const f=fixture(t),calls=[];
+ f.commit('one','one.js');f.commit('two','two.js');
+ const first=join(f.root,'one.js'),second=join(f.root,'two.js');
+ writeFileSync(first,'first\n');writeFileSync(second,'second\n');
+ let mutate=true;
+ const c=controller(async(repo,args)=>{
+  calls.push(args);
+  if(mutate&&args[0]==='diff'&&args.includes(':(literal)two.js')){
+   mutate=false;
+   writeFileSync(second,'changed\n');
+  }
+  return run(repo,args);
+ });
+ await c.openRepo(null,f.root);
+ await c.selectScope({kind:'working-tree'});
+ const files=c.state.files;
+ await assert.rejects(()=>c.readFilePatches(files),/detached patch source is stale/);
+ writeFileSync(second,'second\n');
+ calls.length=0;
+ const results=await c.readFilePatches(files);
+ assert.equal(calls.filter(a=>a[0]==='hash-object').length,2);
+ assert.ok(results[1].patch.hunks.some(h=>h.lines.some(l=>l.side==='new'&&l.text==='second')));
+ calls.length=0;
+ assert.deepEqual(await c.readFilePatches(files),results);
+ assert.equal(calls.filter(a=>a[0]==='hash-object').length,1);
+ assert.equal((await c.readFilePatches(files,undefined,{rowBudget:1})).every(x=>x.limited),true);
+});
+
+test('unchanged working refresh reuses its initial HEAD and still verifies the final HEAD',async t=>{
+ const f=fixture(t),commands=[];
+ f.commit('base\n');
+ writeFileSync(join(f.root,'file.txt'),'dirty\n');
+ const c=controller(async(repo,args)=>{commands.push(args);return run(repo,args);});
+ await c.openRepo(null,f.root);
+ await c.selectScope({kind:'working-tree'});
+ await c.selectFile(c.state.files[0].id);
+ const patch=c.state.patch;
+ commands.length=0;
+ assert.equal(await c.refresh(),true);
+ assert.equal(c.state.patch,patch);
+ assert.equal(commands.filter(args=>args[0]==='rev-parse'&&args.at(-1)==='HEAD').length,2);
+ assert.equal(commands.some(args=>args.includes('HEAD^{commit}')),false);
+ assert.equal(commands.some(args=>args[0]==='log'),false);
+});
+
+test('a rejected working refresh cannot cache a patch from the wrong contents',async t=>{
+ const f=fixture(t);
+ f.commit('original\n');
+ const path=join(f.root,'file.txt');
+ writeFileSync(path,'initial\n');
+ let change=false;
+ const c=controller(async(repo,args)=>{
+  if(change&&args[0]==='diff'&&args.includes(':(literal)file.txt')){
+   change=false;
+   writeFileSync(path,'wrong\n');
+  }
+  return run(repo,args);
+ });
+ await c.openRepo(null,f.root);
+ await c.selectScope({kind:'working-tree'});
+ await c.selectFile(c.state.files[0].id);
+ writeFileSync(path,'updated\n');
+ change=true;
+ assert.equal(await c.refresh(),false);
+ writeFileSync(path,'updated\n');
+ assert.equal(await c.refresh(),true);
+ assert.ok(c.state.patch.hunks.some(hunk=>hunk.lines.some(line=>line.side==='new'&&line.text==='updated')));
 });

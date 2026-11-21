@@ -9,8 +9,9 @@ export async function readFiles(run,repo,ends){return parseFiles(await git(run,r
 // Raw metadata covers deletes, modes, rename paths and submodule identities.
 // Content hashing is batched; full-repository binary patches are never probed.
 async function readWorkingFiles(run,repo,baseTree){
- const files=await readFiles(run,repo,[baseTree]);
- const untracked=(await git(run,repo,['ls-files','--others','--exclude-standard','-z'])).split('\0').filter(Boolean);
+ const [files,untrackedRaw]=await Promise.all([readFiles(run,repo,[baseTree]),
+  git(run,repo,['ls-files','--others','--exclude-standard','-z'])]);
+ const untracked=untrackedRaw.split('\0').filter(Boolean);
  if(files.length+untracked.length>10000)throw new Error('Working observation exceeds 10000 changed paths; previous source retained');
  // --no-index raw/numstat observes untracked modes (including symlinks) and
  // binary status without serializing their potentially enormous binary patch.
@@ -41,7 +42,7 @@ export async function workingLineCounts(runner,repo){
 export async function observeWorking(run,repo,baseTree){
  const {files,untracked}=await readWorkingFiles(run,repo,baseTree);
  const regular=files.filter(f=>!['000000','120000','160000'].includes(f.newMode));
- for(let i=0;i<regular.length;i+=40){const batch=regular.slice(i,i+40),hashes=(await git(run,repo,['hash-object','--no-filters','--',...batch.map(f=>f.newPath)])).trim().split('\n');if(hashes.length!==batch.length||hashes.some(h=>! /^[a-f0-9]{40,64}$/.test(h)))throw new Error('Cannot verify working file contents');batch.forEach((f,j)=>f.newOid=hashes[j]);}
+ for(let i=0;i<regular.length;i+=40){const batch=regular.slice(i,i+40),hashes=(await git(run,repo,['hash-object','--no-filters','--',...batch.map(f=>f.newPath)],{blobFormat:baseTree.length===64?'sha256':'sha1'})).trim().split('\n');if(hashes.length!==batch.length||hashes.some(h=>! /^[a-f0-9]{40,64}$/.test(h)))throw new Error('Cannot verify working file contents');batch.forEach((f,j)=>f.newOid=hashes[j]);}
  for(const file of files.filter(f=>f.newMode==='120000')){
   const args=file.untracked?['diff',...options,'--no-index','--','/dev/null',file.newPath]:['diff',...options,baseTree,'--',`:(literal)${file.newPath}`];const result=await run(repo,args);if(result.code!==0&&!(file.untracked&&result.code===1))throw new Error(result.stderr||'Cannot inspect symlink');file.newOid=`symlink:${fingerprint(result.stdout)}`;
  }

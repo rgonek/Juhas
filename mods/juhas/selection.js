@@ -13,7 +13,16 @@ export function graphemes(text){
 export function buildSelectionModel(rows,split,context={}){return finishDiffBatches(selectionModelBatches(rows,split,context));}
 export function* selectionModelBatches(rows,split,context={}){
  const groups=new Map(),points=new Map(),entries=[],rowIndices=new Map(),signature=[];
- const add=(row,line,side,index)=>{if(!line||typeof line.text!=='string')return;const fileId=row.fileId??context.fileId,comparisonId=row.comparisonId??context.comparisonId,key=JSON.stringify([comparisonId,fileId,split?side:'unified']);
+ let lastFile,lastComparison,keys;
+ const add=(row,line,side,index)=>{
+  if(!line||typeof line.text!=='string')return;
+  const fileId=row.fileId??context.fileId,comparisonId=row.comparisonId??context.comparisonId;
+  if(!keys||fileId!==lastFile||comparisonId!==lastComparison){
+   lastFile=fileId;lastComparison=comparisonId;
+   keys=split?{old:JSON.stringify([comparisonId,fileId,'old']),new:JSON.stringify([comparisonId,fileId,'new'])}
+    :{unified:JSON.stringify([comparisonId,fileId,'unified'])};
+  }
+  const key=keys[split?side:'unified'];
   let group=groups.get(key);if(!group){group=[];groups.set(key,group);}const entry={key,line:group.length,rowId:row.id,fileId,comparisonId,text:line.text,side,oldLine:line.oldLine,newLine:line.newLine,source:line,displayIndex:index};
   group.push(entry);entries.push(entry);signature.push(JSON.stringify([key,row.id,line.text,line.oldLine,line.newLine]));points.set(row.id+'\0'+(split?side:''),entry);
  };

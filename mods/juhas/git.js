@@ -1,7 +1,25 @@
 export const READ=['--no-optional-locks','-c','core.fsmonitor=false','-c','diff.autoRefreshIndex=false','-c','core.quotepath=false'];
-export function createRunner(exec){return (repo,args)=>exec('git',[...READ,...args],{cwd:repo.root,on:repo.machine??null});}
-export function withGitBudget(run,{maxCommands=256,deadlineMs=25000,now=()=>Date.now()}={}){const start=now();let calls=0;const check=()=>{if(now()-start>deadlineMs)throw new Error('Git request time budget exceeded; previous source retained');};const limited=async(repo,args)=>{check();if(++calls>maxCommands)throw new Error('Git request command budget exceeded; previous source retained');const result=await run(repo,args);check();return result;};limited.originalRun=run.originalRun||run;return limited;}
-export async function git(run,repo,args){const r=await run(repo,args);if(r.code!==0)throw new Error(r.stderr.trim()||`Git exited ${r.code}`);return r.stdout;}
+export function createRunner(exec,appFolder=''){
+ const windows=/^[a-z]:/i.test(appFolder)||appFolder.charCodeAt(0)===92;
+ const helper=appFolder&&appFolder.replace(/[\\/]+$/,'')+'/mods/juhas/helpers/juhas-blob-hash'+(windows?'.exe':'');
+ let available=Boolean(helper);
+ return async(repo,args,{blobFormat}={})=>{
+  const width=blobFormat==='sha1'?40:blobFormat==='sha256'?64:0;
+  if(available&&repo.machine==null&&width&&args.length>3&&args[0]==='hash-object'&&args[1]==='--no-filters'&&args[2]==='--'){
+   try{
+    const result=await exec(helper,['--hash',blobFormat,...args.slice(3)],{cwd:repo.root,timeout:3000});
+    if(result.code===0){
+     const hashes=result.stdout.trim().split(/\r?\n/);
+     if(hashes.length===args.length-3&&hashes.every(hash=>hash.length===width&&/^[a-f0-9]+$/.test(hash)))return result;
+    }
+    if(result.code!==2)available=false;
+   }catch{available=false;}
+  }
+  return exec('git',[...READ,...args],{cwd:repo.root,on:repo.machine??null});
+ };
+}
+export function withGitBudget(run,{maxCommands=256,deadlineMs=25000,now=()=>Date.now()}={}){const start=now();let calls=0;const check=()=>{if(now()-start>deadlineMs)throw new Error('Git request time budget exceeded; previous source retained');};const limited=async(repo,args,options)=>{check();if(++calls>maxCommands)throw new Error('Git request command budget exceeded; previous source retained');const result=await run(repo,args,options);check();return result;};limited.originalRun=run.originalRun||run;return limited;}
+export async function git(run,repo,args,options){const r=await run(repo,args,options);if(r.code!==0)throw new Error(r.stderr.trim()||`Git exited ${r.code}`);return r.stdout;}
 export function revision(value){if(typeof value!=='string'||!value||value.startsWith('-')||/[\0\r\n]/.test(value))throw new Error('Invalid revision');return value;}
 const treeCaches=new WeakMap();
 export async function oid(run,repo,ref,type='commit'){

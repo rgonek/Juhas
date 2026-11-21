@@ -75,7 +75,7 @@ export function installLegacy({appHome,layoutName='main',source=resolve(dirname(
  mkdirSync(tabsMod,{recursive:true});copyFileSync(join(from,'review-navigation.js'),join(tabsMod,'review-navigation.js'));writeFileSync(join(tabsMod,'main.js'),tabsSource,'utf8');cpSync(join(from,'presentation.js'),join(tabsMod,'presentation.js'));writeFileSync(join(tabsMod,'mod.json'),JSON.stringify({place:'none',title:'Juhas tabs'}));
  writeFileSync(layout,JSON.stringify(built,null,2)+'\n');return {mod,tabsMod,layout,backup:existsSync(backup)?backup:null};
 }
-export function install({appHome,tabsName,updateTabsName,source=resolve(dirname(fileURLToPath(import.meta.url)),'..'),now=Date.now()}){
+export function install({appHome,tabsName,updateTabsName,helperBinary,source=resolve(dirname(fileURLToPath(import.meta.url)),'..'),now=Date.now()}){
  const home=resolve(appHome),mod=join(home,'mods','juhas'),backup=join(home,'data',`juhas-backup-${now}`);
  let tabsMod,tabsSource;
  if(tabsName&&updateTabsName)throw new Error('Choose --tabs or --update-tabs');
@@ -86,13 +86,24 @@ export function install({appHome,tabsName,updateTabsName,source=resolve(dirname(
  mkdirSync(mod,{recursive:true});const from=join(source,'mods','juhas');
  for(const name of readdirSync(from)){if(name.endsWith('.js')||name==='mod.json'||name==='helpers'||name==='icons')cpSync(join(from,name),join(mod,name),{recursive:statSync(join(from,name)).isDirectory()});}
  copyBundledSkills(from,mod);
+ const helper=helperBinary?join(mod,'helpers',blobHelperName()):undefined;
+ if(helper){mkdirSync(dirname(helper),{recursive:true});copyFileSync(helperBinary,helper);}
  if(tabsMod){mkdirSync(backup,{recursive:true});cpSync(tabsMod,join(backup,targetTabs),{recursive:true});cpSync(join(from,'pane-presentation.js'),join(tabsMod,'pane-presentation.js'));copyFileSync(join(from,'review-navigation.js'),join(tabsMod,'review-navigation.js'));writeFileSync(join(tabsMod,'main.js'),tabsSource,'utf8');}
- return {mod,tabsMod,backup:existsSync(backup)?backup:null};
+ return {mod,tabsMod,helper,backup:existsSync(backup)?backup:null};
+}
+function blobHelperName(){return 'juhas-blob-hash'+(process.platform==='win32'?'.exe':'');}
+function buildBlobHelper(source){
+ const crate=join(source,'native','blob-hash');
+ const target=join(crate,'target');
+ execFileSync('cargo',['build','--locked','--release','--manifest-path',join(crate,'Cargo.toml'),'--target-dir',target],{stdio:'inherit'});
+ return join(target,'release',blobHelperName());
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  assertHerdrVersion(execFileSync('herdr-app',['--version'],{encoding:'utf8'}));
  const args=process.argv.slice(2);const option=(key,fallback)=>{const i=args.indexOf(key);return i<0?fallback:args[i+1];};const appHome=option('--app-home',process.env.HERDR_APP_HOME||join(homedir(),'.config','herdr-app'));
- const result=install({appHome,tabsName:option('--tabs',undefined),updateTabsName:option('--update-tabs',undefined)});console.log(JSON.stringify(result,null,2));
+ const source=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+ const helperBinary=args.includes('--build-helper')?buildBlobHelper(source):undefined;
+ const result=install({appHome,source,helperBinary,tabsName:option('--tabs',undefined),updateTabsName:option('--update-tabs',undefined)});console.log(JSON.stringify(result,null,2));
  execFileSync('herdr-app',['check',result.mod],{stdio:'inherit',env:{...process.env,HERDR_APP_HOME:appHome}});
  if(result.tabsMod)execFileSync('herdr-app',['check',result.tabsMod],{stdio:'inherit'});
  console.log('Open Juhas: herdr-app do pane.split --direction right --mod juhas');

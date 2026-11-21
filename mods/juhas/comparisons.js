@@ -11,10 +11,11 @@ const mergeBases=new WeakMap();
 export async function resolveBase(run,repo,baseRef,targetRef='HEAD'){
  const resolved=ref=>/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(ref)?Promise.resolve(ref):oid(run,repo,ref);const [base,target]=await Promise.all([resolved(baseRef),resolved(targetRef)]);const owner=run.originalRun||run;let cache=mergeBases.get(owner);if(!cache){cache=new Map();mergeBases.set(owner,cache);}const key=JSON.stringify([repo.key,base,target]);if(cache.has(key))return cache.get(key);const result=await run(repo,['merge-base','--all',base,target]);if(result.code===1)throw new Error('No merge-base: select an explicit range');if(result.code!==0)throw new Error('Cannot resolve merge-base');const bases=result.stdout.trim().split('\n').filter(Boolean);if(bases.length!==1)throw new Error('No unique merge-base: select an explicit range');cache.set(key,bases[0]);while(cache.size>128)cache.delete(cache.keys().next().value);return bases[0];
 }
-export async function resolveComparison(run,repo,scope,checkpoints=[]){
+export async function resolveComparison(run,repo,scope,checkpoints=[],{observedHead}={}){
  let baseOid=null,targetOid=null,committedTargetOid=null,baseTree,targetTree,parents=[],observation;
  if(scope.kind==='working-tree'){
-  try{baseOid=await oid(run,repo,scope.baseRef||'HEAD');}catch(error){if(scope.baseRef&&scope.baseRef!=='HEAD')throw error;const head=await run(repo,['rev-parse','--verify','HEAD']);if(head.code===0)throw error;}
+  if(observedHead!==undefined&&(!scope.baseRef||scope.baseRef==='HEAD'))baseOid=observedHead;
+  else try{baseOid=await oid(run,repo,scope.baseRef||'HEAD');}catch(error){if(scope.baseRef&&scope.baseRef!=='HEAD')throw error;const head=await run(repo,['rev-parse','--verify','HEAD']);if(head.code===0)throw error;}
  }else{
   const target=scope.kind==='commit'?scope.commit:scope.kind==='range'?scope.target:scope.targetRef||'HEAD';try{targetOid=await oid(run,repo,target);}catch(error){if(!(scope.kind==='since-review'&&scope.includeWorking&&target==='HEAD'))throw error;const head=await run(repo,['rev-parse','--verify','HEAD']);if(head.code===0)throw error;}
   if(scope.kind==='commit'){parents=(await git(run,repo,['rev-list','--parents','-n','1',targetOid])).trim().split(' ').slice(1);const i=scope.parentIndex??0;if(!Number.isInteger(i)||i<0||i>=Math.max(1,parents.length))throw new Error('Invalid parent selection');baseOid=parents[i]??null;scope={...scope,commit:targetOid};}
@@ -23,7 +24,10 @@ export async function resolveComparison(run,repo,scope,checkpoints=[]){
   else if(scope.kind==='since-review'){const cp=checkpoints.find(c=>c.id===scope.checkpointId&&c.repoKey===repo.key);if(!cp)throw new Error('Checkpoint not found');try{if(cp.kind==='working-snapshot'){if(!/^[a-z0-9-]+$/.test(cp.id||'')||cp.refName!==`refs/git-review/snapshots/${cp.id}`||await oid(run,repo,cp.refName,'tree')!==cp.treeOid)throw new Error('Snapshot reference changed');baseTree=cp.treeOid;}else baseOid=await oid(run,repo,cp.targetOid);}catch{throw new Error('Checkpoint object is unavailable; select a new baseline');}}
   else throw new Error('Unknown comparison scope');
  }
- baseTree=baseTree||(baseOid?await oid(run,repo,baseOid,'tree'):(await git(run,repo,['hash-object','-t','tree','--stdin'])).trim());
- if(scope.kind==='working-tree'||scope.includeWorking){observation=await observeWorking(run,repo,baseTree);committedTargetOid=targetOid;targetOid=null;targetTree=observation.id;}else targetTree=await oid(run,repo,targetOid,'tree');
+ const resolveBaseTree=()=>baseTree||(baseOid?oid(run,repo,baseOid,'tree'):git(run,repo,['hash-object','-t','tree','--stdin']).then(value=>value.trim()));
+ if(scope.kind==='working-tree'||scope.includeWorking){
+  baseTree=await resolveBaseTree();
+  observation=await observeWorking(run,repo,baseTree);committedTargetOid=targetOid;targetOid=null;targetTree=observation.id;
+ }else [baseTree,targetTree]=await Promise.all([resolveBaseTree(),oid(run,repo,targetOid,'tree')]);
  return comparison(repo,scope,{baseOid,targetOid,baseTree,targetTree,parents,observation,...(committedTargetOid?{committedTargetOid}:{})});
 }

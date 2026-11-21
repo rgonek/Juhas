@@ -52,6 +52,11 @@ Clone or download this repository, then run from its root:
 node scripts/install.mjs
 ```
 
+To build and install the optional local Git blob hash helper, run
+`node scripts/install.mjs --build-helper` with a Rust toolchain and Cargo
+available. Juhas uses Git for remote repositories and falls back to Git
+when the local helper is unavailable.
+
 The installer copies the mod and backs up an existing installation without
 changing layouts, toolbar mods or review data. Open a native pane:
 

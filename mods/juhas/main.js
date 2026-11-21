@@ -39,7 +39,7 @@ export default class Juhas extends View {
   this.selectionKey=`git-review.v1.selection.${this.sessionId}`;this.seenSelection=null;this.busy=false;this.message='';this.panel=null;this.upperView='changes';this.target=null;this.selectedStart=null;this.filtersOpen=false;
   this.config=resolveConfig(shared('git-review.v1.config')||{},p.config||{});this.historyRef='HEAD';this.displayTabId=focused()?.tab;this.displaySpaceId=focused()?.space;
   this.diffMode='unified';this.fileTree=true;this.detailsOpen=false;this.remotes=true;this.historyWidth=480;this.listHeight=230;this.contextProps=p;this.followContext=true;this.contextViews=new Map();this.runningActions=0;this.policy={repos:[],canSwitch:false,kind:'empty'};
-  this.controller=new Controller({run:createRunner(exec),store,sessionId:this.sessionId,cache,onChange:()=>this.controllerChanged()});this.handle=cx.focus_handle();this.diffScroll=VirtualListScrollHandle.new();this.filesScroll=VirtualListScrollHandle.new();this.historyScroll=VirtualListScrollHandle.new();this.commentsScroll=ScrollHandle.new();this.horizontalScroll=ScrollHandle.new();this.scopeTriggerFocus=cx.focus_handle();this.scopeListFocus=cx.focus_handle();this.refTriggerFocus=cx.focus_handle();this.refListFocus=cx.focus_handle();
+  this.controller=new Controller({run:createRunner(exec,appHome()),store,sessionId:this.sessionId,cache,onChange:()=>this.controllerChanged()});this.handle=cx.focus_handle();this.diffScroll=VirtualListScrollHandle.new();this.filesScroll=VirtualListScrollHandle.new();this.historyScroll=VirtualListScrollHandle.new();this.commentsScroll=ScrollHandle.new();this.horizontalScroll=ScrollHandle.new();this.scopeTriggerFocus=cx.focus_handle();this.scopeListFocus=cx.focus_handle();this.refTriggerFocus=cx.focus_handle();this.refListFocus=cx.focus_handle();
   const placeholders={folder:'Repository or parent folder',base:'Base ref / SHA',target:'Target ref / SHA',query:'Text or hash',baseQuery:'Find a base commit',refQuery:'Find a branch',fileQuery:'Filter files by path',recipientQuery:'Find an agent or directory',author:'Author',path:'Path',find:'Find in loaded diff',comment:'Add a comment…',note:'Optional review note',review:'Edit the message that will be copied or sent…'};
   this.inputs={};for(const key of Object.keys(placeholders))this.inputs[key]=(key==='comment'||key==='review'?TextareaState:InputState).new({value:key==='target'?'HEAD':'',placeholder:placeholders[key]});
   for(const input of Object.values(this.inputs)){input.on('focus',()=>{this.inputFocused=true;});input.on('blur',()=>{this.inputFocused=false;});}
@@ -118,7 +118,7 @@ export default class Juhas extends View {
   cx.notify();
  }
  prepareDiffRows(rows,render,cx,split,range={start:0,end:80}){
-  if(!this.experimentalDiff||!cx?.timer)return;
+  if(!cx?.timer)return;
   const source=this.diffChangeKey();
   let start=Math.max(0,range.start-32),end=Math.min(rows.length,range.end+32);
   const previous=this.pendingDiffRows;
@@ -127,15 +127,16 @@ export default class Juhas extends View {
    end=Math.max(end,previous.end);
   }
   if(previous?.rows===rows&&previous.render===render&&previous.source===source&&range.start>=previous.start&&range.end<=previous.end)return;
-  this.pendingDiffRows={rows,render,split,source,start,end};if(this.diffRowsQueued)return;this.diffRowsQueued=true;cx.timer.after(1,cx=>{this.diffRowsQueued=false;const pending=this.pendingDiffRows;if(this.closed||!this.experimentalDiff||pending?.source!==this.diffChangeKey())return;this.buildDiffRows(pending,cx);});}
+  this.pendingDiffRows={rows,render,split,source,start,end};if(this.diffRowsQueued)return;this.diffRowsQueued=true;cx.timer.after(1,cx=>{this.diffRowsQueued=false;const pending=this.pendingDiffRows;if(this.closed||pending?.source!==this.diffChangeKey())return;this.buildDiffRows(pending,cx);});}
  selectionLayoutKey(metrics=uiMetrics()){return JSON.stringify([this.readingOptions?.wrap,this.diffWidth,metrics]);}
  buildDiffRows({rows,render,split,source,start=0,end=rows.length},cx){
   this.diffRowViews??=new Map();
-  if(!this.diffSelection){
+  if(this.experimentalDiff&&!this.diffSelection){
    this.diffSelection=new DiffSelection(this);
    this.diffSelection.version=this.diffSelectionVersion||0;
   }
-  if(rows.length>=2048&&(rows!==this.diffSelection.rows||source!==this.diffSelection.source||split!==this.diffSelection.split)){
+  const selection=this.diffSelection;
+  if(selection&&rows.length>=2048&&(rows!==selection.rows||source!==selection.source||split!==selection.split)){
    const pending=this.pendingSelectionModel;
    if(!pending||pending.rows!==rows||pending.source!==source||pending.split!==split){
     const request={rows,source,split};
@@ -156,9 +157,11 @@ export default class Juhas extends View {
    return;
   }
   const metrics=uiMetrics();
-  this.selectionScale=metrics.scale;
-  this.diffSelection.update(rows,split,source,this.selectionLayoutKey(metrics));
-  const style=JSON.stringify([this.diffSelection.version,theme(),settings().font_family,split,this.readingOptions,this.diffWidth,metrics,
+  if(selection){
+   this.selectionScale=metrics.scale;
+   selection.update(rows,split,source,this.selectionLayoutKey(metrics));
+  }
+  const style=JSON.stringify([selection?.version,theme(),settings().font_family,split,this.readingOptions,this.diffWidth,metrics,
    this.findQuery,this.findCursor,this.target&&[this.target.comparisonId,this.target.newPath,this.target.side,this.target.startLine,this.target.endLine]]);
   const keys=new Set(),matches=this.findMatches;
   let mounted=false;
@@ -220,22 +223,55 @@ export default class Juhas extends View {
   if(this.busy)return;if(!this.allFiles)this.toggleAllFiles(true,cx);if(this.allFilesKey!==this.controller.state.comparison?.id)this.rebuildAllSections();
   const controller=this.controller,comparison=controller.state.comparison,version=this.expansionVersion=(this.expansionVersion||0)+1;if(!comparison)return;
   const current=()=>!this.closed&&this.expansionVersion===version&&this.controller===controller&&controller.state.comparison?.id===comparison.id;
-  this.work(cx,async cx=>{let rows=this.allFileSections.reduce((n,s)=>n+(s.patch?.hunks||[]).reduce((m,h)=>m+h.lines.length,0),0);
-   for(const section of this.allFileSections){
-    if(!current())return;if(this.hideTests&&isTestFile(section.file))continue;section.collapsed=false;
-    if(section.patch||section.limited)continue;if(rows>=20000){section.limited=true;continue;}
-    section.loading=true;this.prepareFileHeaders(cx);cx.notify();
-    try{const patch=await controller.readFilePatch(section.file,comparison);if(!current())return;const extra=(patch.hunks||[]).reduce((n,h)=>n+h.lines.length,0);if(rows+extra>20000)section.limited=true;else{section.patch=patch;rows+=extra;}}
-    catch(error){if(!current())return;section.limited=true;this.message=error.message;}
-    finally{section.loading=false;if(current()){this.prepareFileHeaders(cx);cx.notify();}}
+  this.work(cx,async cx=>{
+   const count=patch=>(patch?.hunks||[]).reduce((n,h)=>n+h.lines.length,0);
+   let rows=this.allFileSections.reduce((n,s)=>n+count(s.patch),0);
+   const visible=this.allFileSections.filter(section=>!this.hideTests||!isTestFile(section.file));
+   for(const section of visible)section.collapsed=false;
+   const pending=visible.filter(section=>!section.patch&&!section.limited);
+   for(let offset=0;offset<pending.length;offset+=4){
+    if(!current())return;
+    const batch=pending.slice(offset,offset+4);
+    if(rows>=20000){for(const section of batch)section.limited=true;continue;}
+    for(const section of batch)section.loading=true;
+    this.prepareFileHeaders(cx);cx.notify();
+    try{
+     const results=await controller.readFilePatches(batch.map(section=>section.file),comparison,{rowBudget:20000-rows});
+     if(!current())return;
+     batch.forEach((section,index)=>{
+      const result=results[index],extra=count(result?.patch);
+      if(result?.patch&&rows+extra<=20000){section.patch=result.patch;rows+=extra;}
+      else {section.limited=true;if(result?.error)this.message=result.error.message;}
+     });
+    }catch(error){
+     if(!current())return;
+     for(const section of batch)section.limited=true;
+     this.message=error.message;
+    }finally{
+     for(const section of batch)section.loading=false;
+     if(current()){this.prepareFileHeaders(cx);cx.notify();}
+    }
    }
+   if(!current())return;
+   this.prepareFileHeaders(cx);
    this.setFindQuery(this.findQuery||'',cx);
   });
  }
  requestAllFiles(fileId,cx){const section=this.allFileSections?.find(s=>s.file.id===fileId);if(!section)return;section.collapsed=!section.collapsed;if(section.collapsed||section.patch){cx.notify();return;}const c=this.controller.state.comparison,controller=this.controller;section.loading=true;this.prepareFileHeaders(cx);cx.notify();cx.spawn(async cx=>{try{const patch=await controller.readFilePatch(section.file,c);if(this.closed||this.controller!==controller||this.controller.state.comparison?.id!==c.id)return;const rows=this.allFileSections.reduce((n,s)=>n+(s.patch?.hunks||[]).reduce((m,h)=>m+h.lines.length,0),0),extra=(patch.hunks||[]).reduce((n,h)=>n+h.lines.length,0);if(rows+extra>20000){section.limited=true;}else section.patch=patch;}catch(error){if(this.closed||this.controller!==controller||this.controller.state.comparison?.id!==c.id)return;section.limited=true;this.message=error.message;}finally{section.loading=false;if(!this.closed){this.prepareFileHeaders(cx);this.setFindQuery(this.findQuery||'',cx);}}});}
  selectFileLine(row,fileId,cx,side=null){const controller=this.controller,comparison=controller.state.comparison;if(row.comparisonId&&row.comparisonId!==comparison?.id)return;if(controller.state.file?.id===fileId){this.selectLine(row.id,cx,side,row);return;}if(this.hasUnsavedComment()){this.message='Save or cancel the current comment first';cx.notify();return;}this.work(cx,async cx=>{await controller.selectFile(fileId);if(this.controller!==controller||controller.state.comparison?.id!==comparison.id)return;this.publish();this.selectLine(row.id,cx,side,row);});}
  openComment(d,cx){if(this.hasUnsavedComment()){this.message='Save or cancel the current comment before navigating';cx.notify();return;}if(this.hideTests&&isTestFile(d))this.hideTests=false;if(d.scope==='general'){this.editDraft(d,cx);return;}if(this.target)this.cancelComment(cx);const controller=this.controller;this.work(cx,async cx=>{if(controller.state.comparison?.id!==d.comparisonId){if(!d.targetOid)throw new Error('Original working code is unavailable; the saved comment and quote are retained');await controller.selectScope(d.baseOid?{kind:'range',base:d.baseOid,target:d.targetOid,includeBase:false}:{kind:'commit',commit:d.targetOid});}if(controller.state.comparison?.id!==d.comparisonId)throw new Error('Original source changed; the saved comment is retained');const file=controller.state.files.find(f=>f.newPath===d.newPath&&(d.oldPath==null||f.oldPath===d.oldPath));if(!file)throw new Error('The original file is unavailable');await controller.selectFile(file.id);if(d.side&&!controller.state.patch?.hunks.some(h=>h.lines.some(l=>l[d.side==='old'?'oldLine':'newLine']===d.endLine)))await controller.expandFile();this.panel=null;this.commentCursor=d.id;this.revealSelectedSection();this.publish();cx.notify();cx.timer.after(1,()=>{if(this.controller!==controller||controller.state.comparison?.id!==d.comparisonId)return;const index=(this.diffRows||[]).findIndex(row=>row.kind==='comment'&&row.draft.id===d.id);if(index>=0)this.scrollDiffToItem(index,'center');});});}
- async prefetchNeighbors(controller=this.controller){if(!this.config.prefetch||this.prefetching)return;const c=controller.state.comparison,selected=controller.state.file?.id,files=controller.state.files,index=files.findIndex(f=>f.id===selected);this.prefetching=true;try{for(const file of [files[index+1],files[index-1]].filter(Boolean)){if(this.controller!==controller||controller.state.comparison!==c||controller.state.file?.id!==selected||this.busy)break;try{await controller.readFilePatch(file,c);}catch{break;}}}finally{this.prefetching=false;}}
+ async prefetchNeighbors(controller=this.controller){
+  if(!this.config.prefetch||this.prefetching)return;
+  const {comparison,file,files}=controller.state,index=files.findIndex(item=>item.id===file?.id);
+  if(!comparison||index<0||this.busy)return;
+  const neighbors=[files[index+1],files[index-1]].filter(Boolean);
+  if(!neighbors.length)return;
+  this.prefetching=true;
+  try{await controller.readFilePatches(neighbors,comparison);}
+  catch{/* The next explicit read will validate the current comparison again. */}
+  finally{this.prefetching=false;}
+ }
+
  notifyEditor(cx,reveal=false){this.prepareFileHeaders(cx);if(this.inlineEditor)cx.notify(this.inlineEditor);if(reveal&&this.target?.comparisonId===this.controller.state.comparison?.id&&this.target?.newPath===this.controller.state.file?.newPath){const s=this.controller.state,annotated=composerRows(annotatePatch(s.patch,this.controller.session().drafts,s.comparison.id,s.file.newPath),this.target,this.editId),visible=withLineInfo(annotated),rows=this.diffMode==='split'?splitRows(visible):visible,index=rows.findIndex(r=>r.kind==='editor');if(index>=0)this.scrollDiffToItem(index,'center',rows);}cx.notify();}
  cancelComment(cx){this.composerSavePending=null;this.target=null;this.selectedStart=null;this.editId=null;this.composerComparison=null;this.detachedComposer=false;this.panel=null;this.inputs.comment.set_value('');setShared(this.composerKey||`git-review.v1.composer.${this.sessionId}`,null);this.notifyEditor(cx);}
  resumeComment(cx){const target=this.target;if(!target)return;if(this.hideTests&&isTestFile(target))this.hideTests=false;if(target.scope==='general'){this.panel='comment';this.detachedComposer=false;this.inputs.comment.focus();this.notifyEditor(cx);return;}this.panel='comment';this.detachedComposer=false;this.work(cx,async cx=>{try{
@@ -397,7 +433,7 @@ export default class Juhas extends View {
   this.activeContext=context;this.sessionId=this.contextProps.sessionId||context.spaceId||context.key;
   this.selectionKey=contextStorageKey('selection',this.sessionId,context);this.composerKey=contextStorageKey('composer',this.sessionId,context);this.reviewKey=contextStorageKey('review',this.sessionId,context);
   this.seenSelection=null;this.seenComposer=undefined;this.panel=null;this.draftStatus='all';this.draftSource='all';this.draftSourcePicker=false;this.target=null;this.selectedStart=null;this.editId=null;this.batch=null;this.message='';this.rangeAnchor=null;this.rangePicking=false;this.commitAnchor=null;this.filtersOpen=false;
-  const saved=this.contextViews.get(context.key);this.controller=saved?.controller||new Controller({run:createRunner(exec),store,sessionId:this.sessionId,cache,onChange:()=>this.controllerChanged()});this.policy=saved?.policy||{repos:[],canSwitch:false,kind:'empty'};this.historyRef=saved?.historyRef||'HEAD';this.historyFull=Boolean(saved?.historyFull);this.upperView=saved?.upperView||'changes';this.allFiles=saved?.allFiles!==false;this.showHistory=Boolean(saved?.showHistory);this.showFiles=saved?.showFiles!==false;this.summaryLines=Boolean(saved?.summaryLines);this.showComments=saved?.showComments??saved?.upperView==='comments';this.panelOrder=saved?.panelOrder;this.commentPanelPosition=saved?.commentPanelPosition||'top';this.filePanelPosition=saved?.filePanelPosition||'top';this.historyPanelPosition=saved?.historyPanelPosition||'top';this.hideTests=Boolean(saved?.hideTests);this.allChangesFrom=saved?.allChangesFrom==='commit'?'commit':'branch';this.includeWorking=Boolean(saved?.includeWorking);this.manualCommitBase=saved?.manualCommitBase||null;this.lastAppliedFrom=this.allChangesFrom;this.choosingCommitBase=false;
+  const saved=this.contextViews.get(context.key);this.controller=saved?.controller||new Controller({run:createRunner(exec,appHome()),store,sessionId:this.sessionId,cache,onChange:()=>this.controllerChanged()});this.policy=saved?.policy||{repos:[],canSwitch:false,kind:'empty'};this.historyRef=saved?.historyRef||'HEAD';this.historyFull=Boolean(saved?.historyFull);this.upperView=saved?.upperView||'changes';this.allFiles=saved?.allFiles!==false;this.showHistory=Boolean(saved?.showHistory);this.showFiles=saved?.showFiles!==false;this.summaryLines=Boolean(saved?.summaryLines);this.showComments=saved?.showComments??saved?.upperView==='comments';this.panelOrder=saved?.panelOrder;this.commentPanelPosition=saved?.commentPanelPosition||'top';this.filePanelPosition=saved?.filePanelPosition||'top';this.historyPanelPosition=saved?.historyPanelPosition||'top';this.hideTests=Boolean(saved?.hideTests);this.allChangesFrom=saved?.allChangesFrom==='commit'?'commit':'branch';this.includeWorking=Boolean(saved?.includeWorking);this.manualCommitBase=saved?.manualCommitBase||null;this.lastAppliedFrom=this.allChangesFrom;this.choosingCommitBase=false;
   if(this.preferenceBaseline)this.applyPreferences();
   this.restoringComposer=true;for(const [key,input] of Object.entries(this.inputs))input.set_value(saved?.fields?.[key]||(key==='folder'?context.folder||'':key==='target'?'HEAD':''));this.restoringComposer=false;
   if(!refreshing&&this.restoreLoadedView(shared(this.selectionKey),cx)){this.warmRepositoryCounts(cx);return;}
@@ -622,12 +658,15 @@ export default class Juhas extends View {
   const current=()=>!this.closed&&this.activeContext===context&&this.policy===policy&&this.repositoryCountRequest===request;
   if(previous?.context!==context){this.repositoryCounts=new Map();this.repositoryChanges=new Map();}
   cx.spawn(async cx=>{
-   const scan=async(repos,read)=>{
+   const scan=async(repos,read,onResult)=>{
     const results=new Map();let next=0;
     await Promise.all(Array.from({length:Math.min(3,repos.length)},async()=>{
      while(current()&&next<repos.length){
       const repo=repos[next++];
-      try{results.set(repo.key,await read(run,repo));}catch{/* Leave unavailable values unknown. */}
+      let value;
+      try{value=await read(run,repo);}catch{continue;}
+      results.set(repo.key,value);
+      if(current())onResult?.(repo.key,value);
      }
     }));
     return results;
@@ -637,7 +676,16 @@ export default class Juhas extends View {
    this.repositoryChanges=changes;
    this.repositoryIndex=0;
    cx.notify();
-   const counts=await scan(policy.repos.filter(repo=>changes.get(repo.key)),workingLineCounts);
+   const active=this.controller.state?.repo?.key;
+   const dirty=policy.repos.filter(repo=>changes.get(repo.key));
+   const first=dirty.findIndex(repo=>repo.key===active);
+   if(first>0)dirty.unshift(...dirty.splice(first,1));
+   const partial=new Map(this.repositoryCounts);
+   const counts=await scan(dirty,workingLineCounts,(key,value)=>{
+    partial.set(key,value);
+    this.repositoryCounts=partial;
+    cx.notify();
+   });
    request.completedAt=Date.now();
    if(current()){this.repositoryCounts=counts;cx.notify();}
   });

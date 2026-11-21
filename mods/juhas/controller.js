@@ -71,12 +71,16 @@ export class Controller {
   const retained=previousPath?loaded.files.find(f=>f.newPath===previousPath):null;
   this.state={...this.state,comparison:loaded.comparison,details:null,files:loaded.files,file:retained?{...retained}:null,patch:null,patchLoading:!!retained,fileStatsLoading:!!loaded.splitMetadata,fileStatsError:null,error:null,sourceUnavailable:false,sourceStale:false,missingFile:previousPath&&!retained?previousPath:null,newHead:null};this.onChange();
   if(loaded.splitMetadata){const filesKey=JSON.stringify([repo.key,loaded.comparison.baseTree,loaded.comparison.targetTree,'files']),statsKey=filesKey+':numstat',current=()=>this.gate.isCurrent(token)&&this.state.comparison?.id===loaded.comparison.id;void (async()=>{try{let stats=this.cache.get(statsKey);if(!stats){stats=await loadChangedFileStats(run,loaded.comparison,loaded.files);this.cache.set(statsKey,stats);}if(!current())return;this.state.files=stats;if(this.state.file){const counts=stats.find(f=>f.id===this.state.file.id);if(counts)this.state.file={...this.state.file,additions:counts.additions,deletions:counts.deletions,binary:counts.binary};}this.state.fileStatsError=null;}catch(error){if(!current())return;this.state.fileStatsError=error.message;}finally{if(current()){this.state.fileStatsLoading=false;this.onChange();}}})();}
-  const summary=await this.summarizeComparison(loaded.comparison,run);if(!this.gate.isCurrent(token))return;
-  this.state.comparison=summary;this.onChange();
-  const patch=retained?await this.readFilePatch(retained,summary,{run}):null;
-  if(!this.gate.isCurrent(token))return;
-  if(this.patchGate.isCurrent(patchToken)){this.state.patch=patch;this.state.patchLoading=false;this.onChange();}
-  await this.reconcileComments(summary,{run});
+  const patch=retained?this.readFilePatch(retained,loaded.comparison,{run}).then(patch=>{
+   if(!this.gate.isCurrent(token)||!this.patchGate.isCurrent(patchToken))return;
+   this.state.patch=patch;this.state.patchLoading=false;this.onChange();
+  }):null;
+  const summary=this.summarizeComparison(loaded.comparison,run).then(summary=>{
+   if(this.gate.isCurrent(token)){this.state.comparison=summary;this.onChange();}
+   return summary;
+  });
+  const [,comparison]=await Promise.all([patch,summary]);
+  if(this.gate.isCurrent(token))await this.reconcileComments(comparison,{run});
   }finally{if(this.gate.isCurrent(token)){this.state.scopeLoading=false;this.state.pendingScope=null;this.state.patchLoading=false;this.onChange();}}
  }
 
@@ -84,15 +88,53 @@ export class Controller {
   const c=this.state.comparison;const file=this.state.files.find(f=>f.id===id);if(!c||!file)return;if(!c.mutableTarget&&this.state.file?.id===id&&this.state.patch)return;this.refreshGate.begin('file');const token=this.patchGate.begin(id);this.state.file=file;this.state.patch=null;
   if(c.mutableTarget&&!await this.validateWorking(c,token))return;
   const key=patchKey(c,file);let patch=this.cache.get(key);
-  if(!patch){patch=await loadPatch(this.run,c,file);this.cache.set(key,patch);}
-  if(c.mutableTarget&&!await this.validateWorking(c,token))return;
+  if(!patch){
+   patch=await loadPatch(this.run,c,file);
+   if(c.mutableTarget&&!await this.validateWorking(c,token))return;
+   this.cache.set(key,patch);
+  }
   if(this.patchGate.isCurrent(token)&&this.state.comparison?.id===c.id)this.state.patch=patch;
  }
  async verifyComparison(comparison=this.state.comparison){if(!comparison?.mutableTarget)return true;const current=await resolveComparison(withGitBudget(this.run),comparison.repo,comparison.scope,this.session().checkpoints);if(current.id!==comparison.id)throw new Error('Working tree changed; previous source retained');return true;}
+ async verifyDetachedComparison(comparison,run){
+  if(!comparison.mutableTarget)return;
+  const current=await resolveComparison(run,comparison.repo,comparison.scope,this.session().checkpoints);
+  if(current.id!==comparison.id)throw new Error('Working tree changed; detached patch source is stale');
+ }
  async readFilePatch(file,comparison=this.state.comparison,{full=false,run=withGitBudget(this.run)}={}){
   if(!comparison||!file)throw new Error('Choose a comparison and file');
-  const verify=async()=>{if(!comparison.mutableTarget)return;const current=await resolveComparison(run,comparison.repo,comparison.scope,this.session().checkpoints);if(current.id!==comparison.id)throw new Error('Working tree changed; detached patch source is stale');};
-  await verify();const key=patchKey(comparison,file,full);let patch=this.cache.get(key);if(!patch){patch=await loadPatch(run,comparison,file,{full});this.cache.set(key,patch);}await verify();return patch;
+  await this.verifyDetachedComparison(comparison,run);
+  const key=patchKey(comparison,file,full),cached=this.cache.get(key);
+  if(cached)return cached;
+  const patch=await loadPatch(run,comparison,file,{full});
+  await this.verifyDetachedComparison(comparison,run);
+  this.cache.set(key,patch);
+  return patch;
+ }
+ async readFilePatches(files,comparison=this.state.comparison,{rowBudget=Infinity,run=withGitBudget(this.run)}={}){
+  if(!comparison)throw new Error('Choose a comparison and file');
+  if(!files.length||rowBudget<=0)return [];
+  await this.verifyDetachedComparison(comparison,run);
+  const results=[],pendingCache=new Map();
+  let read=false;
+  for(const file of files){
+   if(rowBudget<=0)break;
+   const key=patchKey(comparison,file),cached=this.cache.get(key);
+   let patch=cached;
+   if(!cached){
+    read=true;
+    try{patch=await loadPatch(run,comparison,file);}
+    catch(error){results.push({error});continue;}
+    pendingCache.set(key,patch);
+   }
+   const count=(patch.hunks||[]).reduce((total,hunk)=>total+hunk.lines.length,0);
+   if(count>rowBudget){results.push({limited:true});continue;}
+   results.push({patch});
+   rowBudget-=count;
+  }
+  if(read)await this.verifyDetachedComparison(comparison,run);
+  for(const [key,patch] of pendingCache)this.cache.set(key,patch);
+  return results;
  }
  async loadDetails(){const repo=this.state.repo,id=this.state.comparison?.targetOid;if(!repo||!id)return;const key=JSON.stringify([repo.key,id,'details']);let details=this.cache.get(key);if(!details){const raw=await git(this.run,repo,['show','-s','--format=%s%x00%an <%ae> · %aI%x00%b',id,'--']);const [subject,author,body]=raw.split('\0');details={subject,author,body:body?.trim()};this.cache.set(key,details);}if(this.state.repo?.key===repo.key&&this.state.comparison?.targetOid===id)this.state.details=details;}
  async expandFile(full=true){this.refreshGate.begin('expand');const c=this.state.comparison,file=this.state.file;if(!c||!file)return;const token=this.patchGate.begin(file.id);const patch=await loadPatch(this.run,c,file,{full});if(c.mutableTarget&&!await this.validateWorking(c,token))return;if(this.patchGate.isCurrent(token)&&this.state.comparison?.id===c.id)this.state.patch={...patch,fullContext:full};}
@@ -139,31 +181,43 @@ export class Controller {
    const branch=branchResult.stdout.trim()||'(detached)',head=headResult.code===0?headResult.stdout.trim():null;
    if(branch!==this.state.branch){this.state.branchChanged={previous:this.state.branch,current:branch};return false;}
    const refsChanged=JSON.stringify(refs)!==JSON.stringify(this.state.refs),headChanged=head!==this.state.observedHead,changed=refsChanged||headChanged;
-   const filters=this.state.filtersKey?JSON.parse(this.state.filtersKey):{};let featureBase=this.state.featureBaseOid;
-   if(changed&&head&&this.state.historyBaseRef)featureBase=await resolveBase(run,repo,this.state.historyBaseRef,head);
-   let history=changed?{commits:[],hasMore:false,ref:null,exclude:null}:{commits:this.state.history,hasMore:this.state.hasMore,ref:this.state.historyRef,exclude:this.state.historyExclude};
-   if(changed&&head){const depth=Math.max(300,this.state.history.length);let skip=0;do{const page=await listHistory(run,repo,{...filters,ref:filters.ref||'HEAD',exclude:filters.exclude?featureBase||filters.exclude:null,resolvedHead:!filters.ref||filters.ref==='HEAD'?head:null,skip,limit:Math.min(1000,depth-skip)});history={...page,commits:[...history.commits,...page.commits]};skip=history.commits.length;if(!current())return false;}while(history.hasMore&&skip<depth);}
-   if(!current()||this.state.historyRef!==historyToken)return false;
-   let candidate=comparison,files=this.state.files,nextFile=file,nextPatch=patch,missingFile=null,sourceUnavailable=false,sourceStale=false;
-   if(comparison){
-    if(comparison.scope.kind==='commit'){
-     // Pinned commits retain their exact loaded source after amend/rebase.
-     try{await oid(run,repo,comparison.targetOid);sourceUnavailable=false;}catch{sourceUnavailable=true;}
-    }else{
-     candidate=!changed&&!comparison.mutableTarget?comparison:await resolveComparison(run,repo,comparison.scope,this.session().checkpoints);
-     if(candidate.id===comparison.id)candidate=candidate.committedTargetOid!==comparison.committedTargetOid?await this.summarizeComparison({...comparison,committedTargetOid:candidate.committedTargetOid},run):comparison;
-     else if(preserveComposer){sourceStale=true;candidate=comparison;}
-     else{
-      const key=JSON.stringify([repo.key,candidate.baseTree,candidate.targetTree,'files']);files=this.cache.get(key)||await listChangedFiles(run,candidate);if(!candidate.mutableTarget)this.cache.set(key,files);
-      candidate=await this.summarizeComparison(candidate,run);
-      nextFile=file?files.find(f=>f.newPath===file.newPath)||null:null;missingFile=file&&!nextFile?file.newPath:null;nextPatch=null;
-      if(nextFile){const key=patchKey(candidate,nextFile,!!patch?.full);nextPatch=this.cache.get(key)||await loadPatch(run,candidate,nextFile,{full:!!patch?.full});this.cache.set(key,nextPatch);}
-      if(candidate.mutableTarget){const verified=await resolveComparison(run,repo,candidate.scope,this.session().checkpoints);if(verified.id!==candidate.id)throw new Error('Working tree changed during refresh; previous source retained');}
+   const loadCurrentHistory=async()=>{
+    const filters=this.state.filtersKey?JSON.parse(this.state.filtersKey):{};let featureBase=this.state.featureBaseOid;
+    if(changed&&head&&this.state.historyBaseRef)featureBase=await resolveBase(run,repo,this.state.historyBaseRef,head);
+    let history=changed?{commits:[],hasMore:false,ref:null,exclude:null}:{commits:this.state.history,hasMore:this.state.hasMore,ref:this.state.historyRef,exclude:this.state.historyExclude};
+    if(changed&&head){const depth=Math.max(300,this.state.history.length);let skip=0;do{const page=await listHistory(run,repo,{...filters,ref:filters.ref||'HEAD',exclude:filters.exclude?featureBase||filters.exclude:null,resolvedHead:!filters.ref||filters.ref==='HEAD'?head:null,skip,limit:Math.min(1000,depth-skip)});history={...page,commits:[...history.commits,...page.commits]};skip=history.commits.length;if(!current())return null;}while(history.hasMore&&skip<depth);}
+    return {history,featureBase};
+   };
+   const loadCurrentDiff=async()=>{
+    let candidate=comparison,files=this.state.files,nextFile=file,nextPatch=patch,missingFile=null,sourceUnavailable=false,sourceStale=false,pendingPatch=null;
+    if(comparison){
+     if(comparison.scope.kind==='commit'){
+      // Pinned commits retain their exact loaded source after amend/rebase.
+      try{await oid(run,repo,comparison.targetOid);sourceUnavailable=false;}catch{sourceUnavailable=true;}
+     }else{
+      candidate=!changed&&!comparison.mutableTarget?comparison:await resolveComparison(run,repo,comparison.scope,this.session().checkpoints,{observedHead:head});
+      if(candidate.id===comparison.id)candidate=candidate.committedTargetOid!==comparison.committedTargetOid?await this.summarizeComparison({...comparison,committedTargetOid:candidate.committedTargetOid},run):comparison;
+      else if(preserveComposer){sourceStale=true;candidate=comparison;}
+      else{
+       const key=JSON.stringify([repo.key,candidate.baseTree,candidate.targetTree,'files']);files=this.cache.get(key)||await listChangedFiles(run,candidate);if(!candidate.mutableTarget)this.cache.set(key,files);
+       nextFile=file?files.find(f=>f.newPath===file.newPath)||null:null;missingFile=file&&!nextFile?file.newPath:null;nextPatch=null;
+       const full=!!patch?.full,selectedKey=nextFile?patchKey(candidate,nextFile,full):null;
+       const cached=selectedKey?this.cache.get(selectedKey):null;
+       [candidate,nextPatch]=await Promise.all([this.summarizeComparison(candidate,run),
+        cached||(nextFile?loadPatch(run,candidate,nextFile,{full}):null)]);
+       if(selectedKey&&!cached)pendingPatch={key:selectedKey,patch:nextPatch};
+       if(candidate.mutableTarget){const verified=await resolveComparison(run,repo,candidate.scope,this.session().checkpoints);if(verified.id!==candidate.id)throw new Error('Working tree changed during refresh; previous source retained');}
+      }
      }
     }
-   }
-   if(!current()||this.state.historyRef!==historyToken)return false;
+    return {candidate,files,nextFile,nextPatch,missingFile,sourceUnavailable,sourceStale,pendingPatch};
+   };
+   const [historyResult,diffResult]=await Promise.all([loadCurrentHistory(),loadCurrentDiff()]);
+   if(!historyResult||!current()||this.state.historyRef!==historyToken)return false;
+   const {history,featureBase}=historyResult;
+   const {candidate,files,nextFile,nextPatch,missingFile,sourceUnavailable,sourceStale,pendingPatch}=diffResult;
    if(changed||candidate?.mutableTarget){const finalHead=await run(repo,['rev-parse','--verify','HEAD']);if((finalHead.code===0?finalHead.stdout.trim():null)!==head)throw new Error('Repository changed during refresh; previous source retained');if(!current())return false;}
+   if(pendingPatch)this.cache.set(pendingPatch.key,pendingPatch.patch);
    Object.assign(this.state,{observedHead:head,refs,history:history.commits,hasMore:history.hasMore,historyRef:history.ref,historyExclude:history.exclude,featureBaseOid:featureBase,empty:!head,newHead:comparison?.scope.kind==='commit'&&head&&head!==comparison.targetOid?head:null,branchChanged:null,comparison:candidate,details:candidate===comparison?this.state.details:null,files,file:nextFile,patch:nextPatch,missingFile,sourceUnavailable,sourceStale});
    if(candidate!==comparison){this.state.sourceStale=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;}
    if(candidate&&(changed||candidate.mutableTarget||this.session().drafts.some(d=>d.repoKey===repo.key&&d.mutableTarget)))await this.reconcileComments(candidate,{run,headOid:head,validatedWorking:candidate.mutableTarget&&!this.state.sourceStale?candidate:null});

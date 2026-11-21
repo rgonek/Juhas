@@ -114,3 +114,24 @@ test('refresh discovers a new nested repository while retaining the selected sou
  await view.refreshContext(cx);
  assert.equal(view.policy.canSwitch,true);assert.equal(view.controller.state.comparison.id,comparison);
 });
+
+test('a slow repository does not withhold line counts from finished repositories',async()=>{
+ let release;
+ const slow=new Promise(resolve=>release=resolve);
+ const {view}=nativeView(directories,async(_run,repo)=>{
+  if(repo.key==='slow')await slow;
+  return {additions:1,deletions:2};
+ },async()=>true);
+ let pending;
+ const cx={notify(){},spawn(fn){pending=fn(this);}};
+ view.controller={run(){},state:{repo:{key:'fast'}}};
+ view.activeContext={key:'project'};
+ view.policy={repos:[{key:'slow'},{key:'fast'}]};
+ view.loadRepositoryCounts(cx);
+ try{
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(view.repositoryCounts.get('fast'),{additions:1,deletions:2});
+  assert.equal(view.repositoryCounts.has('slow'),false);
+ }finally{release();await pending;}
+ assert.equal(view.repositoryCounts.size,2);
+});

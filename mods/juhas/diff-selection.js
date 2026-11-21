@@ -25,8 +25,10 @@ export class DiffSelection {
  point(id,side,offset=0){const point=this.model?.point(id,side);return point?{...point,offset}:null;}
  selected(id,side,start,end){return glyphSelected(this.selection,this.point(id,side),start,end);}
  selectedOffsets(id,side){
-  const range=selectionRange(this.selection),point=this.point(id,side);
-  if(!range||!point)return null;
+  const range=selectionRange(this.selection);
+  if(!range)return null;
+  const point=this.point(id,side);
+  if(!point)return null;
   const [start,end]=range;
   if(point.key!==start.key||point.line<start.line||point.line>end.line)return null;
   return [point.line===start.line?start.offset:0,point.line===end.line?end.offset:Infinity];

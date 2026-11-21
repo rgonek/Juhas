@@ -1,3 +1,4 @@
+import {graphemes} from '../mods/juhas/selection.js';
 import {typography} from '../mods/juhas/typography.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +13,7 @@ import {fileReviewKey,setFileReviewed} from '../mods/juhas/progress.js';
 function controls(overrides={}){
  let layout=false;
  const element=(kind,id)=>{const state={kind,identity:id,nodes:[],handlers:{},values:{}};let proxy;proxy=new Proxy(state,{get(target,key){if(key in target)return target[key];return (...args)=>{if(key==='when'){if(args[0])args[1](proxy);}else if(key==='child')target.nodes.push(args[0]);else if(key==='children')target.nodes.push(...args[0]);else if(key.startsWith('on_')){if(layout)throw new Error('Handler created during virtual layout');target.handlers[key]=args.at(-1);}else target.values[key]=args.length===1?args[0]:args;return proxy;};}});return proxy;};
- const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,pierreFileIcon,image:path=>element('image',path),...comments,...reading,formatCommitTime,fileRows,splitRows,splitRowBatches,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
+ const names=['Button','Checkbox','Toggle','Switch','Popover','Input','Select','Combobox','Popup'],deps={typography,graphemes,pierreFileIcon,image:path=>element('image',path),...comments,...reading,formatCommitTime,fileRows,splitRows,splitRowBatches,changeGroups,filterDrafts,isTestFile,layoutGraph,PathBuilder:{stroke:()=>({move_to(){return this;},line_to(){return this;},build(){return [];}})},window:{rem_size:()=>16,paint_path:()=>element('path')},div:()=>element('div'),h_flex:()=>element('row'),v_flex:()=>element('column'),svg:path=>element('svg',path),theme:()=>({}),settings:()=>({ui_font_size:14,font_family:'monospace'}),Scrollbar:{vertical:id=>element('scrollbar',id)},list:(id,count,_key,render)=>{const node=element('measured',id);node.renderRowAt=i=>{layout=true;try{return render(i);}finally{layout=false;}};node.renderRows=()=>{layout=true;try{return Array.from({length:count},(_,i)=>render(i));}finally{layout=false;}};return node;},v_virtual_list:(id,count,sizes,_key,render)=>{const node=element('virtual',id);node.sizes=sizes;node.keyAt=_key;node.renderRows=()=>{layout=true;try{return render({start:0,end:count});}finally{layout=false;}};return node;}};for(const name of names)deps[name]={new:id=>element(name,id)};
  Object.assign(deps,overrides);let source=readFileSync(new URL('../mods/juhas/ui.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');return new Function(...Object.keys(deps),source+'\nreturn {sourceText,optionList,button,checkbox,toggle,popover,selector,buttonGroup,commitId,diffPane,draftsPane,historyPane,filesPane,graphCell,historyLoadingIndicator,LIST_ROW_HEIGHT};')(...Object.values(deps));
 }
 const descendants=node=>[node,...(node?.nodes||[]).flatMap(descendants)];
@@ -310,7 +311,8 @@ test('unified anchor highlight supports old context and clears after saving',()=
 
 test('large diffs prepare in batches and preserve every row past the virtual size limit',()=>{
  const view=diffView({hunks:[{header:'@@',lines:Array.from({length:10001},(_,i)=>({side:'new',newLine:i+1,text:'code'}))}]},null);
- view.prepareDiffRows=()=>assert.fail('standard mode must not prepare retained code entities');
+ const prepared=[];
+ view.prepareDiffRows=(_rows,_render,_cx,_split,range)=>prepared.push(range);
  const ui=controls(),callbacks=[];
  let notifications=0;
  const cx={timer:{after:(_delay,callback)=>callbacks.push(callback)},notify:()=>notifications++};
@@ -328,7 +330,9 @@ test('large diffs prepare in batches and preserve every row past the virtual siz
  view.controller.session=()=>({drafts:[{id:'comment',comparisonId:'c',newPath:'a',side:'new',endLine:5000,body:'Saved comment'}]});
  ui.diffPane(view,cx);
  while(callbacks.length)callbacks.shift()(cx);
- assert.ok(descendants(ui.diffPane(view,cx)).some(node=>node.kind==='measured'));
+ const measured=descendants(ui.diffPane(view,cx)).find(node=>node.kind==='measured');
+ measured.renderRowAt(4999);
+ assert.deepEqual(prepared,[{start:4999,end:5000,measured:true}]);
  assert.equal(view.diffRows.length,10002);
  assert.equal(view.diffRows.at(-1).newLine,10001);
 });
@@ -393,16 +397,16 @@ test('file panel uses extension icons and status colors in both layouts',()=>{
  }
 });
 
-test('experimental diff uses deferred row preparation only when enabled',()=>{
+test('both fixed-height diff modes defer row preparation',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);
  const calls=[];view.prepareDiffRows=(...args)=>calls.push(args);
  const render=()=>{const root=controls().diffPane(view);descendants(root).find(node=>node.kind==='virtual').renderRows();return root;};
  const standard=render();
- assert.equal(calls.length,0);
+ assert.equal(calls.length,1);
  assert.equal(standard.nodes[0].nodes.at(-1).identity,'diff-experimental');
  view.experimentalDiff=true;
  render();
- assert.equal(calls.length,1);
+ assert.equal(calls.length,2);
  assert.ok(calls[0][0].some(row=>row.text==='code'));
 });
 
@@ -439,4 +443,44 @@ test('partial selection preserves the original text run and pointer offsets',()=
  assert.equal(highlight.values.w,'50%');
  for(const root of [before,after])root.nodes[0].handlers.on_mouse_down({local_position:{x:25},bounds:{width:40}},{});
  assert.deepEqual(hits,[{start:2,end:3},{start:2,end:3}]);
+});
+
+test('fixed-width tabs retain source offsets and four-column highlight geometry',()=>{
+ const ui=controls(),hits=[];
+ const interaction={selectedOffsets:()=>[1,2],down:(glyph,event)=>hits.push({glyph,width:event.bounds.width}),move(){}};
+ const root=ui.sourceText({text:'a\tb'},'a.txt',{selection:'selected'},false,[],[],'',interaction);
+ const run=root.nodes[0],highlight=run.nodes.find(node=>node.values?.bg==='selected');
+ assert.ok(run.nodes.includes('a    b'));
+ assert.equal(highlight.values.w,`${100*4/6}%`);
+ run.handlers.on_mouse_down({local_position:{x:34},bounds:{width:60}},{});
+ run.handlers.on_mouse_down({local_position:{x:52},bounds:{width:60}},{});
+ assert.deepEqual(hits,[{glyph:{start:1,end:2},width:4},{glyph:{start:2,end:3},width:1}]);
+});
+
+test('precomposed Polish letters use a single fixed-width run and combining marks keep grapheme targets',()=>{
+ const ui=controls(),hits=[];
+ const interaction={selectedOffsets:()=>null,down:glyph=>hits.push(glyph),move(){}};
+ const render=text=>ui.sourceText({text},'a.txt',{},false,[],[],'',interaction);
+ const compact=render('a\u017cb');
+ assert.ok(compact.nodes[0].nodes.includes('a\u017cb'));
+ compact.nodes[0].handlers.on_mouse_down({local_position:{x:14},bounds:{width:30}},{});
+ const combining=render('az\u0307b');
+ assert.ok(combining.nodes[1].nodes.includes('z\u0307'));
+ combining.nodes[1].handlers.on_mouse_down({},{});
+ assert.deepEqual(hits,[{start:1,end:2},{text:'z\u0307',start:1,end:3}]);
+});
+
+test('mixed-width monospace lines group ordinary text without splitting Unicode graphemes',()=>{
+ const ui=controls(),hits=[];
+ const interaction={selectedOffsets:()=>null,down:glyph=>hits.push(glyph),move(){}};
+ const source='before 👩‍💻 after e\u0301';
+ const root=ui.sourceText({text:source},'a.txt',{},false,[],[],'',interaction);
+ for(const [index,text] of ['before ','👩‍💻',' after ','e\u0301'].entries()){
+  assert.ok(root.nodes[index].nodes.includes(text));
+ }
+ root.nodes[0].handlers.on_mouse_down({local_position:{x:26},bounds:{width:70}},{});
+ root.nodes[1].handlers.on_mouse_down({},{});
+ root.nodes[2].handlers.on_mouse_down({local_position:{x:11},bounds:{width:70}},{});
+ root.nodes[3].handlers.on_mouse_down({},{});
+ assert.deepEqual(hits.map(({start,end})=>[start,end]),[[2,3],[7,12],[13,14],[19,21]]);
 });

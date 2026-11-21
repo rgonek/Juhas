@@ -10,3 +10,4 @@ dist/
 !.github/
 !.github/workflows/
 !.github/workflows/test.yml
+/native/blob-hash/target/

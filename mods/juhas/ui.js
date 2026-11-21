@@ -8,7 +8,7 @@ import {layoutGraph} from './graph.js';
 import {fileRows,splitRowBatches,changeGroups,filterDrafts,isTestFile} from './review-ui.js';
 import {annotatePatchBatches,composerRows,measuredCommentRows,measuredCommentRowBatches,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 import {formatCommitTime} from './commit-time.js';
-import {decorateLine,intraline,multiFileRowBatches,lineInfoBatches,DIFF_BATCH_SIZE,VIRTUAL_DIFF_ROW_LIMIT,finishDiffBatches,runDiffBatches} from './reading.js';
+import {decorateLine,findMatchRanges,intraline,multiFileRowBatches,lineInfoBatches,DIFF_BATCH_SIZE,VIRTUAL_DIFF_ROW_LIMIT,finishDiffBatches,runDiffBatches} from './reading.js';
 const REVIEW_PANEL_TOOLBAR_HEIGHT=36;
 
 export function uiMetrics(){const look=settings();return typography(look.ui_font_size,window.rem_size());}
@@ -202,44 +202,77 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
  const source=row?.text||'',supported=source.length<=8192;
  // A native text run keeps identical geometry on hover. Use its measured width
- // for hit testing only when every source character occupies one fixed cell.
- const compact=!wrap&&/^(?:monospace|Consolas|Courier New|Cascadia Mono|JetBrains Mono|Iosevka|DejaVu Sans Mono|Liberation Mono|Menlo|SF Mono)(?: NF)?$/i.test(font)&&/^[ -~]*$/.test(source);
- const detailed=interaction&&supported&&!compact,spans=decorateLine(source,path,changed,matches,!wrap);let rendered;
- if(detailed){let spanIndex=0,spanEnd=spans[0]?.text.length||0;rendered=graphemes(row?.text||'').map(glyph=>{while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}const span=spans[spanIndex]||{},selected=interaction.selected(glyph.start,glyph.end);return div().flex_none().h(type.px(22)).text_color(selected?t.foreground:colors[span.kind]||t.foreground).when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55')).when(span.match,e=>e.bg(t.selected).underline()).when(selected,e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx)).on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));});}
-
- else {
-  const selection=interaction.selectedOffsets?.();
-  let offset=0;
-  rendered=spans.map(span=>{
-   const first=offset,length=span.text.length;
-   offset+=length;
+ // for fixed-width ASCII and precomposed Latin letters. A tab spans four cells.
+ const fixedWidth=!wrap&&/^(?:monospace|Consolas|Courier New|Cascadia Mono|JetBrains Mono|Iosevka|DejaVu Sans Mono|Liberation Mono|Menlo|SF Mono)(?: NF)?$/i.test(font);
+ const fixedText=/^[\t -~\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f]*$/;
+ const compact=fixedWidth&&fixedText.test(source);
+ const spans=decorateLine(source,path,changed,matches,!wrap),selection=interaction.selectedOffsets();
+ const selectedBetween=(start,end)=>Boolean(selection&&end>selection[0]&&start<selection[1]);
+ const base=(span,element)=>element.text_color(colors[span.kind]||t.foreground)
+  .when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55'))
+  .when(span.match,e=>e.bg(t.selected).underline());
+ const renderRun=(span,first,hitEnabled)=>{
+   const length=span.text.length,offset=first+length;
    const selectedStart=selection?Math.max(selection[0],first):offset;
    const selectedEnd=selection?Math.min(selection[1],offset):offset;
    const selected=selectedEnd>selectedStart;
-   const fragment=div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
-    .text_color(colors[span.kind]||t.foreground)
-    .when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55'))
-    .when(span.match,e=>e.bg(t.selected).underline());
+   const display=span.text.replace(/\t/g,'    ');
+   const tabbed=hitEnabled&&display.length!==length;
+   const fragment=base(span,div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal()));
    // Keep the same shaped text run and hit target throughout a drag.
-   if(compact&&selected&&(selectedStart!==first||selectedEnd!==offset)){
-    const percent=columns=>`${100*columns/length}%`;
+   if(hitEnabled&&selected&&(selectedStart!==first||selectedEnd!==offset)){
+    const column=offset=>tabbed?span.text.slice(0,offset).replace(/\t/g,'    ').length:offset;
+    const percent=columns=>`${100*columns/display.length}%`;
     fragment.relative().child(div().absolute().top_0().bottom_0()
-     .left(percent(selectedStart-first)).w(percent(selectedEnd-selectedStart)).bg(t.selection));
+     .left(percent(column(selectedStart-first))).w(percent(column(selectedEnd-first)-column(selectedStart-first))).bg(t.selection));
    }else if(selected)fragment.bg(t.selection);
-   fragment.child(span.text.replace(/\t/g,'    '));
-   if(supported&&compact&&length){
+   fragment.child(display);
+   if(hitEnabled&&length){
     const hit=event=>{
-     const cell=(event.local_position?.x||0)/(event.bounds?.width||1)*length;
-     const index=Math.max(0,Math.min(length-1,Math.floor(cell)));
-     return [{start:first+index,end:first+index+1},{click_count:event.click_count,modifiers:event.modifiers,local_position:{x:cell-index},bounds:{width:1}}];
+     const cell=(event.local_position?.x||0)/(event.bounds?.width||1)*display.length;
+     let index=Math.max(0,Math.min(length-1,Math.floor(cell))),start=index,width=1;
+     if(tabbed){
+      index=0;start=0;width=span.text[0]==='\t'?4:1;
+      while(index<length-1&&cell>=start+width){
+       start+=width;index++;width=span.text[index]==='\t'?4:1;
+      }
+     }
+     return [{start:first+index,end:first+index+1},{click_count:event.click_count,modifiers:event.modifiers,local_position:{x:cell-start},bounds:{width}}];
     };
     fragment.on_mouse_down('left',(event,cx)=>interaction.down(...hit(event),cx))
      .on_mouse_move(event=>interaction.move(...hit(event)));
    }
    return fragment;
-  });
+ };
+ const rendered=[];
+ if(supported&&!compact){
+  let spanIndex=0,spanEnd=spans[0]?.text.length||0,runStart=null,runEnd=0,runStyle=null;
+  const flush=()=>{
+   if(runStart==null)return;
+   rendered.push(renderRun({...runStyle,text:source.slice(runStart,runEnd)},runStart,true));
+   runStart=null;
+  };
+  for(const glyph of graphemes(source)){
+   while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}
+   const span=spans[spanIndex]||{};
+   if(fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
+    if(runStart!=null&&runStyle!==span)flush();
+    if(runStart==null){runStart=glyph.start;runStyle=span;}
+    runEnd=glyph.end;
+    continue;
+   }
+   flush();
+   rendered.push(base(span,div().flex_none().h(type.px(22)))
+    .when(selectedBetween(glyph.start,glyph.end),e=>e.text_color(t.foreground).bg(t.selection))
+    .on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx))
+    .on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    ')));
+  }
+  flush();
+ }else{
+  let offset=0;
+  for(const span of spans){rendered.push(renderRun(span,offset,supported&&compact));offset+=span.text.length;}
  }
- if(interaction){const end={start:row?.text?.length||0,end:row?.text?.length||0};rendered.push(div().flex_1().min_w(1).h(type.px(22)).when(interaction.selected(end.start,end.end+1),e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(end,event,cx)).on_mouse_move(event=>interaction.move(end,event)));}
+ if(interaction){const end={start:row?.text?.length||0,end:row?.text?.length||0};rendered.push(div().flex_1().min_w(1).h(type.px(22)).when(selectedBetween(end.start,end.end+1),e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(end,event,cx)).on_mouse_move(event=>interaction.move(end,event)));}
  return h_flex().when(Boolean(interaction?.height),e=>e.on_size_change(size=>interaction.height(size.height))).when(Boolean(interaction&&!supported),e=>e.tooltip('Text selection within this line is unavailable above 8192 characters.')).min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>interaction?e.flex_1():e.flex_none()).items_start()
   .when(Boolean(prefix),e=>e.child(div().flex_none().child(prefix)))
 .children(rendered);
@@ -340,9 +373,9 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  const s=view.controller.state,t=theme(),hiddenSelected=Boolean(view.hideTests&&isTestFile(s.file)),drafts=view.controller.session().drafts,split=view.diffMode==='split',wrap=Boolean(view.readingOptions?.wrap);
  const projection=diffProjection(view,s,drafts,split,hiddenSelected,cx);
  const {annotated=[],sections=null,rows=[],rowsById,changes=[],emphasis,pairs}=projection||{};
- const clickSource=view.diffChangeKey();
+ const clickSource=view.diffChangeKey(),retainRows=view.experimentalDiff||!wrap;
  const selectedLine=(row,side,container=row)=>{if(view.experimentalDiff&&view.diffSelection?.marked(container?.id,side))return true;const target=view.target,line=row?.[side==='old'?'oldLine':'newLine'];return Boolean(target&&line!=null&&target.comparisonId===(container?.comparisonId||s.comparison?.id)&&target.newPath===(container?.filePath||s.file?.newPath)&&target.side===side&&line>=target.startLine&&line<=target.endLine);};
- const ranges=(row,side)=>{const line=row?.[side==='old'?'oldLine':'newLine'];return (view.findMatches||[]).filter(m=>m.side===side&&m.line===line&&(!view.allFiles||m.fileId===row.fileId));};
+ const ranges=findMatchRanges(view.findMatches,Boolean(view.allFiles));
  const fragments=row=>{const key=(row?.fileId||'')+':'+(row?.sourceId||row?.id),pair=pairs.get(key);if(pair&&!emphasis.has(key)){const result=intraline(pair.old.text,pair.next.text);emphasis.set(pair.fileId+':'+pair.old.id,result.old);emphasis.set(pair.fileId+':'+pair.next.id,result.new);}return emphasis.get(key)||[];};
  view.patchRows=annotated;view.diffRows=rows;view.diffRowsKey=view.diffChangeKey();const activeChange=view.changeCursor?.source===view.diffRowsKey?changes.findIndex(change=>change.id===view.changeCursor.id):-1;
  let body;
@@ -351,8 +384,8 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  else if(!s.file&&!view.allFiles)body=text('Select a file to review').p(type.px(20));
  else if(!s.patch&&!view.allFiles)body=text(view.busy?'Reading diff…':'No diff loaded').p(type.px(20));
  else {const renderRow=(row,plain=false,interaction=null)=>{
-  const entity=!plain&&view.experimentalDiff&&view.diffRowViews?.get(clickSource+':'+row.id)?.entity;
-  if(entity)return div().w_full().min_w(0).h_full().overflow_hidden().child(entity);
+  const retained=!plain&&retainRows&&view.diffRowViews?.get(clickSource+':'+row.id);
+  if(retained&&retained.p.row===row)return div().w_full().min_w(0).h_full().overflow_hidden().child(retained.entity);
   if(row.kind==='file-header'&&view.fileHeaderViews?.has(row.fileId))return div().h(type.px(34)).w_full().child(view.fileHeaderViews.get(row.fileId));
   if(row.kind==='file-header')return h_flex().h(type.px(34)).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(type.px(46)).p(type.px(12));
@@ -392,11 +425,11 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   }
  }
  body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];
- if(view.experimentalDiff&&entry.sourceIndex!=null)view.prepareDiffRows?.(rows,renderRow,cx,split,{start:entry.sourceIndex,end:entry.sourceIndex+1,measured:true});
- return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,heights,renderRow,click,scroller,null,view.experimentalDiff?range=>{
+ if(retainRows&&entry.sourceIndex!=null)view.prepareDiffRows?.(rows,renderRow,cx,split,{start:entry.sourceIndex,end:entry.sourceIndex+1,measured:true});
+ return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,heights,renderRow,click,scroller,null,range=>{
   view.prepareDiffRows?.(rows,renderRow,cx,split,range);
   if(view.diffSelection)view.diffSelection.visibleRange=range;
- }:null);}
+ });}
  const minWidth=!projection||wrap||s.patch?.binary||s.patch?.modeOnly?0:(projection.minWidth??=split
   ?rows.reduce((width,row)=>row.kind==='pair'?Math.max(width,100+Math.max(row.old?.text.length||0,row.next?.text.length||0)*14.6):width,800)
   :annotated.reduce((width,row)=>row.kind!=='comment'?Math.max(width,100+row.text.length*7.3):width,600));

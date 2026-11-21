@@ -127,12 +127,13 @@ test('native editor height changes wake the owner through its action queue once 
  resize({height:180});assert.equal(owner.inlineEditorHeight,180);assert.equal(actions.length,2);
 });
 
-test('experimental viewport retains unchanged row entities and refreshes new decorations',()=>{
+test('standard viewport retains unchanged row entities without initializing source selection',()=>{
  const {v}=fixture(),notified=[],released=[];
  const cx={new:(_type,p)=>({id:p.row.id,release(){released.push(this.id);}}),notify:entity=>notified.push(entity?.id)};
  const rows=Array.from({length:4},(_,i)=>({kind:'line',id:'r'+i,side:'new',newLine:i+1,text:'line '+i}));
  const input={rows,source:'source',split:false,render:()=>null};
  v.buildDiffRows({...input,start:0,end:3},cx);
+ assert.equal(v.diffSelection,undefined);
  const existing=v.diffRowViews.get('source:r1');
  assert.deepEqual(notified,[undefined]);
  notified.length=0;

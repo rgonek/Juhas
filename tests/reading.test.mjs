@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tokenizeLine,intraline,findInPatch,decorateLine,multiFileRows,withLineInfo} from '../mods/juhas/reading.js';
+import {tokenizeLine,intraline,findInPatch,findMatchRanges,decorateLine,multiFileRows,withLineInfo} from '../mods/juhas/reading.js';
 
 test('line info counts omitted context across edits and ignores adjacent hunks',()=>{
  const headers=['@@ -1,90 +1,90 @@','@@ -119,0 +120,2 @@','@@ -120 +122 @@'];
@@ -43,4 +43,27 @@ test('unwrapped runs merge only adjacent text with identical decoration',()=>{
  const positions=spans=>spans.flatMap(({text,...style})=>Array.from(text,char=>[char,style]));
  assert.ok(compact.length<plain.length);
  assert.deepEqual(positions(compact),positions(plain));
+});
+
+test('unchanged syntax decoration is reused across visible renders',()=>{
+ const text='const value = items.length + 3;';
+ const compact=decorateLine(text,'sample.js',[],[],true);
+ assert.equal(decorateLine(text,'sample.js',[],[],true),compact);
+ assert.notEqual(decorateLine(text,'sample.js'),compact);
+ assert.notEqual(decorateLine(text,'sample.js',[{start:6,end:11}],[],true),compact);
+ assert.ok(Object.isFrozen(compact));
+});
+
+test('find highlights use exact file, side and line while preserving match order',()=>{
+ const a={fileId:'a',side:'new',line:7,start:0,end:1};
+ const b={...a,start:3,end:4},other={...a,fileId:'b'},old={...a,side:'old'};
+ const matches=[a,other,old,b],lookup=findMatchRanges(matches,true);
+ const row={fileId:'a',oldLine:7,newLine:7};
+ assert.equal(findMatchRanges(matches,true),lookup);
+ assert.deepEqual(lookup(row,'new'),[a,b]);
+ assert.deepEqual(lookup(row,'old'),[old]);
+ assert.deepEqual(lookup({...row,fileId:'b'},'new'),[other]);
+ assert.deepEqual(findMatchRanges(matches,false)(row,'new'),[a,other,b]);
+ assert.deepEqual(findMatchRanges([b],true)(row,'new'),[b]);
+ assert.deepEqual(lookup(null,'new'),[]);
 });

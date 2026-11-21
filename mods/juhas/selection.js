@@ -2,6 +2,12 @@ import {DIFF_BATCH_SIZE,finishDiffBatches} from './reading.js';
 // Source coordinates stay separate from gutters, expanded tabs and comment rows.
 let segmenter;
 export function graphemes(text){
+ // Printable ASCII and tabs each occupy one source position.
+ if(!/[^\t -~]/.test(text)){
+  const result=new Array(text.length);
+  for(let start=0;start<text.length;start++)result[start]={text:text[start],start,end:start+1};
+  return result;
+ }
  if(typeof Intl!=='undefined'&&typeof Intl.Segmenter==='function')return [...(segmenter??=new Intl.Segmenter(undefined,{granularity:'grapheme'})).segment(text)].map(g=>({text:g.segment,start:g.index,end:g.index+g.segment.length}));
  const result=[];let offset=0,regional=0;
  for(const char of Array.from(text)){const code=char.codePointAt(0),last=result.at(-1),flag=code>=0x1f1e6&&code<=0x1f1ff;

@@ -499,6 +499,13 @@ test('a fixed-width line shares one hit target across syntax and diff spans',()=
  assert.deepEqual(hits,[{glyph:{start:7,end:8},width:4},{glyph:{start:8,end:9},width:1}]);
 });
 
+test('ASCII diff segmentation preserves tabs and the Unicode path keeps grapheme boundaries',()=>{
+ assert.deepEqual(graphemes('a\tb'),[
+  {text:'a',start:0,end:1},{text:'\t',start:1,end:2},{text:'b',start:2,end:3}
+ ]);
+ assert.deepEqual(graphemes('a\r\n👩‍💻').map(glyph=>[glyph.start,glyph.end]),[[0,1],[1,3],[3,8]]);
+});
+
 test('selectable wrap keeps words together across syntax decorations and preserves glyph offsets',()=>{
  const ui=controls(),hits=[];
  const interaction={selectedOffsets:()=>null,down:glyph=>hits.push(glyph),move(){}};

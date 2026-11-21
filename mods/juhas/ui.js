@@ -6,7 +6,7 @@ import {theme,settings} from 'herdr';
 import {typography} from './typography.js';
 import {layoutGraph} from './graph.js';
 import {fileRows,splitRows,changeGroups,filterDrafts,isTestFile} from './review-ui.js';
-import {annotatePatch,composerRows,measuredCommentRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
+import {annotatePatch,annotateExperimentalPatch,composerRows,measuredCommentRows,commentHeight,INLINE_EDITOR_HEIGHT,INLINE_EDITOR_MAX_HEIGHT} from './comments.js';
 import {formatCommitTime} from './commit-time.js';
 import {decorateLine,intraline,multiFileRows,withLineInfo} from './reading.js';
 const REVIEW_PANEL_TOOLBAR_HEIGHT=36;
@@ -190,7 +190,15 @@ function fileRowLabel(file,tree,type,t){
    .when(Boolean(suffix),e=>e.child(div().flex_none().child(suffix))))
   .when(!tree&&slash>=0,e=>e.child(div().flex_1().min_w(0).truncate().text_ellipsis_start().text_size(type.caption).text_color(t.muted).child(file.newPath.slice(0,slash))));
 }
+function standardSourceText(row,path,t,wrap,changed,matches,prefix=''){
+ const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
+ return h_flex().min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>e.flex_none()).items_start()
+  .when(Boolean(prefix),e=>e.child(div().flex_none().child(prefix)))
+  .children(decorateLine(row?.text||'',path,changed,matches).map(span=>div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
+   .text_color(colors[span.kind]||t.foreground).when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55')).when(span.match,e=>e.bg(t.selected).underline()).child(span.text.replace(/\t/g,'    '))));
+}
 function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null){
+ if(!interaction)return standardSourceText(row,path,t,wrap,changed,matches,prefix);
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
  const source=row?.text||'',supported=source.length<=8192,type=uiMetrics();
  const font=settings().font_family||'';
@@ -243,28 +251,39 @@ function codeCell(row,side,t,wrap,path,changed=[],matches=[],selected=false,inte
   .child(sourceText(row,path,t,wrap,changed,matches,'',interaction));
 }
 function commentCard(row,view,width='100%'){const type=uiMetrics();const retained=view.commentCards?.get(row.draft.id);if(retained)return div().h(type.px(commentHeight(row.text))).w_full().max_w(width||'100%').child(retained.view);return h_flex().h(type.px(commentHeight(row.text))).w_full().min_w(0).px(12).py(type.px(6)).bg(theme().raised).child(text(row.text).whitespace_normal());}
-function diffProjection(view,s,drafts,split,hiddenSelected){
+function standardDiffProjection(view,s,drafts,split,hiddenSelected){
+ const annotated=hiddenSelected?[]:annotatePatch(s.patch,drafts,s.comparison?.id,s.file?.newPath);
+ const activeTarget=view.inlineEditor&&view.target?.comparisonId===s.comparison?.id&&view.target?.newPath===s.file?.newPath?view.target:null,composed=composerRows(annotated,activeTarget,view.editId);
+ const present=(source,patch)=>{const visible=withLineInfo(source),display=split?splitRows(visible):visible;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
+ const sections=view.allFiles?(view.allFileSections||[]).filter(section=>!view.hideTests||!isTestFile(section.file)).map(section=>{const source=section.patch?annotatePatch(section.patch,drafts,section.comparison?.id,section.file.newPath):null,target=view.target?.comparisonId===section.comparison?.id&&view.target?.newPath===section.file.newPath?view.target:null;return {...section,source,rows:source?present(composerRows(source,target,view.editId),section.patch):null};}):null;
+ const rows=sections?multiFileRows(sections):present(composed,s.patch),changes=changeGroups(rows),emphasis=new Map(),pairs=new Map();
+ const paired=(source,fileId='')=>{for(const row of splitRows(source))if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const pair={old:row.old,next:row.next,fileId};pairs.set(fileId+':'+row.old.id,pair);pairs.set(fileId+':'+row.next.id,pair);}};if(sections){for(const section of sections)if(section.source&&!section.collapsed&&!section.limited)paired(section.source,section.file.id);}else paired(annotated);
+ return {annotated,sections,rows,changes,emphasis,pairs};
+}
+function experimentalDiffProjection(view,s,drafts,split,hiddenSelected){
  const sectionsInput=view.allFiles?(view.allFileSections||[]):null;
  const sectionPatches=sectionsInput?.map(section=>section.patch)||[];
  const key=JSON.stringify([s.comparison?.id,s.file?.newPath,split,hiddenSelected,view.hideTests,
   view.target,Boolean(view.inlineEditor),view.editId,drafts,
   sectionsInput?.map(({file,comparison,collapsed,loading,limited})=>[file.id,file.newPath,comparison?.id,collapsed,loading,limited])]);
- const cached=view.diffProjection;
+ const cached=view.experimentalDiffProjection;
  if(cached?.patch===s.patch&&cached.key===key&&sectionPatches.every((patch,index)=>patch===cached.sectionPatches[index]))return cached;
- const annotated=hiddenSelected?[]:annotatePatch(s.patch,drafts,s.comparison?.id,s.file?.newPath);
+ const annotated=hiddenSelected?[]:annotateExperimentalPatch(s.patch,drafts,s.comparison?.id,s.file?.newPath);
  const activeTarget=view.inlineEditor&&view.target?.comparisonId===s.comparison?.id&&view.target?.newPath===s.file?.newPath?view.target:null;
  const composed=sectionsInput?null:composerRows(annotated,activeTarget,view.editId);
- const present=(source,patch)=>{const visible=withLineInfo(source),display=split?splitRows(visible):visible;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
- const sections=sectionsInput?sectionsInput.filter(section=>!view.hideTests||!isTestFile(section.file)).map(section=>{const source=!section.collapsed&&!section.limited&&section.patch?(section.patch===s.patch&&section.comparison?.id===s.comparison?.id&&section.file.newPath===s.file?.newPath?annotated:annotatePatch(section.patch,drafts,section.comparison?.id,section.file.newPath)):null,target=view.target?.comparisonId===section.comparison?.id&&view.target?.newPath===section.file.newPath?view.target:null;return {...section,source,rows:source?present(composerRows(source,target,view.editId),section.patch):null};}):null;
+ const present=(source,patch)=>{const visible=withLineInfo(source),display=split?splitRows(visible,true):visible;return patch?.binary||patch?.modeOnly?[{id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'},...display]:display;};
+ const sections=sectionsInput?sectionsInput.filter(section=>!view.hideTests||!isTestFile(section.file)).map(section=>{const source=!section.collapsed&&!section.limited&&section.patch?(section.patch===s.patch&&section.comparison?.id===s.comparison?.id&&section.file.newPath===s.file?.newPath?annotated:annotateExperimentalPatch(section.patch,drafts,section.comparison?.id,section.file.newPath)):null,target=view.target?.comparisonId===section.comparison?.id&&view.target?.newPath===section.file.newPath?view.target:null;return {...section,source,rows:source?present(composerRows(source,target,view.editId),section.patch):null};}):null;
  const rows=sections?multiFileRows(sections):present(composed,s.patch),changes=changeGroups(rows),emphasis=new Map(),pairs=new Map();
- const paired=(source,fileId='')=>{for(const row of source)if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const pair={old:row.old,next:row.next,fileId};pairs.set(fileId+':'+row.old.id,pair);pairs.set(fileId+':'+row.next.id,pair);}};if(sections){for(const section of sections)if(section.source)paired(split?section.rows:splitRows(section.source),section.file.id);}else paired(split?rows:splitRows(annotated));
- return view.diffProjection={key,patch:s.patch,sectionPatches,annotated,sections,rows,changes,emphasis,pairs};
+ const paired=(source,fileId='')=>{for(const row of source)if(row.kind==='pair'&&row.old&&row.next&&row.old!==row.next){const pair={old:row.old,next:row.next,fileId};pairs.set(fileId+':'+row.old.id,pair);pairs.set(fileId+':'+row.next.id,pair);}};if(sections){for(const section of sections)if(section.source)paired(split?section.rows:splitRows(section.source,true),section.file.id);}else paired(split?rows:splitRows(annotated,true));
+ return view.experimentalDiffProjection={key,patch:s.patch,sectionPatches,annotated,sections,rows,changes,emphasis,pairs};
 }
 export function diffPane(view,cx){const type=uiMetrics();
  const s=view.controller.state,t=theme(),hiddenSelected=Boolean(view.hideTests&&isTestFile(s.file)),drafts=view.controller.session().drafts,split=view.diffMode==='split',wrap=Boolean(view.readingOptions?.wrap);
- const {annotated,sections,rows,changes,emphasis,pairs}=diffProjection(view,s,drafts,split,hiddenSelected);
+ const {annotated,sections,rows,changes,emphasis,pairs}=view.experimentalDiff
+  ?experimentalDiffProjection(view,s,drafts,split,hiddenSelected)
+  :standardDiffProjection(view,s,drafts,split,hiddenSelected);
  const clickSource=view.diffChangeKey();
- const selectedLine=(row,side,container=row)=>{if(view.diffSelection?.marked(container?.id,side))return true;const target=view.target,line=row?.[side==='old'?'oldLine':'newLine'];return Boolean(target&&line!=null&&target.comparisonId===(container?.comparisonId||s.comparison?.id)&&target.newPath===(container?.filePath||s.file?.newPath)&&target.side===side&&line>=target.startLine&&line<=target.endLine);};
+ const selectedLine=(row,side,container=row)=>{if(view.experimentalDiff&&view.diffSelection?.marked(container?.id,side))return true;const target=view.target,line=row?.[side==='old'?'oldLine':'newLine'];return Boolean(target&&line!=null&&target.comparisonId===(container?.comparisonId||s.comparison?.id)&&target.newPath===(container?.filePath||s.file?.newPath)&&target.side===side&&line>=target.startLine&&line<=target.endLine);};
  const ranges=(row,side)=>{const line=row?.[side==='old'?'oldLine':'newLine'];return (view.findMatches||[]).filter(m=>m.side===side&&m.line===line&&(!view.allFiles||m.fileId===row.fileId));};
  const fragments=row=>{const key=(row?.fileId||'')+':'+(row?.sourceId||row?.id),pair=pairs.get(key);if(pair&&!emphasis.has(key)){const result=intraline(pair.old.text,pair.next.text);emphasis.set(pair.fileId+':'+pair.old.id,result.old);emphasis.set(pair.fileId+':'+pair.next.id,result.new);}return emphasis.get(key)||[];};
  view.patchRows=annotated;view.diffRows=rows;view.diffRowsKey=view.diffChangeKey();const activeChange=view.changeCursor?.source===view.diffRowsKey?changes.findIndex(change=>change.id===view.changeCursor.id):-1;
@@ -298,7 +317,7 @@ export function diffPane(view,cx){const type=uiMetrics();
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
  // Keep the scroll surface when a composer opens. Its retained view reports
  // its intrinsic height; wrapped annotations stay inside stable source items.
- body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>view.diffSelection?.heights.get(r.id)??(r.kind==='editor'?Math.max(type.px(INLINE_EDITOR_HEIGHT),Math.min(type.px(INLINE_EDITOR_MAX_HEIGHT),view.inlineEditorHeight||0)):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22))),renderRow,click,scroller,null,view.experimentalDiff?range=>{
+ body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,rows.map(r=>(view.experimentalDiff?view.diffSelection?.heights.get(r.id):undefined)??(r.kind==='editor'?Math.max(type.px(INLINE_EDITOR_HEIGHT),Math.min(type.px(INLINE_EDITOR_MAX_HEIGHT),view.inlineEditorHeight||0)):r.kind==='comment'?type.px(commentHeight(r.text)):r.kind==='notice'?type.px(46):r.kind==='file-header'?type.px(34):type.px(22))),renderRow,click,scroller,null,view.experimentalDiff?range=>{
   view.prepareDiffRows?.(rows,renderRow,cx,split,range);
   if(view.diffSelection)view.diffSelection.visibleRange=range;
  }:null);}

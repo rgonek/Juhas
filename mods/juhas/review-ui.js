@@ -32,7 +32,7 @@ export function fileRows(files,tree=false,collapsed=new Set(),query=''){
  };
  walk(root);return rows;
 }
-export function splitRows(rows){
+export function splitRows(rows,skipEmptyGroups=false){
  const result=[];let removed=[],added=[],comments=new Map(),lastChange=null;
  const flush=()=>{
   for(let i=0;i<Math.max(removed.length,added.length);i++){const old=removed[i],next=added[i];result.push({id:'split:'+(next?.id||old.id),kind:'pair',old,next});result.push(...(comments.get(old?.id)||[]),...(comments.get(next?.id)||[]));}
@@ -41,7 +41,7 @@ export function splitRows(rows){
  for(const row of rows){
   if(row.kind==='line'&&(row.side==='old'||row.side==='new')){(row.side==='old'?removed:added).push(row);lastChange=row;}
   else if((row.kind==='comment'||row.kind==='editor')&&lastChange){if(!comments.has(lastChange.id))comments.set(lastChange.id,[]);comments.get(lastChange.id).push(row);}
-  else{if(removed.length||added.length)flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}
+  else{if(!skipEmptyGroups||removed.length||added.length)flush();if(row.kind==='line')result.push({id:'split:'+row.id,kind:'pair',old:row,next:row});else result.push(row);}
  }
  flush();return result;
 }

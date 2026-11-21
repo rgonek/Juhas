@@ -376,3 +376,23 @@ test('experimental diff uses deferred row preparation only when enabled',()=>{
  assert.equal(calls.length,1);
  assert.ok(calls[0][0].some(row=>row.text==='code'));
 });
+
+test('standard diff prepares fresh rows and leaves the experimental projection unused',()=>{
+ const patch={hunks:[{header:'@@',lines:[{side:'new',newLine:1,text:'first'}]}]};
+ const view=diffView(patch,null),ui=controls();
+ ui.diffPane(view);
+ const standardRows=view.diffRows;
+ assert.equal(view.experimentalDiffProjection,undefined);
+ patch.hunks[0].lines[0].text='updated';
+ ui.diffPane(view);
+ assert.notEqual(view.diffRows,standardRows);
+ assert.equal(view.diffRows.find(row=>row.kind==='line').text,'updated');
+ view.experimentalDiff=true;
+ ui.diffPane(view);
+ const experimentalRows=view.diffRows;
+ ui.diffPane(view);
+ assert.equal(view.diffRows,experimentalRows);
+ view.experimentalDiff=false;
+ ui.diffPane(view);
+ assert.notEqual(view.diffRows,experimentalRows);
+});

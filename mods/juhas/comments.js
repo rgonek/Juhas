@@ -23,12 +23,12 @@ export function* annotatePatchBatches(patch,drafts,comparisonId,path){
  const hunks=patch?.hunks||[];let count=0;
  for(let hi=0;hi<hunks.length;hi++){
   if(++count%DIFF_BATCH_SIZE===0)yield;
-  const h=hunks[hi];
-  rows.push({id:`h${hi}`,kind:'hunk',hunk:h,text:h.header});
+  const h=hunks[hi],id=h.contextId??`h${hi}`;
+  rows.push({id,kind:'hunk',hunk:h,text:h.header});
   for(let i=0;i<h.lines.length;i++){
    if(++count%DIFF_BATCH_SIZE===0)yield;
    const line=h.lines[i];
-   rows.push({...line,id:`h${hi}l${i}`,kind:'line',hunk:h});
+   rows.push({...line,id:`${id}l${i}`,kind:'line',hunk:h});
    const old=byOldLine.get(line.oldLine),next=byNewLine.get(line.newLine);
    const comments=old&&next?[...old,...next].sort((a,b)=>a.index-b.index):old||next;
    if(comments)for(const {draft} of comments)rows.push(comment(draft));

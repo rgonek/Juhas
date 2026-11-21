@@ -113,7 +113,7 @@ export function* lineInfoBatches(rows){
   const newStart=Number(header[3])+Number(newCount===0);
   const skipped=newStart-newEnd;
   if(skipped>0&&oldStart-oldEnd===skipped){
-   visible.push({...row,text:`${skipped} omitted ${skipped===1?'line':'lines'}`});
+   visible.push({...row,gap:{oldStart:oldEnd,newStart:newEnd,count:skipped},text:`${skipped} omitted ${skipped===1?'line':'lines'}`});
   }
   oldEnd=oldStart+oldCount;
   newEnd=newStart+newCount;

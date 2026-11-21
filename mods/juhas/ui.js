@@ -369,9 +369,9 @@ function matchesProjection(candidate,patch,key,sectionPatches){
  return candidate&&candidate.patch===patch&&candidate.key===key&&sectionPatches.every((patch,index)=>patch===candidate.sectionPatches[index]);
 }
 function diffProjection(view,s,drafts,split,hiddenSelected,cx){
- const {patch,comparison,file}=s,{hideTests}=view,inlineEditor=!view.experimentalDiff&&Boolean(view.inlineEditor);
+ const {comparison,file}=s,{hideTests}=view,patch=view.displayContextPatch?.(s.patch)??s.patch,inlineEditor=!view.experimentalDiff&&Boolean(view.inlineEditor);
  const target=view.experimentalDiff?null:view.target,editId=view.experimentalDiff?null:view.editId;
- const sectionsInput=view.allFiles?(view.allFileSections||[]):null;
+ const sectionsInput=view.allFiles?(view.allFileSections||[]).map(section=>({...section,patch:view.displayContextPatch?.(section.patch)??section.patch})):null;
  const sectionPatches=sectionsInput?.map(section=>section.patch)||[];
  const key=JSON.stringify([comparison?.id,file?.newPath,split,hiddenSelected,hideTests,
   target,inlineEditor,editId,drafts,
@@ -470,7 +470,8 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
    if(!split||!row.draft?.side)return content();
    return h_flex().when(row.kind==='editor',e=>e.min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT))).when(row.kind!=='editor',e=>e.h(height)).w_full().min_w(0).child(row.draft.side==='old'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0)).child(div().w(1).h_full().bg(t.border)).child(row.draft.side==='new'?div().flex_1().min_w(0).child(content()):div().flex_1().min_w(0));
   }
-  if(row.kind==='hunk')return h_flex().h(type.px(22)).px(10).items_center().bg(t.raised).text_color(t.muted).text_size(type.caption).child(row.text);
+  if(row.kind==='hunk')return h_flex().h(type.px(22)).px(10).items_center().bg(t.raised).text_color(t.muted).text_size(type.caption)
+   .when(Boolean(row.gap&&view.revealDiffContext),e=>e.cursor_pointer().hover(el=>el.bg(t.selected)).tooltip('Show '+row.text)).child(row.text);
   if(row.kind==='pair'){
    const path=row.filePath||s.file?.newPath;
    const cell=(line,side)=>{
@@ -487,7 +488,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).px(8).gap(8).font_family(font).text_size(type.code).line_height(type.lineHeight).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
    .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.oldLine??''))).child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.newLine??'')))
    .child(sourceText(row,path,t,wrap,changed,matches,`${mark} `,interaction?.source(side),type,font,prepareText(row,path,changed,matches)));
- };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rowsById.get(id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk')return;
+ };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rowsById.get(id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk'){if(row.gap)view.revealDiffContext?.(row,cx);return;}
   if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}if(view.experimentalDiff)return;
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};

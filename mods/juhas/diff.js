@@ -40,3 +40,20 @@ export async function loadPatch(run,c,file,limits={}){
  else r={stdout:await git(run,c.repo,['diff',...options,...(limits.full?['--unified=20000']:[]),...ends(c),'--',`:(literal)${file.oldPath??file.newPath}`,...(file.oldPath!==file.newPath?[`:(literal)${file.newPath}`]:[])])};
  return {...parsePatch(r.stdout,file.id,limits),full:!!limits.full};
 }
+
+// Only publish the gap if the expanded patch contains every expected context line.
+export function revealPatchGap(patch,full,{oldStart,newStart,count},before,maxRows=20000){
+ const hunks=patch.hunks,index=hunks.findIndex((h,i)=>(h.contextId??'h'+i)===before);
+ if(index<0||hunks[index-1]?.contextId==='context-'+before)return null;
+ if(count+hunks.reduce((n,h)=>n+h.lines.length,0)>maxRows)return null;
+ const lines=[];
+ for(const hunk of full.hunks)for(const line of hunk.lines){
+  if(line.newLine==null||line.newLine<newStart||line.newLine>=newStart+count)continue;
+  if(line.side!=='context'||line.newLine!==newStart+lines.length||line.oldLine!==oldStart+lines.length)return null;
+  lines.push(line);
+ }
+ if(lines.length!==count)return null;
+ const result=hunks.map((h,i)=>h.contextId?h:{...h,contextId:'h'+i});
+ result.splice(index,0,{contextId:'context-'+before,header:`@@ -${oldStart},${count} +${newStart},${count} @@`,lines});
+ return {...patch,hunks:result};
+}

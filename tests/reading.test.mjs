@@ -1,12 +1,31 @@
 import test from 'node:test';
+import {revealPatchGap} from '../mods/juhas/diff.js';
+import {annotatePatch} from '../mods/juhas/comments.js';
 import assert from 'node:assert/strict';
 import {tokenizeLine,intraline,findInPatch,findMatchRanges,decorateLine,multiFileRows,withLineInfo} from '../mods/juhas/reading.js';
 
 test('line info counts omitted context across edits and ignores adjacent hunks',()=>{
  const headers=['@@ -1,90 +1,90 @@','@@ -119,0 +120,2 @@','@@ -120 +122 @@'];
  const rows=headers.map((text,i)=>({kind:'hunk',id:`h${i}`,text}));
- assert.deepEqual(withLineInfo(rows),[{kind:'hunk',id:'h1',text:'29 omitted lines'}]);
+ assert.deepEqual(withLineInfo(rows),[{kind:'hunk',id:'h1',text:'29 omitted lines',gap:{oldStart:91,newStart:91,count:29}}]);
 });
+test('revealing one gap preserves other separators and existing row identities',()=>{
+ const line=(oldLine,newLine)=>({side:'context',oldLine,newLine,text:'line '+newLine});
+ const patch={hunks:[{header:'@@ -3 +3 @@',lines:[line(3,3)]},{header:'@@ -6 +6 @@',lines:[line(6,6)]}]};
+ const full={hunks:[{lines:[1,2,3,4,5,6].map(n=>line(n,n))}]};
+ const before=withLineInfo(annotatePatch(patch,[],'cmp','a'));
+ const gap=before.find(r=>r.id==='h1').gap;
+ assert.equal(revealPatchGap(patch,full,gap,'h1',3),null);
+ assert.equal(revealPatchGap(patch,{hunks:[{lines:[line(4,4)]}]},gap,'h1'),null);
+ const revealed=revealPatchGap(patch,full,gap,'h1');
+ const rows=withLineInfo(annotatePatch(revealed,[{id:'draft',comparisonId:'cmp',newPath:'a',side:'new',endLine:4}], 'cmp','a'));
+ assert.deepEqual(rows.map(r=>r.id),['h0','h0l0','context-h1l0','comment-draft','context-h1l1','h1l0']);
+ assert.equal(patch.hunks.length,2);
+ assert.equal(rows[0].text,'2 omitted lines');
+ assert.equal(revealPatchGap(revealed,full,gap,'h1'),null);
+
+});
+
 test('syntax tokens retain exact Unicode and whitespace and reuse theme-independent cache',()=>{
  const source='const café = "😀\t"; // x  ';const tokens=tokenizeLine(source,'a.ts');
  assert.equal(tokens.map(t=>t.text).join(''),source);assert.ok(tokens.some(t=>t.kind==='keyword'));assert.ok(tokens.some(t=>t.kind==='string'));

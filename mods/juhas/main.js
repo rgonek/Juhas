@@ -1,3 +1,4 @@
+import {revealPatchGap} from './diff.js';
 import {selectionModelBatches} from './selection.js';
 import DiffRow from './diff-row.js';
 import {DiffSelection} from './diff-selection.js';
@@ -87,7 +88,7 @@ export default class Juhas extends View {
  prepareFileHeaders(cx){if(!this.allFiles||!cx?.new)return;const key=this.controller.state.comparison?.id;if(this.fileHeadersKey!==key){for(const item of this.fileHeaderViews?.values()||[])item.release();this.fileHeaderViews=new Map();this.fileHeaderSignatures=new Map();this.fileHeadersKey=key;}const session=this.controller.session(),files=new Map((this.controller.state.files||[]).map(file=>[file.id,file]));for(const section of this.allFileSections||[]){if(section.comparison?.id===key&&files.has(section.file.id))section.file=files.get(section.file.id);const p={owner:this,fileId:section.file.id,comparisonId:key},signature=JSON.stringify([section.collapsed,section.loading,section.limited,section.file.additions,section.file.deletions,section.file.binary,section.patch?.fullContext,this.isFileReviewed(section.file,session),this.busy,this.diffWidth||this.width]);if(!this.fileHeaderViews.has(section.file.id))this.fileHeaderViews.set(section.file.id,cx.new(FileHeader,p));else if(this.fileHeaderSignatures.get(section.file.id)!==signature)cx.notify(this.fileHeaderViews.get(section.file.id));this.fileHeaderSignatures.set(section.file.id,signature);}}
  markFileReviewed(checked,cx){const {comparison,file}=this.controller.state;if(!comparison||!file)return;this.controller.mutate(s=>setFileReviewed(s,comparison,file,checked));cx.notify();}
  moveUnreviewed(direction,cx){const s=this.controller.state,next=nextUnreviewed(this.visibleFiles(),this.controller.session(),s.comparison,s.file?.id,direction);if(next)this.selectFile(next.id,cx);else{this.message='No more unreviewed files';cx.notify();}}
- setFindQuery(query,cx){this.findQuery=query;this.findIndex=-1;if(this.allFiles){this.findMatches=[];for(const section of this.allFileSections||[]){if(section.collapsed||!section.patch||this.hideTests&&isTestFile(section.file))continue;const matches=findInPatch(section.patch,query);const remaining=10000-this.findMatches.length;this.findMatches.push(...matches.slice(0,remaining).map(m=>({...m,fileId:section.file.id})));if(matches.limited||matches.length>remaining)this.findMatches.limited=true;}}else this.findMatches=query&&!(this.hideTests&&isTestFile(this.controller.state.file))?findInPatch(this.controller.state.patch,query):[];cx?.notify();}
+ setFindQuery(query,cx){this.findQuery=query;this.findIndex=-1;if(this.allFiles){this.findMatches=[];for(const section of this.allFileSections||[]){if(section.collapsed||!section.patch||this.hideTests&&isTestFile(section.file))continue;const matches=findInPatch(this.displayContextPatch(section.patch),query);const remaining=10000-this.findMatches.length;this.findMatches.push(...matches.slice(0,remaining).map(m=>({...m,fileId:section.file.id})));if(matches.limited||matches.length>remaining)this.findMatches.limited=true;}}else this.findMatches=query&&!(this.hideTests&&isTestFile(this.controller.state.file))?findInPatch(this.displayContextPatch(this.controller.state.patch),query):[];cx?.notify();}
  moveFind(direction,cx){const matches=this.findMatches||[];if(!matches.length)return;this.findIndex=(this.findIndex+direction+matches.length)%matches.length;const match=matches[this.findIndex],field=match.side==='old'?'oldLine':'newLine';const index=(this.diffRows||[]).findIndex(r=>(!match.fileId||r.fileId===match.fileId)&&(r.kind==='pair'?(match.side==='old'?r.old:r.next)?.[field]===match.line:r.kind==='line'&&r[field]===match.line));if(index>=0)this.scrollDiffToItem(index,'center');cx.notify();}
  ensureExperimentalSelectionFocus(cx){
   if(this.selectionHandle)return;
@@ -211,6 +212,32 @@ export default class Juhas extends View {
  setHideTests(hidden,cx){this.hideTests=hidden;this.changeCursor=null;this.setFindQuery(this.findQuery||'',cx);this.rememberLoadedView();cx.notify();}
  anyFileExpanded(){return (this.allFileSections||[]).some(section=>!section.collapsed&&(!this.hideTests||!isTestFile(section.file)));}
  toggleAllExpansion(cx){if(!this.anyFileExpanded()){this.expandAllFiles(cx);return;}this.expansionVersion=(this.expansionVersion||0)+1;for(const section of this.allFileSections||[])if(!this.hideTests||!isTestFile(section.file))section.collapsed=true;this.prepareFileHeaders(cx);this.setFindQuery(this.findQuery||'',cx);}
+ displayContextPatch(patch){return this.contextPatches?.get(patch)??patch;}
+ revealDiffContext(row,cx){
+  const controller=this.controller,{comparison,file:selected,patch:selectedPatch}=controller.state,allFiles=this.allFiles;
+  const section=allFiles?this.allFileSections?.find(item=>item.file.id===row.fileId&&item.comparison?.id===comparison?.id):null;
+  const file=allFiles?section?.file:selected,patch=allFiles?section?.patch:selectedPatch;
+  if(!comparison||!file||!patch||section?.collapsed)return;
+  const before=row.sourceId??row.id;
+  const current=()=>!this.closed&&this.controller===controller&&controller.state.comparison?.id===comparison.id&&
+   this.allFiles===allFiles&&(section?this.allFileSections.includes(section)&&!section.collapsed&&section.patch===patch:
+    controller.state.file?.id===file.id&&controller.state.patch===patch);
+  this.pendingContextReads??=new WeakMap();
+  if(this.pendingContextReads.has(patch))return;
+  this.pendingContextReads.set(patch,true);
+  cx.spawn(async cx=>{
+   try{
+    const full=await controller.readFileContext(file,comparison,row.gap);
+    if(!current())return;
+    const otherRows=section?this.allFileSections.reduce((n,item)=>n+(item===section?0:(this.displayContextPatch(item.patch)?.hunks||[]).reduce((m,h)=>m+h.lines.length,0)),0):0;
+    const next=revealPatchGap(this.displayContextPatch(patch),full,row.gap,before,20000-otherRows);
+    if(!next)throw new Error('The omitted lines are unavailable within the diff limits');
+    this.contextPatches??=new WeakMap();this.contextPatches.set(patch,next);
+    this.setFindQuery(this.findQuery||'',cx);
+   }catch(error){if(current()){this.message=error.message;cx.notify();}}
+   finally{this.pendingContextReads.delete(patch);}
+  });
+ }
  toggleFileContext(fileId,cx){
   const controller=this.controller,s=controller.state,comparison=s.comparison,section=this.allFileSections?.find(section=>section.file.id===fileId&&section.comparison?.id===comparison?.id),displayed=this.allFiles?section?.patch:s.file?.id===fileId?s.patch:null,full=!Boolean(displayed?.fullContext),version=this.expansionVersion||0;
   this.work(cx,async cx=>{if(controller.state.file?.id!==fileId)await controller.selectFile(fileId);if(this.controller!==controller||controller.state.comparison?.id!==comparison?.id||controller.state.file?.id!==fileId)return;

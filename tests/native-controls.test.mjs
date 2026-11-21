@@ -124,6 +124,17 @@ test('loaded-source find and comment navigation use guarded existing callbacks o
  const root=controls().diffPane(view);for(const id of ['find-previous','find-next'])descendants(root).find(n=>n?.identity===id).handlers.on_click({},{});
  view.controller.state.repo={key:'r'};for(const id of ['comment-previous','comment-next'])descendants(controls().draftsPane(view,{})).find(n=>n?.identity===id).handlers.on_click({},{});assert.deepEqual(calls,[['find',-1],['find',1],['comment',-1],['comment',1]]);assert.ok(descendants(root).some(n=>n?.nodes?.includes('1/1 · loaded context only')));
 });
+test('omitted line separators dispatch the same gap in both diff modes',()=>{
+ const ui=controls();
+ for(const experimentalDiff of [false,true])for(const wrap of [false,true])for(const diffMode of ['unified','split']){
+  const view=diffView({hunks:[{header:'@@ -18 +18 @@',lines:[{side:'new',newLine:18,text:'code'}]}]},null),calls=[];
+  Object.assign(view,{experimentalDiff,diffMode,readingOptions:{wrap},revealDiffContext:row=>calls.push(row.gap)});
+  const surface=descendants(ui.diffPane(view)).find(node=>node.kind===(wrap?'measured':'virtual'));
+  surface.handlers.on_item_click('h0',{});
+  assert.deepEqual(calls,[{oldStart:1,newStart:1,count:17}]);
+ }
+});
+
 test('wrapped source clicks create a comment with the displayed line snapshot',()=>{
  const view=diffView({hunks:[{header:'@@',lines:[{side:'new',newLine:9,text:'wrapped code'}]}]},null),calls=[];view.readingOptions={wrap:true};view.selectLine=(...args)=>calls.push(args);
  const list=descendants(controls().diffPane(view)).find(n=>n?.kind==='measured');list.handlers.on_item_click('h0l0',{});

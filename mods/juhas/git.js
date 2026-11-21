@@ -3,7 +3,7 @@ export function createRunner(exec,appFolder=''){
  const windows=/^[a-z]:/i.test(appFolder)||appFolder.charCodeAt(0)===92;
  const helper=appFolder&&appFolder.replace(/[\\/]+$/,'')+'/mods/juhas/helpers/juhas-blob-hash'+(windows?'.exe':'');
  let available=Boolean(helper);
- return async(repo,args,{blobFormat}={})=>{
+ const run=async(repo,args,{blobFormat}={})=>{
   const width=blobFormat==='sha1'?40:blobFormat==='sha256'?64:0;
   if(available&&repo.machine==null&&width&&args.length>3&&args[0]==='hash-object'&&args[1]==='--no-filters'&&args[2]==='--'){
    try{
@@ -17,6 +17,20 @@ export function createRunner(exec,appFolder=''){
   }
   return exec('git',[...READ,...args],{cwd:repo.root,on:repo.machine??null});
  };
+ run.contextRange=async(repo,file,{oldStart,newStart,count})=>{
+  if(!available||repo.machine!=null)return null;
+  let raw;
+  try{
+   const result=await exec(helper,['--context',file.oldOid,String(oldStart),file.newOid,String(newStart),String(count)],{cwd:repo.root,timeout:3000});
+   if(result.code!==0)return null;
+   raw=result.stdout;
+  }catch{return null;}
+  if(!raw?.endsWith('\n'))return null;
+  const lines=raw.slice(0,-1).split('\n');
+  if(lines.length!==count)return null;
+  return {hunks:[{lines:lines.map((text,i)=>({side:'context',oldLine:oldStart+i,newLine:newStart+i,text}))}]};
+ };
+ return run;
 }
 export function withGitBudget(run,{maxCommands=256,deadlineMs=25000,now=()=>Date.now()}={}){const start=now();let calls=0;const check=()=>{if(now()-start>deadlineMs)throw new Error('Git request time budget exceeded; previous source retained');};const limited=async(repo,args,options)=>{check();if(++calls>maxCommands)throw new Error('Git request command budget exceeded; previous source retained');const result=await run(repo,args,options);check();return result;};limited.originalRun=run.originalRun||run;return limited;}
 export async function git(run,repo,args,options){const r=await run(repo,args,options);if(r.code!==0)throw new Error(r.stderr.trim()||`Git exited ${r.code}`);return r.stdout;}

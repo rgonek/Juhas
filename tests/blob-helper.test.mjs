@@ -26,3 +26,19 @@ test('missing or invalid helper output falls back and remote hashes use Git',asy
  assert.deepEqual(calls.map(x=>x.command),['git','/herdr/mods/juhas/helpers/juhas-blob-hash','git','git']);
  assert.equal(calls[0].options.on,'remote');
 });
+
+test('context helper preserves source line numbers and returns null for remote or incomplete output',async()=>{
+ const calls=[];
+ const run=createRunner(async(command,args,options)=>{
+  calls.push({command,args,options});return {code:0,stdout:'first\r\n\n'};
+ },'C:/herdr');
+ const repo={root:'C:/repo'},file={oldOid:'a'.repeat(40),newOid:'b'.repeat(40)};
+ const gap={oldStart:4,newStart:9,count:2};
+ assert.deepEqual((await run.contextRange(repo,file,gap)).hunks[0].lines,[
+  {side:'context',oldLine:4,newLine:9,text:'first\r'},{side:'context',oldLine:5,newLine:10,text:''}
+ ]);
+ assert.deepEqual(calls[0].args,['--context',file.oldOid,'4',file.newOid,'9','2']);
+ assert.equal(await run.contextRange({...repo,machine:'remote'},file,gap),null);
+ assert.equal(calls.length,1);
+ assert.equal(await run.contextRange(repo,file,{...gap,count:3}),null);
+});

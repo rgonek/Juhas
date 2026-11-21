@@ -54,6 +54,89 @@ fn algorithm(arg: Option<OsString>) -> io::Result<fn(&Path) -> io::Result<String
     }
 }
 
+fn untracked_entry<D: Digest>(path: &Path) -> io::Result<String> {
+    if !regular_path(path) {
+        return Err(io::Error::other("expected a regular repository path"));
+    }
+    let meta = fs::symlink_metadata(path)?;
+    if !meta.file_type().is_file() {
+        return Ok("FALLBACK".to_string());
+    }
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt;
+        if meta.permissions().mode() & 0o111 != 0 {
+            "100755"
+        } else {
+            "100644"
+        }
+    };
+    #[cfg(not(unix))]
+    let mode = "100644";
+
+    let mut file = File::open(path)?;
+    let length = file.metadata()?.len();
+    let mut digest = D::new();
+    digest.update(format!("blob {length}\0"));
+    let mut buffer = [0u8; 64 * 1024];
+    let mut remaining = length;
+    let mut checked = 0usize;
+    let mut binary = false;
+    let mut newlines = 0u64;
+    let mut last_byte: Option<u8> = None;
+
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        remaining = remaining
+            .checked_sub(count as u64)
+            .ok_or_else(|| io::Error::other("file length changed during observation"))?;
+        let chunk = &buffer[..count];
+        digest.update(chunk);
+        if !binary && checked < 8000 {
+            let inspect = count.min(8000 - checked);
+            if chunk[..inspect].contains(&0) {
+                binary = true;
+            }
+            checked += inspect;
+        }
+        if !binary {
+            newlines += chunk.iter().filter(|&&b| b == b'\n').count() as u64;
+            last_byte = Some(chunk[count - 1]);
+        }
+    }
+    if remaining != 0 {
+        return Err(io::Error::other("file length changed during observation"));
+    }
+    let oid: String = digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    if binary {
+        Ok(format!("{mode}\t-\t{oid}"))
+    } else {
+        let lines = if length == 0 {
+            0
+        } else if last_byte == Some(b'\n') {
+            newlines
+        } else {
+            newlines + 1
+        };
+        Ok(format!("{mode}\t{lines}\t{oid}"))
+    }
+}
+
+fn untracked_algorithm(arg: Option<OsString>) -> io::Result<fn(&Path) -> io::Result<String>> {
+    match arg.as_deref().and_then(|arg| arg.to_str()) {
+        Some("sha1") => Ok(untracked_entry::<Sha1>),
+        Some("sha256") => Ok(untracked_entry::<Sha256>),
+        _ => Err(io::Error::other("unsupported hash algorithm")),
+    }
+}
+
 fn read_blob_range(
     reader: &mut impl BufRead,
     oid: &str,
@@ -190,6 +273,14 @@ fn output(mut args: impl Iterator<Item = OsString>) -> io::Result<Vec<u8>> {
             let mut out = Vec::new();
             for path in args {
                 writeln!(out, "{}", compute(Path::new(&path))?)?;
+            }
+            Ok(out)
+        }
+        Some("--untracked") => {
+            let inspect = untracked_algorithm(args.next())?;
+            let mut out = Vec::new();
+            for path in args {
+                writeln!(out, "{}", inspect(Path::new(&path))?)?;
             }
             Ok(out)
         }

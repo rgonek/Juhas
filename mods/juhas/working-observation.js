@@ -16,9 +16,22 @@ async function readWorkingFiles(run,repo,baseTree){
  // --no-index raw/numstat observes untracked modes (including symlinks) and
  // binary status without serializing their potentially enormous binary patch.
  // Bound process fan-out while preserving path order and exact metadata checks.
- const metadataFiles=new Array(untracked.length);let next=0,stopped=false;
- const workers=Array.from({length:Math.min(4,untracked.length)},async()=>{
-  while(!stopped&&next<untracked.length){const index=next++,path=untracked[index];try{const result=await run(repo,['diff',...options,'--no-index','--raw','--numstat','--no-abbrev','-z','--','/dev/null',path]);if(result.code!==0&&result.code!==1)throw new Error(result.stderr||'Cannot inspect untracked file');const metadata=parseFiles(result.stdout)[0];if(!metadata)throw new Error('Untracked file disappeared during observation');metadataFiles[index]=({...metadata,id:JSON.stringify([null,path]),oldPath:null,newPath:path,untracked:true});}catch(error){stopped=true;throw error;}}
+ const metadataFiles=new Array(untracked.length);
+ const blobFormat=baseTree.length===64?'sha256':'sha1',zeroOid='0'.repeat(baseTree.length===64?64:40);
+ const helperMeta=untracked.length&&run.untrackedMetadata?await run.untrackedMetadata(repo,untracked,{blobFormat}):null;
+ const fallbackIndices=[];
+ if(helperMeta&&helperMeta.length===untracked.length){
+  for(let index=0;index<untracked.length;index++){
+   const m=helperMeta[index],path=untracked[index];
+   if(m)metadataFiles[index]={id:JSON.stringify([null,path]),oldPath:null,newPath:path,status:'A',oldMode:'000000',newMode:m.mode,oldOid:zeroOid,newOid:m.oid,binary:m.binary,additions:m.additions,deletions:m.deletions,path,untracked:true};
+   else fallbackIndices.push(index);
+  }
+ }else{
+  for(let index=0;index<untracked.length;index++)fallbackIndices.push(index);
+ }
+ let next=0,stopped=false;
+ const workers=Array.from({length:Math.min(4,fallbackIndices.length)},async()=>{
+  while(!stopped&&next<fallbackIndices.length){const index=fallbackIndices[next++],path=untracked[index];try{const result=await run(repo,['diff',...options,'--no-index','--raw','--numstat','--no-abbrev','-z','--','/dev/null',path]);if(result.code!==0&&result.code!==1)throw new Error(result.stderr||'Cannot inspect untracked file');const metadata=parseFiles(result.stdout)[0];if(!metadata)throw new Error('Untracked file disappeared during observation');metadataFiles[index]=({...metadata,id:JSON.stringify([null,path]),oldPath:null,newPath:path,untracked:true});}catch(error){stopped=true;throw error;}}
  });
  const results=await Promise.allSettled(workers),failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
  files.push(...metadataFiles);
@@ -41,7 +54,7 @@ export async function workingLineCounts(runner,repo){
 }
 export async function observeWorking(run,repo,baseTree){
  const {files,untracked}=await readWorkingFiles(run,repo,baseTree);
- const regular=files.filter(f=>!['000000','120000','160000'].includes(f.newMode));
+ const regular=files.filter(f=>!['000000','120000','160000'].includes(f.newMode)&&!(f.untracked&&f.newOid&&!/^0+$/.test(f.newOid)));
  for(let i=0;i<regular.length;i+=40){const batch=regular.slice(i,i+40),hashes=(await git(run,repo,['hash-object','--no-filters','--',...batch.map(f=>f.newPath)],{blobFormat:baseTree.length===64?'sha256':'sha1'})).trim().split('\n');if(hashes.length!==batch.length||hashes.some(h=>! /^[a-f0-9]{40,64}$/.test(h)))throw new Error('Cannot verify working file contents');batch.forEach((f,j)=>f.newOid=hashes[j]);}
  for(const file of files.filter(f=>f.newMode==='120000')){
   const args=file.untracked?['diff',...options,'--no-index','--','/dev/null',file.newPath]:['diff',...options,baseTree,'--',`:(literal)${file.newPath}`];const result=await run(repo,args);if(result.code!==0&&!(file.untracked&&result.code===1))throw new Error(result.stderr||'Cannot inspect symlink');file.newOid=`symlink:${fingerprint(result.stdout)}`;

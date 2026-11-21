@@ -30,9 +30,35 @@ export function createRunner(exec,appFolder=''){
   if(lines.length!==count)return null;
   return {hunks:[{lines:lines.map((text,i)=>({side:'context',oldLine:oldStart+i,newLine:newStart+i,text}))}]};
  };
+ run.untrackedMetadata=async(repo,paths,{blobFormat='sha1'}={})=>{
+  const width=blobFormat==='sha1'?40:blobFormat==='sha256'?64:0;
+  if(!available||repo.machine!=null||!width||!paths.length)return null;
+  const output=[];
+  for(let i=0;i<paths.length;){
+   const batch=[];let chars=0;
+   while(i<paths.length&&batch.length<40&&(batch.length===0||chars+paths[i].length+1<=8000)){batch.push(paths[i]);chars+=paths[i].length+1;i++;}
+   let result;
+   try{result=await exec(helper,['--untracked',blobFormat,...batch],{cwd:repo.root,timeout:10000});}
+   catch{available=false;return null;}
+   if(result.code!==0){if(result.code!==2)available=false;return null;}
+   const lines=result.stdout.replace(/\r?\n$/,'').split(/\r?\n/);
+   if(lines.length!==batch.length)return null;
+   for(const line of lines){
+    if(line==='FALLBACK'){output.push(null);continue;}
+    const parts=line.split('\t');
+    if(parts.length!==3)return null;
+    const [mode,countStr,oid]=parts;
+    if((mode!=='100644'&&mode!=='100755')||oid.length!==width||!/^[a-f0-9]+$/.test(oid))return null;
+    if(countStr!=='-'&&!/^\d+$/.test(countStr))return null;
+    const binary=countStr==='-';
+    output.push({mode,binary,additions:binary?null:Number(countStr),deletions:binary?null:0,oid});
+   }
+  }
+  return output;
+ };
  return run;
 }
-export function withGitBudget(run,{maxCommands=256,deadlineMs=25000,now=()=>Date.now()}={}){const start=now();let calls=0;const check=()=>{if(now()-start>deadlineMs)throw new Error('Git request time budget exceeded; previous source retained');};const limited=async(repo,args,options)=>{check();if(++calls>maxCommands)throw new Error('Git request command budget exceeded; previous source retained');const result=await run(repo,args,options);check();return result;};limited.originalRun=run.originalRun||run;return limited;}
+export function withGitBudget(run,{maxCommands=256,deadlineMs=25000,now=()=>Date.now()}={}){const start=now();let calls=0;const check=()=>{if(now()-start>deadlineMs)throw new Error('Git request time budget exceeded; previous source retained');};const limited=async(repo,args,options)=>{check();if(++calls>maxCommands)throw new Error('Git request command budget exceeded; previous source retained');const result=await run(repo,args,options);check();return result;};limited.originalRun=run.originalRun||run;if(run.contextRange)limited.contextRange=run.contextRange;if(run.untrackedMetadata)limited.untrackedMetadata=async(repo,paths,options)=>{check();if(++calls>maxCommands)throw new Error('Git request command budget exceeded; previous source retained');const result=await run.untrackedMetadata(repo,paths,options);check();return result;};return limited;}
 export async function git(run,repo,args,options){const r=await run(repo,args,options);if(r.code!==0)throw new Error(r.stderr.trim()||`Git exited ${r.code}`);return r.stdout;}
 export function revision(value){if(typeof value!=='string'||!value||value.startsWith('-')||/[\0\r\n]/.test(value))throw new Error('Invalid revision');return value;}
 const treeCaches=new WeakMap();

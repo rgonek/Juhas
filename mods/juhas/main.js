@@ -160,6 +160,7 @@ export default class Juhas extends View {
   if(selection){
    this.selectionScale=metrics.scale;
    selection.update(rows,split,source,this.selectionLayoutKey(metrics));
+   selection.baseProjection=this.diffProjection;
   }
   const style=JSON.stringify([selection?.version,theme(),settings().font_family,split,this.readingOptions,this.diffWidth,metrics,
    this.findQuery,this.findCursor,this.target&&[this.target.comparisonId,this.target.newPath,this.target.side,this.target.startLine,this.target.endLine]]);
@@ -293,7 +294,7 @@ export default class Juhas extends View {
  }
  diffChangeKey(){const s=this.controller.state;return JSON.stringify([s.comparison?.id,s.file?.id,this.diffMode,Boolean(this.hideTests)]);}
  isLargeMeasuredDiff(rows){
-  const projection=this.diffProjection;
+  const projection=this.renderedDiffProjection??this.diffProjection;
   return projection?.rows===rows&&projection.large&&(!projection.uniform||this.readingOptions?.wrap);
  }
  scrollDiffToItem(index,strategy,rows=this.diffRows||[]){

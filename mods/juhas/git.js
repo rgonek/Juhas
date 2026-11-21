@@ -27,6 +27,15 @@ export async function oid(run,repo,ref,type='commit'){
  const result=(await git(run,repo,['rev-parse','--verify','--end-of-options',`${revision(ref)}^{${type}}`])).trim();if(immutable){cache.set(key,result);while(cache.size>128)cache.delete(cache.keys().next().value);}return result;
 }
 export async function isAncestor(run,repo,base,target){const result=await run(repo,['merge-base','--is-ancestor',revision(base),revision(target)]);if(result.code===0)return true;if(result.code===1)return false;throw new Error(result.stderr?.trim()||'Cannot verify Git ancestry');}
-export function utf8Bytes(text){let n=0;for(const c of text){const x=c.codePointAt(0);n+=x<128?1:x<2048?2:x<65536?3:4;}return n;}
+export function utf8Bytes(text){
+ let bytes=text.length;
+ const runs=/[\u0080-\u07ff]+|[\u0800-\ud7ff\ue000-\uffff]+|(?:[\ud800-\udbff][\udc00-\udfff])+|[\ud800-\udfff]/g;
+ for(let match;(match=runs.exec(text));){
+  const run=match[0],code=run.charCodeAt(0);
+  const pairedSurrogates=code>=0xd800&&code<=0xdbff&&run.length>1;
+  bytes+=run.length*(code<0x800||pairedSurrogates?1:2);
+ }
+ return bytes;
+}
 export function uid(){return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,12)}`;}
 export function fingerprint(text){let a=2166136261,b=2246822519;for(let i=0;i<text.length;i++){a=Math.imul(a^text.charCodeAt(i),16777619);b=Math.imul(b^text.charCodeAt(i),3266489917);}return (a>>>0).toString(16).padStart(8,'0')+(b>>>0).toString(16).padStart(8,'0');}

@@ -46,12 +46,13 @@ export function findInPatch(patch,query){
  for(const hunk of patch?.hunks||[]){rowIndex++;for(const row of hunk.lines){for(const side of ['old','new']){const line=row[side==='old'?'oldLine':'newLine'];if(line==null)continue;let start=0,index;while((index=row.text.indexOf(query,start))>=0){if(result.length===10000){result.limited=true;return result;}result.push({side,line,start:index,end:index+query.length,rowIndex});start=index+query.length;}}rowIndex++;}}
  return result;
 }
-const findMatchIndexes=new WeakMap();
+const findMatchIndexes=new WeakMap(),noMatches=Object.freeze([]);
+const emptyMatchRanges=()=>noMatches;
 export function findMatchRanges(matches,allFiles){
- if(!matches?.length)return ()=>[];
+ if(!matches?.length)return emptyMatchRanges;
  const previous=findMatchIndexes.get(matches);
  if(previous?.allFiles===allFiles)return previous.lookup;
- const files=new Map(),empty=[];
+ const files=new Map(),empty=noMatches;
  for(const match of matches){
   const fileId=allFiles?match.fileId:null;
   let sides=files.get(fileId);

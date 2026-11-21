@@ -20,12 +20,12 @@ export async function loadChangedFileStats(run,c,files){
  return files.map(file=>({...file,...stats.get(file.newPath)}));
 }
 export function parsePatch(text,fileId,{maxBytes=4194304,maxRows=20000}={}){
- const bytes=utf8Bytes(text);
- if(bytes>maxBytes)return {fileId,hunks:[],complete:false,reason:`Diff exceeds ${maxBytes} bytes`,binary:false};
+ const length=text.length;
+ if(length>maxBytes||(length*3>maxBytes&&/[^\x00-\x7f]/.test(text)&&utf8Bytes(text)>maxBytes))return {fileId,hunks:[],complete:false,reason:`Diff exceeds ${maxBytes} bytes`,binary:false};
  const lines=text.split('\n');const hunks=[];let hunk=null,old=0,next=0,rows=0,complete=true;
  for(const line of lines){
   if(++rows>maxRows){complete=false;break;}
-  const m=/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(line);
+  const m=line.startsWith('@@ ')?/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(line):null;
   if(m){old=Number(m[1]);next=Number(m[2]);hunk={header:line,lines:[]};hunks.push(hunk);continue;}
   if(!hunk)continue;const kind=line[0];
   if(kind==='-')hunk.lines.push({side:'old',oldLine:old++,newLine:null,text:line.slice(1)});

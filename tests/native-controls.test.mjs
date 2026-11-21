@@ -520,3 +520,24 @@ test('wrapped virtual rows discard measurements from a different file with the s
  view.diffSelection.source=view.diffChangeKey();view.diffSelection.rows=view.diffRows;
  assert.equal(descendants(ui.diffPane(view)).find(node=>node.kind==='virtual').sizes[index],128);
 });
+
+test('opening an experimental comment inserts a row without preparing the large diff again',()=>{
+ const ui=controls(),view=diffView({hunks:[{header:'@@',lines:Array.from({length:3000},(_,i)=>({side:'new',newLine:i+1,text:'line '+i}))}]},null),callbacks=[];
+ const cx={timer:{after:(_delay,fn)=>callbacks.push(fn)},notify(){}};
+ view.experimentalDiff=true;view.readingOptions={wrap:true};view.inlineEditor={};
+ ui.diffPane(view,cx);
+ while(callbacks.length)callbacks.shift()(cx);
+ ui.diffPane(view,cx);
+ const base=view.diffProjection,rows=view.diffRows,code=rows.find(row=>row.kind==='line'&&row.newLine===12);
+ view.diffSelection={source:view.diffChangeKey(),baseProjection:base,rows,heights:new Map([[code.id,64]])};
+ view.target={comparisonId:'c',newPath:'a',side:'new',startLine:12,endLine:12};
+ const opened=ui.diffPane(view,cx),surface=descendants(opened).find(node=>node.kind==='virtual');
+ assert.equal(callbacks.length,0);
+ assert.equal(view.diffProjection,base);
+ assert.equal(view.diffRows.find(row=>row.id===code.id),code);
+ const index=view.diffRows.indexOf(code);
+ assert.equal(view.diffRows[index+1].kind,'editor');
+ assert.equal(surface.sizes[index],64);
+ view.target=null;ui.diffPane(view,cx);
+ assert.equal(view.diffRows,rows);
+});

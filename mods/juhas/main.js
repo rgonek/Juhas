@@ -262,9 +262,9 @@ export default class Juhas extends View {
    const visible=this.allFileSections.filter(section=>!this.hideTests||!isTestFile(section.file));
    for(const section of visible)section.collapsed=false;
    const pending=visible.filter(section=>!section.patch&&!section.limited);
-   for(let offset=0;offset<pending.length;offset+=4){
+   for(let offset=0;offset<pending.length;offset+=12){
     if(!current())return;
-    const batch=pending.slice(offset,offset+4);
+    const batch=pending.slice(offset,offset+12);
     if(rows>=20000){for(const section of batch)section.limited=true;continue;}
     for(const section of batch)section.loading=true;
     this.prepareFileHeaders(cx);cx.notify();

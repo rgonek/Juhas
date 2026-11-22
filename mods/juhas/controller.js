@@ -3,11 +3,11 @@ import {resolveRepo} from './repositories.js';
 import {git,uid,oid,isAncestor,withGitBudget} from './git.js';
 import {listHistory,listRefs} from './history.js';
 import {resolveComparison,fromHistory,resolveBase} from './comparisons.js';
-import {listChangedFiles,listChangedFileMetadata,loadChangedFileStats,loadPatch} from './diff.js';
+import {listChangedFiles,listChangedFileMetadata,loadChangedFileStats,loadPatch,loadPatches} from './diff.js';
 import {createCache,createRequestGate} from './cache.js';
 import {loadSession,mutateSession} from './storage.js';
 import {addDraft,markSeen,lastCheckpoint} from './review.js';
-import {observeWorking,hasWorkingChanges} from './working-observation.js';
+import {observeWorking,hasWorkingChanges,readRepoStatus} from './working-observation.js';
 function patchKey(c,file,full=false){return JSON.stringify([c.repoKey,c.baseTree,c.mutableTarget?file.contentIdentity||c.targetTree:c.targetTree,file.id,'patch',full]);}
 export class Controller {
  constructor({run,store,sessionId='default',cache=createCache(),onChange=()=>{}}){this.run=run;this.store=store;this.sessionId=sessionId;this.cache=cache;this.onChange=onChange;this.gate=createRequestGate();this.patchGate=createRequestGate();this.historyGate=createRequestGate();this.baseGate=createRequestGate();this.refreshGate=createRequestGate();this.state={repo:null,branch:null,history:[],refs:[],files:[],file:null,patch:null,comparison:null,error:null,hasMore:false,historyLoading:false,historyLoadingMore:false,fileStatsLoading:false,fileStatsError:null,hasWorkingChanges:null};}
@@ -17,10 +17,16 @@ export class Controller {
   this.automaticVersion=(this.automaticVersion||0)+1;this.automaticRequest=null;this.refreshGate.begin('repo');
   const token=this.gate.begin('repo');this.patchGate.begin('repo');this.historyGate.begin('repo');this.baseGate.begin('repo');this.state.historyLoading=false;this.state.historyLoadingMore=false;this.state.fileStatsLoading=false;this.state.fileStatsError=null;
   const repo=providedRepo||await resolveRepo(this.run,machine,folder);if(!this.gate.isCurrent(token))return;if(!repo)throw new Error('Folder is not inside a Git repository; use Discover to find nested repositories');
-  const [refs,branch,head,workingDirty]=await Promise.all([listRefs(this.run,repo),this.run(repo,['symbolic-ref','--short','-q','HEAD']),this.run(repo,['rev-parse','--verify','HEAD']),hasWorkingChanges(this.run,repo).catch(()=>null)]);if(!this.gate.isCurrent(token))return;
-  this.state={...this.state,repo,automaticChoice:null,branch:branch.stdout.trim()||'(detached)',refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null,hasWorkingChanges:workingDirty};
-  if(head.code!==0){this.state.empty=true;this.state.observedHead=null;return;}
-  this.state.empty=false;this.state.observedHead=head.stdout.trim();if(loadHistory)await this.loadHistory({},false,head.stdout.trim());
+  const [refs,status]=await Promise.all([listRefs(this.run,repo),readRepoStatus(this.run,repo).catch(()=>null)]);if(!this.gate.isCurrent(token))return;
+  let branch,head,workingDirty;
+  if(status){({branch,head,dirty:workingDirty}=status);}
+  else{
+   const [branchRes,headRes,dirtyRes]=await Promise.all([this.run(repo,['symbolic-ref','--short','-q','HEAD']),this.run(repo,['rev-parse','--verify','HEAD']),hasWorkingChanges(this.run,repo).catch(()=>null)]);if(!this.gate.isCurrent(token))return;
+   branch=branchRes.stdout.trim()||'(detached)';head=headRes.code===0?headRes.stdout.trim():null;workingDirty=dirtyRes;
+  }
+  this.state={...this.state,repo,automaticChoice:null,branch,refs,files:[],file:null,patch:null,comparison:null,error:null,history:[],hasMore:false,featureBaseOid:null,historyBaseError:null,historyBaseLoading:false,branchChanged:null,sourceUnavailable:false,sourceStale:false,newHead:null,missingFile:null,refreshError:null,hasWorkingChanges:workingDirty};
+  if(!head){this.state.empty=true;this.state.observedHead=null;return;}
+  this.state.empty=false;this.state.observedHead=head;if(loadHistory)await this.loadHistory({},false,head);
  }
  async loadHistory(filters={},more=false,resolvedHead=null){
   this.refreshGate.begin('history');const repo=this.state.repo;if(!repo)return;const filtersKey=JSON.stringify(filters);const skip=more?this.state.history.length:0;
@@ -126,14 +132,17 @@ export class Controller {
   await this.verifyDetachedComparison(comparison,run);
   const results=[],pendingCache=new Map();
   let read=false;
+  const uncached=files.filter(f=>!this.cache.get(patchKey(comparison,f)));
+  let batched=new Map();
+  if(uncached.length>1){try{batched=await loadPatches(run,comparison,uncached);}catch{/* Individual loadPatch will surface any per-file error. */}}
   for(const file of files){
    if(rowBudget<=0)break;
    const key=patchKey(comparison,file),cached=this.cache.get(key);
    let patch=cached;
    if(!cached){
     read=true;
-    try{patch=await loadPatch(run,comparison,file);}
-    catch(error){results.push({error});continue;}
+    if(batched.has(file.id))patch=batched.get(file.id);
+    else{try{patch=await loadPatch(run,comparison,file);}catch(error){results.push({error});continue;}}
     pendingCache.set(key,patch);
    }
    const count=(patch.hunks||[]).reduce((total,hunk)=>total+hunk.lines.length,0);
@@ -185,9 +194,15 @@ export class Controller {
   const current=()=>this.refreshGate.isCurrent(token)&&this.state.repo===repo&&this.state.comparison===comparison&&this.state.file===file;
   this.state.refreshing=true;this.state.refreshError=null;this.onChange();
   this.refreshPromise=(async()=>{try{
-   const [refs,branchResult,headResult,workingDirty]=await Promise.all([listRefs(run,repo),run(repo,['symbolic-ref','--short','-q','HEAD']),run(repo,['rev-parse','--verify','HEAD']),hasWorkingChanges(run,repo).catch(()=>this.state.hasWorkingChanges)]);
+   const [refs,status]=await Promise.all([listRefs(run,repo),readRepoStatus(run,repo).catch(()=>null)]);
    if(!current())return false;
-   const branch=branchResult.stdout.trim()||'(detached)',head=headResult.code===0?headResult.stdout.trim():null;
+   let branch,head,workingDirty;
+   if(status){({branch,head,dirty:workingDirty}=status);}
+   else{
+    const [branchResult,headResult,dirtyResult]=await Promise.all([run(repo,['symbolic-ref','--short','-q','HEAD']),run(repo,['rev-parse','--verify','HEAD']),hasWorkingChanges(run,repo).catch(()=>this.state.hasWorkingChanges)]);
+    if(!current())return false;
+    branch=branchResult.stdout.trim()||'(detached)';head=headResult.code===0?headResult.stdout.trim():null;workingDirty=dirtyResult;
+   }
    if(branch!==this.state.branch){this.state.branchChanged={previous:this.state.branch,current:branch};return false;}
    const refsChanged=JSON.stringify(refs)!==JSON.stringify(this.state.refs),headChanged=head!==this.state.observedHead,changed=refsChanged||headChanged;
    const loadCurrentHistory=async()=>{

@@ -196,7 +196,7 @@ test('unchanged working refresh reuses its initial HEAD and still verifies the f
  commands.length=0;
  assert.equal(await c.refresh(),true);
  assert.equal(c.state.patch,patch);
- assert.equal(commands.filter(args=>args[0]==='rev-parse'&&args.at(-1)==='HEAD').length,2);
+ assert.equal(commands.filter(args=>args[0]==='rev-parse'&&args.at(-1)==='HEAD').length,1);
  assert.equal(commands.some(args=>args.includes('HEAD^{commit}')),false);
  assert.equal(commands.some(args=>args[0]==='log'),false);
 });

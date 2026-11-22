@@ -36,9 +36,34 @@ test('range comments refuse mixed sides or files and retain exact code',()=>{
  assert.throws(()=>commentTarget(c,f,{side:'old',oldLine:2,text:'a'},{side:'new',newLine:2,text:'b'}),/side/i);
 });
 
-test('opening a repository resolves HEAD only once',async t=>{
+test('opening a repository resolves HEAD at most once via status or rev-parse',async t=>{
  const f=fixture(t);f.commit('initial');const calls=[],data=new Map();const c=new Controller({run:async(repo,args)=>{calls.push(args);return run(repo,args);},store:{get:k=>data.get(k),set:(k,v)=>data.set(k,v)}});
- await c.openRepo(null,f.root);assert.equal(calls.filter(args=>args[0]==='rev-parse'&&args.some(a=>a==='HEAD'||a==='HEAD^{commit}')).length,1);
+ await c.openRepo(null,f.root);
+ assert.ok(calls.filter(args=>args[0]==='rev-parse'&&args.some(a=>a==='HEAD'||a==='HEAD^{commit}')).length<=1);
+ assert.equal(calls.filter(args=>args[0]==='status').length,1);
+ assert.equal(c.state.branch,'trunk');
+ assert.equal(c.state.hasWorkingChanges,false);
+});
+
+test('readFilePatches batches multiple tracked files into one git diff call',async t=>{
+ const f=fixture(t);
+ writeFileSync(join(f.root,'a.txt'),'a1\n');
+ writeFileSync(join(f.root,'b.txt'),'b1\n');
+ writeFileSync(join(f.root,'c.txt'),'c1\n');
+ f.git('add','.');f.git('commit','-m','base');
+ writeFileSync(join(f.root,'a.txt'),'a2\n');
+ writeFileSync(join(f.root,'b.txt'),'b2\n');
+ writeFileSync(join(f.root,'c.txt'),'c2\n');
+ f.git('add','.');f.git('commit','-m','change');
+ const calls=[],data=new Map();
+ const c=new Controller({run:async(repo,args)=>{calls.push(args);return run(repo,args);},store:{get:k=>data.get(k),set:(k,v)=>data.set(k,v)}});
+ await c.openRepo(null,f.root);
+ await c.selectScope({kind:'commit',commit:'HEAD'});
+ calls.length=0;
+ const results=await c.readFilePatches(c.state.files,c.state.comparison);
+ assert.equal(results.length,3);
+ assert.ok(results.every(r=>r.patch&&r.patch.hunks.length===1));
+ assert.equal(calls.filter(args=>args[0]==='diff').length,1,'all 3 files loaded in one git diff');
 });
 
 test('freshly validated working comments reuse their snapshot without Git; normal refresh still checks changes',async t=>{

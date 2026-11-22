@@ -40,6 +40,24 @@ export async function loadPatch(run,c,file,limits={}){
  else r={stdout:await git(run,c.repo,['diff',...options,...(limits.full?['--unified=20000']:[]),...ends(c),'--',`:(literal)${file.oldPath??file.newPath}`,...(file.oldPath!==file.newPath?[`:(literal)${file.newPath}`]:[])])};
  return {...parsePatch(r.stdout,file.id,limits),full:!!limits.full};
 }
+export async function loadPatches(run,c,files,limits={}){
+ const map=new Map();
+ if(files.length<=1||limits.full)return map;
+ const batchable=files.filter(f=>!f.untracked&&f.oldPath===f.newPath&&f.newPath&&!/[\r\n"]/.test(f.newPath));
+ if(batchable.length<=1)return map;
+ const byHeader=new Map(batchable.map(f=>[`diff --git a/${f.newPath} b/${f.newPath}`,f]));
+ const raw=await git(run,c.repo,['diff',...options,...ends(c),'--', ...batchable.map(f=>`:(literal)${f.newPath}`)]);
+ const sections=raw?raw.split(/(?=^diff --git )/m):[];
+ const seen=new Set();
+ for(const section of sections){
+  if(!section.startsWith('diff --git '))continue;
+  const nl=section.indexOf('\n'),header=nl>=0?section.slice(0,nl):section;
+  const file=byHeader.get(header);
+  if(file&&!seen.has(file.id)){seen.add(file.id);map.set(file.id,{...parsePatch(section,file.id,limits),full:false});}
+ }
+ // Tracked files with empty diff output (e.g. mode-only edge or unchanged) fall back individually if not seen.
+ return map;
+}
 
 // Only publish the gap if the expanded patch contains every expected context line.
 export function revealPatchGap(patch,full,{oldStart,newStart,count},before,maxRows=20000){

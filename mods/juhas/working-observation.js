@@ -41,16 +41,44 @@ async function readWorkingFiles(run,repo,baseTree){
 export async function hasWorkingChanges(run,repo){
  return Boolean(await git(run,repo,['status','--porcelain=v1','-z','--untracked-files=normal']));
 }
+export async function readRepoStatus(run,repo){
+ const r=await run(repo,['status','--porcelain=v2','--branch','-z','--untracked-files=normal']);
+ if(r.code!==0)return null;
+ let branch='(detached)',head=null,dirty=false,seenHeader=false;
+ for(const entry of r.stdout.split('\0')){
+  if(!entry)continue;
+  if(entry.startsWith('# branch.head ')){seenHeader=true;const b=entry.slice(14);branch=b&&b!=='(detached)'?b:'(detached)';}
+  else if(entry.startsWith('# branch.oid ')){seenHeader=true;const o=entry.slice(13);head=o&&o!=='(initial)'?o:null;}
+  else if(!entry.startsWith('#')){dirty=true;break;}
+ }
+ return seenHeader?{branch,head,dirty}:null;
+}
 export async function workingLineCounts(runner,repo){
  const run=withGitBudget(runner);
- const head=await run(repo,['rev-parse','--verify','HEAD^{tree}']);
- const baseTree=(head.code===0?head.stdout:await git(run,repo,['hash-object','-t','tree','--stdin'])).trim();
- const {files}=await readWorkingFiles(run,repo,baseTree);
- return files.reduce((total,file)=>{
-  total.additions+=file.additions??0;
-  total.deletions+=file.deletions??0;
-  return total;
- },{additions:0,deletions:0});
+ const trackedPromise=readFiles(run,repo,['HEAD']).catch(async()=>{
+  const emptyTree=(await git(run,repo,['hash-object','-t','tree','--stdin'])).trim();
+  return readFiles(run,repo,[emptyTree]);
+ });
+ const [tracked,untrackedRaw]=await Promise.all([trackedPromise,git(run,repo,['ls-files','--others','--exclude-standard','-z'])]);
+ const untracked=untrackedRaw.split('\0').filter(Boolean);
+ const total=tracked.reduce((acc,file)=>{acc.additions+=file.additions??0;acc.deletions+=file.deletions??0;return acc;},{additions:0,deletions:0});
+ if(!untracked.length)return total;
+ const helperMeta=run.untrackedMetadata?await run.untrackedMetadata(repo,untracked,{blobFormat:'sha1'}):null;
+ const fallback=[];
+ if(helperMeta&&helperMeta.length===untracked.length){
+  for(let i=0;i<untracked.length;i++){const m=helperMeta[i];if(m)total.additions+=m.additions??0;else fallback.push(untracked[i]);}
+ }else fallback.push(...untracked);
+ let next=0;
+ await Promise.all(Array.from({length:Math.min(4,fallback.length)},async()=>{
+  while(next<fallback.length){
+   const path=fallback[next++];
+   const result=await run(repo,['diff',...options,'--no-index','--raw','--numstat','--no-abbrev','-z','--','/dev/null',path]);
+   if(result.code!==0&&result.code!==1)throw new Error(result.stderr||'Cannot inspect untracked file');
+   const meta=parseFiles(result.stdout)[0];
+   if(meta)total.additions+=meta.additions??0;
+  }
+ }));
+ return total;
 }
 export async function observeWorking(run,repo,baseTree){
  const {files,untracked}=await readWorkingFiles(run,repo,baseTree);

@@ -17,15 +17,19 @@ how Juhas discovers repositories, including from VS Code workspace files.
 ## Review workflow
 
 - Start in **Changes** to see the combined diff, with all changed files in one
-  expandable list. Include uncommitted work when needed, or switch to **Commit**,
-  **Uncommitted**. Git history stays hidden until opened.
+  expandable list. **Include uncommitted** signals when the working tree has
+  uncommitted changes (and remembers its last toggle for new or reopened views
+  without changing other open Juhas copies), or switch directly to **Commit** or
+  **Uncommitted** (also shown at the top of **History** when dirty). Git history
+  stays hidden until opened.
 - Comment on a line, a range or a whole file. Drafts keep their original source
-  when you move to another commit.
+  when you move to another commit. The **Comments** icon and **Submit review**
+  button display the saved draft count for the active repository.
 - Collect comments from several commits into one review. Check the recipient,
   edit or copy the message, then send it to your agent when you're ready.
 
 Use the sidebar for a quick look, or open beside/below the agent or in a dedicated review tab with Git
-history, a file list or tree, and a full-width Unified or Split diff. Toggle Comments, Files and History independently; place each panel above, below, left or right of the diff. View options are remembered globally across Juhas copies and app restarts; scroll positions remain separate for each view and space. Resize the
+history, a file list or tree, and a full-width Unified or Split diff. Toggle Comments, Files and History independently with flat toolbar icons; right-click any panel icon or use the panel header controls to place it above, below, left or right of the diff, or close it with `×`. View options are remembered globally across Juhas copies and app restarts; scroll positions remain separate for each view and space. Resize the
 panels to fit the code, and use change navigation to move through the diff.
 Filter changed files by path without changing the open diff. Search review recipients by name, terminal address or directory. Loading indicators show when Git is still working.
 
@@ -52,7 +56,8 @@ Clone or download this repository, then run from its root:
 node scripts/install.mjs
 ```
 
-To build and install the optional local Git blob hash helper, run
+To build and install the optional local Rust helper (accelerating blob hashes,
+batched untracked file inspection and diff context reads), run
 `node scripts/install.mjs --build-helper` with a Rust toolchain and Cargo
 available. Juhas uses Git for remote repositories and falls back to Git
 when the local helper is unavailable.

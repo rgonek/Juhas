@@ -7,6 +7,7 @@ mods/**/gpui-kit.d.ts
 mods/**/herdr.d.ts
 mods/**/jsconfig.json
 dist/
+spikes/
 !.github/
 !.github/workflows/
 !.github/workflows/test.yml

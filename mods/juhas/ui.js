@@ -237,7 +237,10 @@ function mergeWrappedSpans(spans){
  const out=[];
  for(const span of spans){
   const prev=out.at(-1);
-  if(prev&&prev.kind===span.kind&&prev.changed===span.changed&&prev.match===span.match&&!/[\t ]/.test(prev.text)&&!/[\t ]/.test(span.text)&&prev.text.length+span.text.length<=40){
+  const same=prev&&prev.kind===span.kind&&prev.changed===span.changed&&prev.match===span.match;
+  if(same&&!/[\t ]/.test(prev.text)&&prev.text.length+span.text.length<=40){
+   out[out.length-1]={...prev,text:prev.text+span.text};
+  }else if(same&&/^[\t ]+$/.test(span.text)&&prev.text.length+span.text.length<=48){
    out[out.length-1]={...prev,text:prev.text+span.text};
   }else out.push(span);
  }
@@ -245,8 +248,12 @@ function mergeWrappedSpans(spans){
 }
 function standardSourceText(row,path,t,wrap,changed,matches,prefix='',prepared){
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
- const raw=prepared??decorateLine(row?.text||'',path,changed,matches,!wrap);
- const spans=wrap?mergeWrappedSpans(raw):raw;
+ const spans=prepared??(wrap?mergeWrappedSpans(decorateLine(row?.text||'',path,changed,matches,false)):decorateLine(row?.text||'',path,changed,matches,true));
+ if(!prefix&&spans.length===1){
+  const span=spans[0];
+  return div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.flex_1().whitespace_normal())
+   .text_color(colors[span.kind]||t.foreground).when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55')).when(span.match,e=>e.bg(t.selected).underline()).child(span.text.replace(/\t/g,'    '));
+ }
  return h_flex().min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>e.flex_none()).items_start()
   .when(Boolean(prefix),e=>e.child(div().flex_none().child(prefix)))
   .children(spans.map(span=>div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
@@ -268,7 +275,7 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
   .when(span.match,e=>e.bg(t.selected).underline());
  const hitTarget=(element,text,first)=>{
   const length=text.length;
-  if(!length)return element;
+  if(!length||(!interaction.down&&!interaction.move))return element;
   const columns=text.includes('\t')?text.replace(/\t/g,'    ').length:length;
   const tabbed=columns!==length;
   const hit=event=>{
@@ -282,8 +289,8 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
    }
    return [{start:first+index,end:first+index+1},{click_count:event.click_count,modifiers:event.modifiers,local_position:{x:cell-start},bounds:{width}}];
   };
-  return element.on_mouse_down('left',(event,cx)=>interaction.down(...hit(event),cx))
-   .on_mouse_move(event=>interaction.move(...hit(event)));
+  return element.when(Boolean(interaction.down),e=>e.on_mouse_down('left',(event,cx)=>interaction.down(...hit(event),cx)))
+   .when(Boolean(interaction.move),e=>e.on_mouse_move(event=>interaction.move(...hit(event))));
  };
  const renderRun=(span,first,fixedDecoration)=>{
    const length=span.text.length,offset=first+length;
@@ -309,8 +316,8 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
   let wordGlyphs=[],afterBreak=false;
   const emitGlyph=(glyph,span)=>base(span,div().flex_none().when(!wrap,e=>e.h(type.px(22))))
    .when(selectedBetween(glyph.start,glyph.end),e=>e.text_color(t.foreground).bg(t.selection))
-   .on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx))
-   .on_mouse_move(event=>interaction.move(glyph,event)).child(glyph.text.replace(/\t/g,'    '));
+   .when(Boolean(interaction.down),e=>e.on_mouse_down('left',(event,cx)=>interaction.down(glyph,event,cx)))
+   .when(Boolean(interaction.move),e=>e.on_mouse_move(event=>interaction.move(glyph,event))).child(glyph.text.replace(/\t/g,'    '));
   const flush=()=>{
    if(runStart==null)return;
    const text=source.slice(runStart,runEnd);
@@ -340,7 +347,7 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
      parts.push(emitGlyph(glyph,span));
     }
     flushPart();
-    const box=h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(parts);
+    const box=parts.length===1?parts[0]:h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(parts);
     const first=wordGlyphs[0].glyph.start,last=wordGlyphs.at(-1).glyph.end;
     rendered.push(allFixed?hitTarget(box,source.slice(first,last),first):box);
    }else{
@@ -348,28 +355,64 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
    }
    wordGlyphs=[];
   };
-  for(const glyph of graphemes(source)){
-   while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}
-   const span=spans[spanIndex]||{};
-   if(wrap){
-    const space=/^[\t ]+$/.test(glyph.text);
-    if(afterBreak&&!space)flushWord();
-    const decimalPoint=glyph.text==='.'&&/\d$/.test(source[glyph.start-1]||'')&&/^\d/.test(source[glyph.end]||'');
-    afterBreak=space||(glyph.text==='.'&&!decimalPoint);
-    wordGlyphs.push({glyph,span});
-    continue;
+  if(wrap&&fixedWidth&&fixedText.test(source)){
+   let wordStart=0;
+   const flushAsciiWord=(end)=>{
+    if(end<=wordStart)return;
+    if(end-wordStart>40){
+     const parts=[];
+     let si=0,se=spans[0]?.text.length||0;
+     for(let i=wordStart;i<end;i++){
+      while(si+1<spans.length&&i>=se){si++;se+=spans[si].text.length;}
+      parts.push(emitGlyph({text:source[i],start:i,end:i+1},spans[si]||{}));
+     }
+     rendered.push(h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(parts));
+     return;
+    }
+    const parts=[];
+    let si=0,se=spans[0]?.text.length||0;
+    while(si+1<spans.length&&wordStart>=se){si++;se+=spans[si].text.length;}
+    let pos=wordStart;
+    while(pos<end){
+     const segEnd=Math.min(end,se);
+     parts.push(renderRun({...spans[si],text:source.slice(pos,segEnd)},pos,true));
+     pos=segEnd;
+     if(pos>=se&&si+1<spans.length){si++;se+=spans[si].text.length;}
+    }
+    const box=parts.length===1?parts[0]:h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(parts);
+    rendered.push(hitTarget(box,source.slice(wordStart,end),wordStart));
+   };
+   for(let i=0;i<source.length;i++){
+    const ch=source[i],space=ch===' '||ch==='\t';
+    if(afterBreak&&!space){flushAsciiWord(i);wordStart=i;}
+    const decimalPoint=ch==='.'&&i>0&&source[i-1]>='0'&&source[i-1]<='9'&&i+1<source.length&&source[i+1]>='0'&&source[i+1]<='9';
+    afterBreak=space||(ch==='.'&&!decimalPoint);
    }
-   if(fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
-    if(runStart!=null&&runStyle!==span)flush();
-    if(runStart==null){runStart=glyph.start;runStyle=span;}
-    runEnd=glyph.end;
-    continue;
+   flushAsciiWord(source.length);
+  }else{
+   for(const glyph of graphemes(source)){
+    while(spanIndex+1<spans.length&&glyph.start>=spanEnd){spanIndex++;spanEnd+=spans[spanIndex].text.length;}
+    const span=spans[spanIndex]||{};
+    if(wrap){
+     const space=/^[\t ]+$/.test(glyph.text);
+     if(afterBreak&&!space)flushWord();
+     const decimalPoint=glyph.text==='.'&&/\d$/.test(source[glyph.start-1]||'')&&/^\d/.test(source[glyph.end]||'');
+     afterBreak=space||(glyph.text==='.'&&!decimalPoint);
+     wordGlyphs.push({glyph,span});
+     continue;
+    }
+    if(fixedWidth&&glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
+     if(runStart!=null&&runStyle!==span)flush();
+     if(runStart==null){runStart=glyph.start;runStyle=span;}
+     runEnd=glyph.end;
+     continue;
+    }
+    flush();
+    rendered.push(emitGlyph(glyph,span));
    }
    flush();
-   rendered.push(emitGlyph(glyph,span));
+   if(wrap)flushWord();
   }
-  flush();
-  if(wrap)flushWord();
  }else{
   let offset=0;
   for(const span of spans){rendered.push(renderRun(span,offset,supported&&compact));offset+=span.text.length;}
@@ -378,7 +421,7 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
    rendered.splice(0,rendered.length,hitTarget(text,source,0));
   }
  }
- if(interaction){const end={start:row?.text?.length||0,end:row?.text?.length||0};rendered.push(div().flex_1().min_w(1).h(type.px(22)).when(selectedBetween(end.start,end.end+1),e=>e.bg(t.selection)).on_mouse_down('left',(event,cx)=>interaction.down(end,event,cx)).on_mouse_move(event=>interaction.move(end,event)));}
+ if(interaction){const end={start:row?.text?.length||0,end:row?.text?.length||0};rendered.push(div().flex_1().min_w(1).h(type.px(22)).when(selectedBetween(end.start,end.end+1),e=>e.bg(t.selection)).when(Boolean(interaction.down),e=>e.on_mouse_down('left',(event,cx)=>interaction.down(end,event,cx))).when(Boolean(interaction.move),e=>e.on_mouse_move(event=>interaction.move(end,event))));}
  return h_flex().when(Boolean(interaction?.height),e=>e.on_size_change(size=>interaction.height(size.height))).when(Boolean(interaction&&!supported),e=>e.tooltip('Text selection within this line is unavailable above 8192 characters.')).min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>interaction?e.flex_1():e.flex_none()).items_start()
   .when(Boolean(prefix),e=>e.child(div().flex_none().child(prefix)))
 .children(rendered);
@@ -386,7 +429,9 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
 function codeCell(row,side,t,wrap,path,changed=[],matches=[],selected=false,interaction=null,type=uiMetrics(),font,prepared){
  const line=row?.[side==='old'?'oldLine':'newLine'];return h_flex().flex_1().min_w(0).when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).gap(8).px(8).overflow_hidden()
   .bg(selected?t.selected:row?.side==='old'?t.ansi1+'18':row?.side==='new'?t.ansi2+'18':t.background)
-  .child(div().w(36).flex_none().text_right().text_color(selected?t.accent:t.dim).child(String(line??'')))
+  .child(div().w(36).flex_none().text_right().text_color(selected?t.accent:t.dim)
+   .when(Boolean(interaction?.commentDown),e=>e.cursor_pointer().on_mouse_down('left',(_e,cx)=>{cx.stop_propagation();interaction.commentDown();}).on_mouse_up('left',(_e,cx)=>{cx.stop_propagation();interaction.commentUp();}))
+   .child(String(line??'')))
   .child(sourceText(row,path,t,wrap,changed,matches,'',interaction,type,font,prepared));
 }
 function commentCard(row,view,width='100%'){const type=uiMetrics();const retained=view.commentCards?.get(row.draft.id);if(retained)return div().h(type.px(commentHeight(row.text))).w_full().max_w(width||'100%').child(retained.view);return h_flex().h(type.px(commentHeight(row.text))).w_full().min_w(0).px(12).py(type.px(6)).bg(theme().raised).child(text(row.text).whitespace_normal());}
@@ -459,10 +504,12 @@ function diffProjection(view,s,drafts,split,hiddenSelected,cx){
   view.pendingDiffProjection=null;
   return view.diffProjection;
  }
- if(matchesProjection(view.pendingDiffProjection,patch,key,sectionPatches))return null;
+ const surfaceKey=JSON.stringify([comparison?.id,file?.newPath,split,hiddenSelected,hideTests,Boolean(sectionsInput)]);
+ const retainedSurface=view.diffProjection?.surfaceKey===surfaceKey?view.diffProjection:null;
+ if(matchesProjection(view.pendingDiffProjection,patch,key,sectionPatches))return retainedSurface;
  const count=patch=>patch?.hunks?.reduce((total,hunk)=>total+hunk.lines.length,0)||0;
  const lines=count(patch)+(sectionsInput?.reduce((total,section)=>total+(!section.collapsed&&!section.limited&&section.patch!==patch?count(section.patch):0),0)||0);
- const request={key,patch,sectionPatches};
+ const request={key,surfaceKey,patch,sectionPatches};
  const steps=prepareDiffProjection({patch,comparison,file,sectionsInput:sectionsInput?.map(section=>({...section})),drafts,split,hiddenSelected,target,inlineEditor,editId,hideTests});
  if(lines<2048||!cx?.timer){
   view.pendingDiffProjection=null;
@@ -474,7 +521,7 @@ function diffProjection(view,s,drafts,split,hiddenSelected,cx){
   view.diffProjection={...request,...result};
   if(view.diffViewport)cx.notify(view.diffViewport);else cx.notify();
  });
- return null;
+ return retainedSurface;
 }
 const inlineProjections=new WeakMap();
 function inlineProjection(base,view,state){
@@ -528,7 +575,8 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   if(!row)return;
   const cache=projection.decorated,previous=cache.get(row);
   if(previous?.changed===changed&&previous.matches===matches&&previous.compact===compactSpans&&previous.path===path)return previous.spans;
-  const spans=decorateLine(row.text,path,changed,matches,compactSpans);
+  const decorated=decorateLine(row.text,path,changed,matches,compactSpans);
+  const spans=compactSpans?decorated:mergeWrappedSpans(decorated);
   cache.set(row,{changed,matches,compact:compactSpans,path,spans});
   return spans;
  };
@@ -565,10 +613,11 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   }
   const mark=row.side==='new'?'+':row.side==='old'?'-':' ';
   const path=row.filePath||s.file?.newPath,side=row.side==='old'?'old':'new',changed=fragments(row),matches=ranges(row,side);
-  const selected=selectedLine(row,row.side==='context'?(view.target?.side||'new'):row.side==='old'?'old':'new');
+  const selected=selectedLine(row,row.side==='context'?(view.target?.side||'new'):row.side==='old'?'old':'new'),rowInteraction=interaction?.source(side);
+  const gutter=value=>div().w(36).flex_none().text_right().text_color(t.dim).when(Boolean(rowInteraction?.commentDown),e=>e.cursor_pointer().on_mouse_down('left',(_e,cx)=>{cx.stop_propagation();rowInteraction.commentDown();}).on_mouse_up('left',(_e,cx)=>{cx.stop_propagation();rowInteraction.commentUp();})).child(String(value??''));
   return h_flex().when(wrap,e=>e.min_h(type.px(22)).items_start()).when(!wrap,e=>e.h(type.px(22)).items_center()).px(8).gap(8).font_family(font).text_size(type.code).line_height(type.lineHeight).bg(selected?t.selected:row.side==='new'?t.ansi2+'18':row.side==='old'?t.ansi1+'18':t.background)
-   .child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.oldLine??''))).child(div().w(36).flex_none().text_right().text_color(t.dim).child(String(row.newLine??'')))
-   .child(sourceText(row,path,t,wrap,changed,matches,`${mark} `,interaction?.source(side),type,font,prepareText(row,path,changed,matches)));
+   .child(gutter(row.oldLine)).child(gutter(row.newLine))
+   .child(sourceText(row,path,t,wrap,changed,matches,`${mark} `,rowInteraction,type,font,prepareText(row,path,changed,matches)));
  };const click=(id,cx)=>{if(view.diffChangeKey()!==clickSource)return;const row=rowsById.get(id);if(!row||row.kind==='editor'||row.kind==='notice')return;if(row.kind==='file-header'){if(!view.fileHeaderViews?.has(row.fileId))view.requestAllFiles?.(row.fileId,cx);return;}if(row.kind==='hunk'){if(row.gap)view.revealDiffContext?.(row,cx);return;}
   if(row.kind==='comment'){view.editDraft?.(row.draft,cx);return;}if(view.experimentalDiff)return;
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
@@ -592,7 +641,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   }
  }
  body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];
- if(retainRows&&entry.sourceIndex!=null)view.prepareDiffRows?.(rows,renderRow,cx,split,{start:entry.sourceIndex,end:entry.sourceIndex+1,measured:true});
+ if(entry.sourceIndex!=null)view.prepareDiffRows?.(rows,renderRow,cx,split,{start:entry.sourceIndex,end:entry.sourceEnd??entry.sourceIndex+1,measured:true});
  return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,heights,renderRow,click,scroller,null,range=>{
   view.prepareDiffRows?.(rows,renderRow,cx,split,range);
   if(view.diffSelection)view.diffSelection.visibleRange=range;

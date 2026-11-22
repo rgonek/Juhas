@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {revealPatchGap} from '../mods/juhas/diff.js';
-import {annotatePatch} from '../mods/juhas/comments.js';
+import {annotatePatch,measuredCommentRows} from '../mods/juhas/comments.js';
 import assert from 'node:assert/strict';
 import {tokenizeLine,intraline,findInPatch,findMatchRanges,decorateLine,multiFileRows,withLineInfo} from '../mods/juhas/reading.js';
 
@@ -103,4 +103,22 @@ test('find highlights use exact file, side and line while preserving match order
  assert.deepEqual(findMatchRanges(matches,false)(row,'new'),[a,other,b]);
  assert.deepEqual(findMatchRanges([b],true)(row,'new'),[b]);
  assert.deepEqual(lookup(null,'new'),[]);
+});
+
+test('revealing mid-file or trailing omitted lines preserves measured list item count',()=>{
+ const full={hunks:[{header:'@@ -1,8 +1,8 @@',lines:Array.from({length:8},(_,i)=>({side:'context',oldLine:i+1,newLine:i+1,text:`line ${i+1}`}))}]};
+ const patch={hunks:[
+  {header:'@@ -1,1 +1,1 @@',lines:[{side:'context',oldLine:1,newLine:1,text:'line 1'}]},
+  {header:'@@ -4,1 +4,1 @@',lines:[{side:'context',oldLine:4,newLine:4,text:'line 4'}]}
+ ]};
+ const before=withLineInfo(annotatePatch(patch,[],'c','a'),{trailing:true});
+ const beforeCount=measuredCommentRows(before).length;
+ const midGap=before.find(row=>row.gap&&!row.gap.trailing);
+ const afterMid=revealPatchGap(patch,full,midGap.gap,midGap.id,100);
+ const midRows=withLineInfo(annotatePatch(afterMid,[],'c','a'),{trailing:true});
+ assert.equal(measuredCommentRows(midRows).length,beforeCount);
+ const trailGap=midRows.find(row=>row.gap?.trailing);
+ const afterTrail=revealPatchGap(afterMid,full,trailGap.gap,trailGap.id,100);
+ const trailRows=withLineInfo(annotatePatch(afterTrail,[],'c','a'),{trailing:false});
+ assert.equal(measuredCommentRows(trailRows).length,beforeCount);
 });

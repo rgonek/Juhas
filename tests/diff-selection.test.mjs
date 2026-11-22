@@ -69,7 +69,7 @@ test('standard split DiffRow sets owner.commentSide from clicked half without st
  const {readFileSync}=await import('node:fs');
  const element=()=>{let p;const data={nodes:[],handlers:{}};p=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...a)=>{if(k==='child')t.nodes.push(a[0]);else if(k.startsWith('on_'))t.handlers[k]=a;return p;}});return p;};
  const source=readFileSync(new URL('../mods/juhas/diff-row.js',import.meta.url),'utf8').split('export default class DiffRow extends View')[1];
- const DiffRow=new Function('View','div','svg','theme','uiMetrics','button','class DiffRow extends View'+source+'\nreturn DiffRow;')(class{},element,element,()=>({}),()=>({px:n=>n}),element);
+ const DiffRow=new Function('View','div','class DiffRow extends View'+source+'\nreturn DiffRow;')(class{},element);
  const owner={experimentalDiff:false,commentSide:null};
  const row=new DiffRow();
  row.init({owner,row:{id:'p1',kind:'pair',old:{side:'old',oldLine:1},next:{side:'new',newLine:1}},split:true,content:()=>element()});
@@ -79,4 +79,19 @@ test('standard split DiffRow sets owner.commentSide from clicked half without st
  assert.equal(owner.commentSide,'old');
  el.handlers.on_mouse_down[1]({local_position:{x:450},bounds:{width:600}});
  assert.equal(owner.commentSide,'new');
+});
+
+test('single click without drag opens a comment while clearing an existing selection does not',()=>{
+ const f=fixture();
+ f.send(down('r2',1,2,1));
+ f.send({type:'up'});
+ assert.deepEqual(f.comments.map(range=>[range.startLine,range.endLine]),[[2,2]]);
+ f.send(down('r1',1,2,2));
+ f.send({type:'up'});
+ assert.equal(f.state.text(),'line');
+ assert.equal(f.comments.length,1);
+ f.send(down('r3',0,1,1));
+ f.send({type:'up'});
+ assert.equal(f.state.text(),'');
+ assert.equal(f.comments.length,1);
 });

@@ -539,7 +539,7 @@ test('oversized selectable words wrap between graphemes without losing source hi
  const hash='2wOycCqMyg9Tu+SDP03FFwDEWBni/3xOKgt0bRXplOvyeIcUJmWO7m3gTCF2mIdtQLROLtOP5VwWRT8YBwP/bA==';
  const text='        "contentHash": "'+hash+'"',hits=[];
  const root=controls().sourceText({text},'a.json',{},true,[],[],'',{selectedOffsets:()=>null,down:glyph=>hits.push(glyph),move(){}});
- const group=root.nodes.find(word=>word.nodes?.map(node=>node.nodes.join('')).join('')==='"'+hash+'"');
+ const group=root.nodes.find(word=>word.nodes?.map(node=>node.nodes?.join('')??node).join('')==='"'+hash+'"');
  assert.equal(group.values.max_w,'100%');
  assert.ok(Object.hasOwn(group.values,'flex_wrap'));
  const offset=hash.indexOf('/')+1;

@@ -53,7 +53,8 @@ export class DiffSelection {
   }
   return result;
  }
- invalidate(before,cx){const after=this.snapshot();for(const id of new Set([...before.keys(),...after.keys()]))if(before.get(id)!==after.get(id)){const entity=this.owner.diffRowViews?.get(this.source+':'+id)?.entity;if(entity)cx.notify(entity);}}
+ invalidate(before,cx,forceAll=false){const after=this.snapshot();if(forceAll){const prefix=this.source+':';for(const [key,entry] of this.owner.diffRowViews||[])if(key.startsWith(prefix)&&entry.entity)cx.notify(entry.entity);return;}for(const id of new Set([...before.keys(),...after.keys()]))if(before.get(id)!==after.get(id)){const entity=this.owner.diffRowViews?.get(this.source+':'+id)?.entity;if(entity)cx.notify(entity);}}
+ isCollapsed(){return !this.selection||(this.selection.anchor.key===this.selection.end.key&&this.selection.anchor.line===this.selection.end.line&&this.selection.anchor.offset===this.selection.end.offset);}
  stop(){this.drag=null;this.timer?.cancel();this.timer=null;this.scrollTop=null;}
  close(){this.stop();this.moves?.clear();}
  measure(id,height,part=null){if(!Number.isFinite(height)||height<=0)return false;if(part){const cells=this.cellHeights.get(id)||{};cells[part]=height;this.cellHeights.set(id,cells);height=Math.max(...Object.values(cells));}else if(this.cellHeights.has(id))return false;if(Math.abs((this.heights.get(id)||0)-height)<0.5)return false;this.heights.set(id,height);return true;}
@@ -79,7 +80,7 @@ export class DiffSelection {
    if(cx.timer?.after)cx.timer.after(24,flush);else flush(cx);
    return;
   }
-  const before=this.snapshot();
+  const before=this.snapshot(),wasDragging=Boolean(this.drag);
   if(event.type==='clear'){this.stop();this.selection=null;}
   else if(event.type==='cancel'||event.type==='leave'){this.stop();}
   else if(event.type==='copy'){if(!this.owner.inputFocused){const text=this.text();if(text)cx.write_to_clipboard(text);}}
@@ -95,14 +96,25 @@ export class DiffSelection {
   }else if(event.type==='down'||event.type==='move'){
    const offset=event.local_position&&event.bounds&&event.local_position.x>=event.bounds.width/2?event.end:event.start,point=this.point(event.rowId,event.side,offset);if(!point)return;
    if(event.type==='down'){
+    const hadSelection=!this.isCollapsed();
     const unit=event.click_count>=3?'line':event.click_count===2?'word':'character';
     this.selection=unit==='character'?{anchor:event.modifiers?.shift&&this.selection?.anchor.key===point.key?this.selection.anchor:point,end:point}:unitSelection(this.model,point,unit,event.start);
-    this.drag={kind:'text',unit,unitAnchor:unit==='character'?null:this.selection};this.owner.selectionHandle?.focus();this.startTimer(cx);
-   }else if(this.drag?.kind==='text'&&point.key===this.selection?.anchor.key)this.selection=this.drag.unitAnchor?extendUnit(this.drag.unitAnchor,unitSelection(this.model,point,this.drag.unit,event.start)):{...this.selection,end:point};
+    const clickComment=unit==='character'&&!event.modifiers?.shift&&!hadSelection?{rowId:event.rowId,side:event.side}:null;
+    this.drag={kind:'text',unit,unitAnchor:unit==='character'?null:this.selection,clickComment};this.owner.selectionHandle?.focus();this.startTimer(cx);
+   }else if(this.drag?.kind==='text'&&point.key===this.selection?.anchor.key){
+    this.selection=this.drag.unitAnchor?extendUnit(this.drag.unitAnchor,unitSelection(this.model,point,this.drag.unit,event.start)):{...this.selection,end:point};
+    if(!this.isCollapsed())this.drag.clickComment=null;
+   }
   }else if(event.type==='up'){
-   const range=this.drag?.kind==='comment'?this.drag.range:null;this.stop();this.invalidate(before,cx);if(range)this.owner.commitCommentRange(range,cx);return;
+   let range=this.drag?.kind==='comment'?this.drag.range:null;
+   if(!range&&this.drag?.kind==='text'&&this.drag.clickComment&&this.isCollapsed()){
+    if(this.owner.hasUnsavedComment?.()){this.owner.message='Save or cancel the current comment before opening another';cx.notify();}
+    else range=commentSelection(this.model,this.drag.clickComment.rowId,this.drag.clickComment.side);
+    this.selection=null;
+   }
+   this.stop();this.invalidate(before,cx,wasDragging);if(range)this.owner.commitCommentRange(range,cx);return;
   }
-  this.invalidate(before,cx);
+  this.invalidate(before,cx,wasDragging!==Boolean(this.drag));
  }
  moveComment(id){const range=commentSelection(this.model,this.drag.start,this.drag.side,id);if(range){this.drag.moved ||= id!==this.drag.start;this.drag.end=id;this.drag.range=range;}}
  tick(cx){

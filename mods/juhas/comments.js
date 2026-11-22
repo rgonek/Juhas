@@ -47,7 +47,12 @@ export const INLINE_EDITOR_HEIGHT=112;
 export const INLINE_EDITOR_MAX_HEIGHT=184;
 export function commentHeight(value){return 38+21*(Math.min(6,Math.max(1,String(value||'').split(/\r?\n/).length))-1);}
 
-// Keep measured-list source items stable when annotations appear or disappear.
+function revealedContextGroup(row){
+ const contextId=row.hunk?.contextId??row.old?.hunk?.contextId??row.next?.hunk?.contextId;
+ if(!contextId||!contextId.startsWith('context-'))return null;
+ return `${row.fileId||''}:${contextId}`;
+}
+// Keep measured-list source items stable when annotations or revealed context change.
 // Herdr resets a measured list's native scroll when its item count changes.
 export function measuredCommentRows(rows){return finishDiffBatches(measuredCommentRowBatches(rows));}
 export function* measuredCommentRowBatches(rows){
@@ -57,7 +62,14 @@ export function* measuredCommentRowBatches(rows){
   const row=rows[index];
   if(row.kind==='comment'||row.kind==='editor'){
    if(result.length)result.at(-1).after.push(row);else leading.push(row);
-  }else result.push({id:row.id,row,sourceIndex:index,before:result.length?[]:leading.splice(0),after:[]});
+   continue;
+  }
+  const group=revealedContextGroup(row);
+  if(group&&result.length&&result.at(-1).contextGroup===group){
+   const last=result.at(-1);
+   last.after.push(row);
+   last.sourceEnd=index+1;
+  }else result.push({id:row.id,row,sourceIndex:index,sourceEnd:index+1,contextGroup:group,before:result.length?[]:leading.splice(0),after:[]});
  }
  if(leading.length)result.push({id:'diff-annotations',row:null,before:leading,after:[]});
  return result;

@@ -123,7 +123,8 @@ export default class Juhas extends View {
  prepareDiffRows(rows,render,cx,split,range={start:0,end:80}){
   if(!cx?.timer)return;
   const source=this.diffChangeKey();
-  let start=Math.max(0,range.start-32),end=Math.min(rows.length,range.end+32);
+  const overscan=range.measured?12:32;
+  let start=Math.max(0,range.start-overscan),end=Math.min(rows.length,range.end+overscan);
   const previous=this.pendingDiffRows;
   if(range.measured&&this.diffRowsQueued&&previous?.rows===rows&&previous.render===render&&previous.source===source){
    start=Math.min(start,previous.start);

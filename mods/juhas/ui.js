@@ -232,11 +232,23 @@ function fileRowLabel(file,tree,type,t){
   .when(!tree&&slash>=0,e=>e.child(div().flex_1().min_w(0).truncate().text_ellipsis_start().text_size(type.caption).text_color(t.muted).child(file.newPath.slice(0,slash))));
 }
 const noEmphasis=Object.freeze([]);
+function mergeWrappedSpans(spans){
+ const out=[];
+ for(const span of spans){
+  const prev=out.at(-1);
+  if(prev&&prev.kind===span.kind&&prev.changed===span.changed&&prev.match===span.match&&!/[\t ]/.test(prev.text)&&!/[\t ]/.test(span.text)&&prev.text.length+span.text.length<=40){
+   out[out.length-1]={...prev,text:prev.text+span.text};
+  }else out.push(span);
+ }
+ return out;
+}
 function standardSourceText(row,path,t,wrap,changed,matches,prefix='',prepared){
  const colors={keyword:t.ansi5,string:t.ansi2,number:t.ansi3,comment:t.muted};
+ const raw=prepared??decorateLine(row?.text||'',path,changed,matches,!wrap);
+ const spans=wrap?mergeWrappedSpans(raw):raw;
  return h_flex().min_w(0).when(wrap,e=>e.flex_1().flex_wrap()).when(!wrap,e=>e.flex_none()).items_start()
   .when(Boolean(prefix),e=>e.child(div().flex_none().child(prefix)))
-  .children((prepared??decorateLine(row?.text||'',path,changed,matches,!wrap)).map(span=>div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
+  .children(spans.map(span=>div().min_w(0).when(!wrap,e=>e.flex_none()).when(wrap,e=>e.whitespace_normal())
    .text_color(colors[span.kind]||t.foreground).when(span.changed,e=>e.bg(row?.side==='old'?t.ansi1+'55':t.ansi2+'55')).when(span.match,e=>e.bg(t.selected).underline()).child(span.text.replace(/\t/g,'    '))));
 }
 function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,type=uiMetrics(),font=settings().font_family||'',prepared){
@@ -507,15 +519,16 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  const projection=inlineProjection(diffProjection(view,s,drafts,split,hiddenSelected,cx),view,s);
  view.renderedDiffProjection=projection;
  const {annotated=[],sections=null,rows=[],rowsById,changes=[],emphasis,pairs}=projection||{};
- const clickSource=view.diffChangeKey(),retainRows=view.experimentalDiff||!wrap;
+ const clickSource=view.diffChangeKey(),retainRows=true;
  const selectedLine=(row,side,container=row)=>{if(view.experimentalDiff&&view.diffSelection?.marked(container?.id,side))return true;const target=view.target,line=row?.[side==='old'?'oldLine':'newLine'];return Boolean(target&&line!=null&&target.comparisonId===(container?.comparisonId||s.comparison?.id)&&target.newPath===(container?.filePath||s.file?.newPath)&&target.side===side&&line>=target.startLine&&line<=target.endLine);};
  const ranges=findMatchRanges(view.findMatches,Boolean(view.allFiles));
+ const compactSpans=!wrap||Boolean(view.experimentalDiff);
  const prepareText=(row,path,changed,matches)=>{
   if(!row)return;
   const cache=projection.decorated,previous=cache.get(row);
-  if(previous?.changed===changed&&previous.matches===matches&&previous.wrap===wrap&&previous.path===path)return previous.spans;
-  const spans=decorateLine(row.text,path,changed,matches,!wrap);
-  cache.set(row,{changed,matches,wrap,path,spans});
+  if(previous?.changed===changed&&previous.matches===matches&&previous.compact===compactSpans&&previous.path===path)return previous.spans;
+  const spans=decorateLine(row.text,path,changed,matches,compactSpans);
+  cache.set(row,{changed,matches,compact:compactSpans,path,spans});
   return spans;
  };
  const fragments=row=>{const key=(row?.fileId||'')+':'+(row?.sourceId||row?.id),pair=pairs.get(key);if(pair&&!emphasis.has(key)){const result=intraline(pair.old.text,pair.next.text);emphasis.set(pair.fileId+':'+pair.old.id,result.old);emphasis.set(pair.fileId+':'+pair.next.id,result.new);}return emphasis.get(key)||noEmphasis;};

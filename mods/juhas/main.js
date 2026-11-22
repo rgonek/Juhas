@@ -1,6 +1,7 @@
 import {revealPatchGap} from './diff.js';
 import {selectionModelBatches} from './selection.js';
 import DiffRow from './diff-row.js';
+import DiffViewport from './diff-viewport.js';
 import {DiffSelection} from './diff-selection.js';
 import {View,div,svg} from 'gpui-kit';
 import {h_flex,v_flex,InputState,TextareaState,Textarea,Editor,EditorState,h_resizable,v_resizable,resizable_panel,ScrollHandle,VirtualListScrollHandle} from 'gpui-base';
@@ -40,7 +41,7 @@ export default class Juhas extends View {
   this.selectionKey=`git-review.v1.selection.${this.sessionId}`;this.seenSelection=null;this.busy=false;this.message='';this.panel=null;this.upperView='changes';this.target=null;this.selectedStart=null;this.filtersOpen=false;
   this.config=resolveConfig(shared('git-review.v1.config')||{},p.config||{});this.historyRef='HEAD';this.displayTabId=focused()?.tab;this.displaySpaceId=focused()?.space;
   this.diffMode='unified';this.fileTree=true;this.detailsOpen=false;this.remotes=true;this.historyWidth=480;this.listHeight=230;this.contextProps=p;this.followContext=true;this.contextViews=new Map();this.runningActions=0;this.policy={repos:[],canSwitch:false,kind:'empty'};
-  this.controller=new Controller({run:createRunner(exec,appHome()),store,sessionId:this.sessionId,cache,onChange:()=>this.controllerChanged()});this.handle=cx.focus_handle();this.diffScroll=VirtualListScrollHandle.new();this.filesScroll=VirtualListScrollHandle.new();this.historyScroll=VirtualListScrollHandle.new();this.commentsScroll=ScrollHandle.new();this.horizontalScroll=ScrollHandle.new();this.scopeTriggerFocus=cx.focus_handle();this.scopeListFocus=cx.focus_handle();this.refTriggerFocus=cx.focus_handle();this.refListFocus=cx.focus_handle();
+  this.controller=new Controller({run:createRunner(exec,appHome()),store,sessionId:this.sessionId,cache,onChange:()=>this.controllerChanged()});this.handle=cx.focus_handle();this.diffScroll=VirtualListScrollHandle.new();this.filesScroll=VirtualListScrollHandle.new();this.historyScroll=VirtualListScrollHandle.new();this.commentsScroll=ScrollHandle.new();this.horizontalScroll=ScrollHandle.new();this.scopeTriggerFocus=cx.focus_handle();this.scopeListFocus=cx.focus_handle();this.refTriggerFocus=cx.focus_handle();this.refListFocus=cx.focus_handle();this.panelPosFocus=new Map(['filesPosition','historyPosition','commentsPosition','filesHeaderPosition','historyHeaderPosition','commentsHeaderPosition'].map(k=>[k,cx.focus_handle()]));
   const placeholders={folder:'Repository or parent folder',base:'Base ref / SHA',target:'Target ref / SHA',query:'Text or hash',baseQuery:'Find a base commit',refQuery:'Find a branch',fileQuery:'Filter files by path',recipientQuery:'Find an agent or directory',author:'Author',path:'Path',find:'Find in loaded diff',comment:'Add a comment…',note:'Optional review note',review:'Edit the message that will be copied or sent…'};
   this.inputs={};for(const key of Object.keys(placeholders))this.inputs[key]=(key==='comment'||key==='review'?TextareaState:InputState).new({value:key==='target'?'HEAD':'',placeholder:placeholders[key]});
   for(const input of Object.values(this.inputs)){input.on('focus',()=>{this.inputFocused=true;});input.on('blur',()=>{this.inputFocused=false;});}
@@ -52,13 +53,14 @@ export default class Juhas extends View {
   for(const key of ['refQuery','fileQuery','recipientQuery'])this.inputs[key].on('change',(_e,cx)=>{if(key==='refQuery'){this.refIndex=0;if(this.panel==='refs'||this.panel==='historyRefs')this.filteredReferences();}cx.notify();});
   this.inputs.find.on('change',(_e,cx)=>this.setFindQuery(this.inputs.find.value(),cx));
   this.inlineEditor=cx.new(InlineEditor,{owner:this,input:this.inputs.comment,save:()=>this.headerAction({kind:'save-comment'}),cancel:()=>this.headerAction({kind:'cancel-comment'})});
+  this.diffViewport=cx.new(DiffViewport,{owner:this});
   this.inputs.folder.on('submit',(_e,cx)=>this.openFolder(this.inputs.folder.value(),cx));
   this.headerQueue=[];cx.spawn(async cx=>{for(;;){const action=await this.nextHeaderAction();if(!action||this.closed)return;if(action.kind==='controller-change'){this.controllerChangeQueued=false;if(this.allFiles&&this.allFilesKey===this.controller?.state.comparison?.id)this.prepareFileHeaders(cx);cx.notify();continue;}if(action.kind==='diff-selection'){this.diffSelection?.handle(action.event,cx);continue;}if(action.kind==='editor-size'){cx.notify();continue;}if(action.kind==='edit-comment'){const draft=this.controller.session().drafts.find(d=>d.id===action.id);if(draft)this.editDraft(draft,cx);continue;}if(action.kind==='remove-comment'){this.controller.removeComment(action.id);cx.notify();continue;}if(action.kind==='save-comment'){this.saveComment(cx);continue;}if(action.kind==='cancel-comment'){this.cancelComment(cx);continue;}if(action.comparisonId!==this.controller.state.comparison?.id)continue;if(action.kind==='toggle')this.requestAllFiles(action.fileId,cx);if(action.kind==='viewed')this.markReviewedFile(action.fileId,action.checked,cx);if(action.kind==='context')this.toggleFileContext(action.fileId,cx);if(action.kind==='comment')this.commentOnFile(action.fileId,cx);this.prepareFileHeaders(cx);cx.notify();}});
   this.applyPreferences();
   if(this.role!=='bar'){this.activateContext(this.currentContext(),cx);this.setupRefresh(cx);if(p.isReviewTab){let attempts=0;this.tabRegistration=cx.timer.every(100,()=>{if(this.closed||this.registerReviewTab()||++attempts>=30){this.tabRegistration?.cancel();this.tabRegistration=null;}});}}
   cx.spawn(async cx=>{for(;;){const command=await nextCommand();const name=typeof command==='string'?command:command.name;if(name==='preview')this.preview(cx);if(name==='branch'){this.allChangesFrom='branch';this.applyScope('branch',cx);}if(name==='base')this.setReferencePicker(false,true,cx);if(name==='branches')this.setReferencePicker(true,this.panel!=='historyRefs',cx);if(name==='details'){this.detailsOpen=!this.detailsOpen;if(this.detailsOpen)this.work(cx,cx=>this.controller.loadDetails());cx.notify();}if(name==='history')this.toggleHistory(!this.showHistory,cx);if(name==='sources'){this.panel=this.panel==='compareFrom'?null:'compareFrom';this.choosingCommitBase=false;cx.notify();}if(name==='uncommitted')this.chooseReviewSource('uncommitted',cx);if(name==='commit')this.chooseReviewSource('commit',cx);if(name==='all-files')this.toggleAllFiles(!this.allFiles,cx);if(name==='search')this.toggleSearch(!this.searchOpen,cx);if(name==='diff-mode')this.setDiffMode(this.diffMode==='split'?'unified':'split',cx);if(name==='next-change')this.navigateChange(1,cx);if(name==='previous-change')this.navigateChange(-1,cx);if(name==='tree'){this.fileTree=!this.fileTree;cx.notify();}if(name==='whole-file'&&this.controller.state.file)this.toggleFileContext(this.controller.state.file.id,cx);if(name==='comments')this.toggleComments(!this.showComments,cx);if(name==='refresh')this.refreshContext(cx);if(name==='full')this.full();if(name==='terminal')this.terminal();if(name==='sidebar')this.returnToSidebar(cx);if(name==='next-file')this.moveFile(1,cx);if(name==='previous-file')this.moveFile(-1,cx);if(name==='next-commit')this.moveCommit(1,cx);if(name==='previous-commit')this.moveCommit(-1,cx);}});
  }
- close(){this.releaseExperimentalDiff();if(this.composerSavePending)this.persistComposer();for(const entry of this.commentCards?.values()||[])entry.view.release();for(const handles of this.contextScrolls?.values()||[])for(const [key,handle] of Object.entries(handles))if(handle!==this[key])handle.release();this.tabRegistration?.cancel();this.headerWake?.(null);for(const item of this.fileHeaderViews?.values()||[])item.release();this.closed=true;this.refreshScheduler?.close();this.diffScroll?.release();this.filesScroll?.release();this.historyScroll?.release();this.commentsScroll?.release();this.horizontalScroll?.release();this.copyEditor?.release();this.inlineEditor?.release();}
+ close(){this.releaseExperimentalDiff();if(this.composerSavePending)this.persistComposer();for(const entry of this.commentCards?.values()||[])entry.view.release();for(const handles of this.contextScrolls?.values()||[])for(const [key,handle] of Object.entries(handles))if(handle!==this[key])handle.release();for(const handle of this.panelPosFocus?.values()||[])handle.release?.();this.tabRegistration?.cancel();this.headerWake?.(null);for(const item of this.fileHeaderViews?.values()||[])item.release();this.closed=true;this.refreshScheduler?.close();this.diffScroll?.release();this.filesScroll?.release();this.historyScroll?.release();this.commentsScroll?.release();this.horizontalScroll?.release();this.copyEditor?.release();this.inlineEditor?.release();this.diffViewport?.release();}
  setupRefresh(cx){
   const coordinator=globalThis[Symbol.for('juhas.refreshCoordinator.v1')]??=createRefreshCoordinator();
   this.refreshScheduler=createRefreshScheduler({timer:cx.timer,coordinator,visible:()=>!this.busy&&this.reviewIsVisible(),key:()=>JSON.stringify([this.id,this.activeContext?.key,this.controller.state.repo?.key]),refresh:cx=>this.poll(cx),onError:(error,cx)=>{if(!this.closed){this.message=error.message;cx.notify();}}});this.refreshScheduler.start();
@@ -118,6 +120,7 @@ export default class Juhas extends View {
   this.releaseExperimentalDiff();
   if(this.experimentalDiff)this.ensureExperimentalSelectionFocus(cx);
   this.commentGestureVersion=(this.commentGestureVersion||0)+1;
+  this.syncDiffViewport(cx);
   cx.notify();
  }
  prepareDiffRows(rows,render,cx,split,range={start:0,end:80}){
@@ -191,7 +194,7 @@ export default class Juhas extends View {
    entry.entity.release();
    this.diffRowViews.delete(key);
   }
-  if(mounted)cx.notify();
+  if(mounted){if(this.diffViewport)cx.notify(this.diffViewport);else cx.notify();}
  }
  commitCommentRange(range,cx){
   const controller=this.controller,comparison=controller.state.comparison,file=controller.state.files.find(f=>f.id===range.fileId);if(!file||comparison?.id!==range.comparisonId)return;
@@ -206,7 +209,7 @@ export default class Juhas extends View {
   if(controller.state.file?.id===file.id){try{open(cx);}catch(error){this.message=error.message;cx.notify();}}
   else this.work(cx,async cx=>{await controller.selectFile(file.id);if(!current())return;this.publish();open(cx);});
  }
- toggleWrap(pressed,cx){this.readingOptions={...this.readingOptions,wrap:pressed};cx.notify();}
+ toggleWrap(pressed,cx){this.readingOptions={...this.readingOptions,wrap:pressed};this.syncDiffViewport(cx);cx.notify();}
  navigateComment(direction,cx){if(this.hasUnsavedComment()){this.message='Save or cancel the current comment first';cx.notify();return;}const drafts=this.controller.session().drafts.filter(d=>d.repoKey===this.controller.state.repo?.key),current=drafts.findIndex(d=>d.id===(this.commentCursor||this.editId)),index=current<0?(direction>0?0:drafts.length-1):current+direction;if(index<0||index>=drafts.length){this.message='No more comments';cx.notify();return;}this.commentCursor=drafts[index].id;this.openComment(drafts[index],cx);}
  revealSelectedSection(){if(!this.allFiles)return;const s=this.controller.state;if(this.allFilesKey!==s.comparison?.id)this.rebuildAllSections();const section=this.allFileSections?.find(section=>section.file.id===s.file?.id);if(section){section.collapsed=false;section.patch=s.patch;section.limited=false;}}
  rebuildAllSections(){const s=this.controller.state;this.allFilesKey=s.comparison?.id;this.allFileSections=s.files.map(file=>({file,comparison:s.comparison,patch:file.id===s.file?.id?s.patch:null,collapsed:file.id!==s.file?.id}));}
@@ -302,7 +305,7 @@ export default class Juhas extends View {
   finally{this.prefetching=false;}
  }
 
- notifyEditor(cx,reveal=false){this.prepareFileHeaders(cx);if(this.inlineEditor)cx.notify(this.inlineEditor);if(reveal&&this.target?.comparisonId===this.controller.state.comparison?.id&&this.target?.newPath===this.controller.state.file?.newPath){const s=this.controller.state,annotated=composerRows(annotatePatch(s.patch,this.controller.session().drafts,s.comparison.id,s.file.newPath),this.target,this.editId),visible=withLineInfo(annotated),rows=this.diffMode==='split'?splitRows(visible):visible,index=rows.findIndex(r=>r.kind==='editor');if(index>=0)this.scrollDiffToItem(index,'center',rows);}cx.notify();}
+ notifyEditor(cx,reveal=false){this.prepareFileHeaders(cx);if(this.inlineEditor)cx.notify(this.inlineEditor);if(reveal&&this.target?.comparisonId===this.controller.state.comparison?.id&&this.target?.newPath===this.controller.state.file?.newPath){const s=this.controller.state,annotated=composerRows(annotatePatch(s.patch,this.controller.session().drafts,s.comparison.id,s.file.newPath),this.target,this.editId),visible=withLineInfo(annotated),rows=this.diffMode==='split'?splitRows(visible):visible,index=rows.findIndex(r=>r.kind==='editor');if(index>=0)this.scrollDiffToItem(index,'center',rows);}this.syncDiffViewport(cx);cx.notify();}
  cancelComment(cx){this.composerSavePending=null;this.target=null;this.selectedStart=null;this.editId=null;this.composerComparison=null;this.detachedComposer=false;this.panel=null;this.inputs.comment.set_value('');setShared(this.composerKey||`git-review.v1.composer.${this.sessionId}`,null);this.notifyEditor(cx);}
  resumeComment(cx){const target=this.target;if(!target)return;if(this.hideTests&&isTestFile(target))this.hideTests=false;if(target.scope==='general'){this.panel='comment';this.detachedComposer=false;this.inputs.comment.focus();this.notifyEditor(cx);return;}this.panel='comment';this.detachedComposer=false;this.work(cx,async cx=>{try{
   const c=this.controller.state.comparison;if(c?.id!==target.comparisonId){if(this.composerComparison)await this.controller.selectResolved(this.composerComparison);else if(target.targetOid)await this.controller.selectScope(target.baseOid?{kind:'range',base:target.baseOid,target:target.targetOid,includeBase:false}:{kind:'commit',commit:target.targetOid,parentIndex:0});else throw new Error('Original working-tree context is not available; unsaved text is retained');}
@@ -350,7 +353,7 @@ export default class Juhas extends View {
    if(onReveal)cx.timer.after(16,()=>{if(ready())onReveal();});
   });
  }
- setDiffMode(mode,cx){this.diffMode=mode;this.changeCursor=null;cx.notify();}
+ setDiffMode(mode,cx){this.diffMode=mode;this.changeCursor=null;this.syncDiffViewport(cx);cx.notify();}
  navigateChange(direction,cx){
   if(this.busy||this.diffRowsKey!==this.diffChangeKey())return;
   const groups=changeGroups(this.diffRows||[]),source=this.diffChangeKey(),current=this.changeCursor?.source===source?this.changeCursor.id:null,target=stepChange(groups,current,direction);
@@ -586,7 +589,7 @@ export default class Juhas extends View {
   const trigger=toggle('toggle-'+kind,content,shown,(open,cx)=>isFiles?this.toggleFiles(open,cx):isHistory?this.toggleHistory(open,cx):this.toggleComments(open,cx),{tooltip:'Show or hide '+label+(draftCount>0?` (${draftCount})`:'')+' · Right-click to move'}).when(draftCount===0,e=>e.w(type.px(28)).px(0)).when(draftCount>0,e=>e.px(6))
    .on_mouse_down('right',(_e,cx)=>{cx.stop_propagation();this.panel=this.panel===key?null:key;cx.notify();});
   return h_flex().id('panel-control-'+kind).flex_none().items_center()
-   .child(selector('position-'+kind,null,this.panel===key,(open,cx)=>{this.panel=open?key:null;cx.notify();},()=>v_flex().gap(2).children(['top','bottom','left','right'].map(place=>button('position-'+kind+'-'+place,h_flex().w_full().gap(8).items_center().child(svg('mods/juhas/icons/panel-'+place+'.svg').size(15).flex_none()).child(place[0].toUpperCase()+place.slice(1)),(_e,cx)=>this.positionPanel(kind,place,cx),{active:place===position,tooltip:'Show '+label+' at the '+place}).w_full().justify_start())),{tooltip:label+' panel position: '+position,width:150,trigger}));
+   .child(selector('position-'+kind,null,this.panel===key,(open,cx)=>{this.panel=open?key:null;cx.notify();},()=>v_flex().gap(2).children(['top','bottom','left','right'].map(place=>button('position-'+kind+'-'+place,h_flex().w_full().gap(8).items_center().child(svg('mods/juhas/icons/panel-'+place+'.svg').size(15).flex_none()).child(place[0].toUpperCase()+place.slice(1)),(_e,cx)=>this.positionPanel(kind,place,cx),{active:place===position,tooltip:'Show '+label+' at the '+place}).w_full().justify_start())),{tooltip:label+' panel position: '+position,width:150,trigger,triggerFocus:this.panelPosFocus?.get?.(key)}));
  }
  reviewPanelGroups(){
   const groups={top:[],bottom:[],left:[],right:[]};
@@ -596,7 +599,7 @@ export default class Juhas extends View {
  reviewPanels(cx){const type=uiMetrics(),groups=this.reviewPanelGroups();
   const content=kind=>kind==='files'?filesPane(this):kind==='history'?historyPane(this,cx):draftsPane(this,cx);
   const group=position=>{const names=groups[position];if(names.length===1)return content(names[0]);const split=(['top','bottom'].includes(position)?h_resizable:v_resizable)(this.id+'-panels-'+position+'-'+names.join('-')).size_full().min_h(0).min_w(0);for(const [index,kind] of names.entries())split.child(resizable_panel().when(index<names.length-1,e=>e.size(['top','bottom'].includes(position)?Math.max(140,(this.width||800)/names.length):Math.max(100,(this.height||600)/names.length))).size_range(type.px(80)).child(content(kind)));return split;};
-  let center=diffPane(this,cx);
+  let center=this.diffViewport?div().id('diff-viewport').size_full().min_h(0).min_w(0).child(this.diffViewport):diffPane(this,cx);
   if(groups.top.length)center=v_resizable(this.id+'-panels-top-'+groups.top.join('-')+'-center').size_full().min_h(0).min_w(0).child(resizable_panel().size(type.px(210)).size_range(type.px(80)).child(group('top'))).child(resizable_panel().size_range(type.px(100)).child(center));
   if(groups.bottom.length)center=v_resizable(this.id+'-panels-bottom-'+groups.bottom.join('-')+'-center').size_full().min_h(0).min_w(0).child(resizable_panel().size_range(type.px(100)).child(center)).child(resizable_panel().size(type.px(210)).size_range(type.px(80)).child(group('bottom')));
   if(!groups.left.length&&!groups.right.length)return center;
@@ -627,10 +630,20 @@ export default class Juhas extends View {
  // Initialize lazily: loading a failed hot-reload must not mutate global state.
  viewSnapshots(){return globalThis[Symbol.for('juhas.loadedViews.v2')]??=createCache({maxEntries:8,maxBytes:33554432});}
  viewConfigKey(){return JSON.stringify([shared('git-review.v1.config')||{},this.contextProps?.config||{}]);}
- presentationKey(){return JSON.stringify([this.activeContext?.key,this.controller.state.comparison?.id,this.controller.state.filtersKey,this.controller.state.historyLoading,Boolean(this.controller.state.details),this.preferenceKeys().map(key=>this[key]),shared('juhas.view-options.v1'),this.controller.session().drafts,this.width,this.busy]);}
+ diffViewportSignature(){
+  const s=this.controller?.state||{},t=theme(),look=settings(),drafts=this.controller?.session?.().drafts||[];
+  const sections=this.allFiles?(this.allFileSections||[]).map(sec=>`${sec.file?.id}:${sec.collapsed?1:0}:${sec.loading?1:0}:${sec.limited?1:0}:${sec.patch?1:0}:${sec.patch?.fullContext?1:0}`).join(','):'';
+  return `${s.comparison?.id||''}|${s.file?.id||''}|${s.files?.length||0}|${s.patch?1:0}|${s.patch?.hunks?.length||0}|${s.patch?.fullContext?1:0}|${s.hasWorkingChanges}|${Boolean(this.includeWorking)}|${this.diffMode}|${Boolean(this.allFiles)}|${Boolean(this.hideTests)}|${Boolean(this.readingOptions?.wrap)}|${Boolean(this.searchOpen)}|${this.findQuery||''}|${this.findIndex}|${this.findMatches?.length||0}|${Boolean(this.experimentalDiff)}|${this.target?`${this.target.comparisonId}:${this.target.newPath}:${this.target.side}:${this.target.startLine}:${this.target.endLine}`:''}|${this.editId||''}|${Boolean(this.busy)}|${this.inlineEditorHeight||0}|${this.singleHeaderHovered?1:0}|${drafts.length}:${drafts.map(d=>d.id+':'+d.body?.length).join(',')}|${sections}|${t.background}|${t.foreground}|${look.font_family||''}|${look.font_size||''}|${look.ui_font_size||''}`;
+ }
+ syncDiffViewport(cx){
+  if(!this.diffViewport)return;
+  const sig=this.diffViewportSignature();
+  if(sig!==this.renderedDiffSignature){this.renderedDiffSignature=sig;cx.notify(this.diffViewport);}
+ }
+ presentationKey(){return JSON.stringify([this.activeContext?.key,this.controller.state.comparison?.id,this.controller.state.filtersKey,this.controller.state.historyLoading,Boolean(this.controller.state.details),this.preferenceKeys().map(key=>this[key]),shared('juhas.view-options.v1'),this.controller.session().drafts,this.width,this.busy,this.diffViewport?this.diffViewportSignature():null]);}
  deferPresentation(cx){
   if(!cx?.timer||this.presentationQueued||this.role==='bar')return;const signature=this.presentationKey();if(signature===this.presentationSignature)return;this.presentationQueued=true;
-  cx.timer.after(1,cx=>{this.presentationQueued=false;if(this.closed)return;const allFiles=this.allFiles;this.syncPreferences();if(this.allFiles&&allFiles!==this.allFiles){this.rebuildAllSections();this.prepareFileHeaders(cx);}this.prepareCommentCards(cx);this.presentationSignature=this.presentationKey();cx.notify();
+  cx.timer.after(1,cx=>{this.presentationQueued=false;if(this.closed)return;const allFiles=this.allFiles;this.syncPreferences();if(this.allFiles&&allFiles!==this.allFiles){this.rebuildAllSections();this.prepareFileHeaders(cx);}this.prepareCommentCards(cx);this.syncDiffViewport(cx);this.presentationSignature=this.presentationKey();cx.notify();
    const controller=this.controller;if(this.busy||!this.policy?.ready||!controller.state.repo)return;
    this.presentationLoads??=new WeakMap();const attempted=this.presentationLoads.get(controller)||{},filters=this.filters(),historyKey=JSON.stringify(filters),detailsKey=controller.state.comparison?.id;
    const history=this.showHistory&&controller.loadHistory&&!controller.state.historyLoading&&controller.state.filtersKey!==historyKey&&attempted.history!==historyKey,details=this.detailsOpen&&controller.loadDetails&&!controller.state.details&&detailsKey&&attempted.details!==detailsKey;

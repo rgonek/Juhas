@@ -81,8 +81,8 @@ export function optionList(id,items,index,move,choose,{height=196,rows=7,rowHeig
 export function text(value,dim=false){const type=uiMetrics();const t=theme();return div().text_size(type.body).line_height(type.lineHeight).text_color(dim?t.muted:t.foreground).child(value);}
 function fileStatusColor(status,t){return status==='D'?t.ansi1:status==='A'?t.ansi2:t.ansi4||t.accent;}
 export function fileStatus(file,reviewed=false){const t=theme(),status=file.status||'M',color=fileStatusColor(status,t),icon={A:'added',D:'deleted',M:'modified',R:'renamed',C:'copied'}[status]||'modified';
- return svg(reviewed?'mods/juhas/icons/check.svg':`mods/juhas/icons/file-${icon}.svg`).size(14).flex_none().text_color(color)
-  .tooltip(`${status==='A'?'Added':status==='D'?'Deleted':status==='R'?'Renamed':status==='C'?'Copied':'Modified'}${reviewed?' · viewed':''}`);
+ return div().flex_none().tooltip(`${status==='A'?'Added':status==='D'?'Deleted':status==='R'?'Renamed':status==='C'?'Copied':'Modified'}${reviewed?' · viewed':''}`)
+  .child(svg(reviewed?'mods/juhas/icons/check.svg':`mods/juhas/icons/file-${icon}.svg`).size(14).flex_none().text_color(color));
 }
 export function commitId(oid){const type=uiMetrics();return h_flex().gap(4).items_center().child(text(oid,true)).child(button('copy-commit-id',svg('mods/juhas/icons/copy.svg').size(13),(_e,cx)=>cx.write_to_clipboard(oid),{tooltip:'Copy full commit ID'}).h(type.px(22)).w(22).px(0));}
 export function virtualList(id,items,height,row,click,scrollHandle=null,viewportHeight=null,onRange=null){const type=uiMetrics();id=`${id}-${type.body}`;return v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(v_virtual_list(id,items.length,height,i=>String(items[i].renderKey??items[i].id??items[i].oid??i),range=>{onRange?.(range);return items.slice(range.start,range.end).map(item=>row(item));}).when(Boolean(scrollHandle),el=>el.track_scroll(scrollHandle)).on_item_click((key,cx)=>{const item=items.find(i=>String(i.renderKey??i.id??i.oid)===String(key));click(item?.id??item?.oid??key,cx);}).size_full().when(viewportHeight!=null,e=>e.h(viewportHeight).flex_none())).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0());}
@@ -97,7 +97,7 @@ function panelHeader(title,detail){
 }
 function panelPositionControl(view,kind){
  const type=uiMetrics(),t=theme(),label=kind==='files'?'Files':kind==='history'?'History':'Comments',key=kind+'HeaderPosition',position=view.panelPosition(kind);
- return selector('header-position-'+kind,svg(`mods/juhas/icons/panel-${position}.svg`).size(type.px(14)).text_color(t.muted),view.panel===key,(open,cx)=>{view.panel=open?key:null;cx.notify();},()=>v_flex().gap(2).children(['top','bottom','left','right'].map(place=>button(`header-position-${kind}-${place}`,h_flex().w_full().gap(8).items_center().child(svg(`mods/juhas/icons/panel-${place}.svg`).size(15).flex_none()).child(place[0].toUpperCase()+place.slice(1)),(_e,cx)=>view.positionPanel(kind,place,cx),{active:place===position,tooltip:`Show ${label} at the ${place}`}).w_full().justify_start())),{tooltip:`${label} panel position: ${position}`,width:150,compact:true});
+ return selector('header-position-'+kind,svg(`mods/juhas/icons/panel-${position}.svg`).size(type.px(14)).text_color(t.muted),view.panel===key,(open,cx)=>{view.panel=open?key:null;cx.notify();},()=>v_flex().gap(2).children(['top','bottom','left','right'].map(place=>button(`header-position-${kind}-${place}`,h_flex().w_full().gap(8).items_center().child(svg(`mods/juhas/icons/panel-${place}.svg`).size(15).flex_none()).child(place[0].toUpperCase()+place.slice(1)),(_e,cx)=>view.positionPanel(kind,place,cx),{active:place===position,tooltip:`Show ${label} at the ${place}`}).w_full().justify_start())),{tooltip:`${label} panel position: ${position}`,width:150,compact:true,triggerFocus:view.panelPosFocus?.get?.(key)});
 }
 function panelCloseButton(view,kind){
  const toggleFn=kind==='files'?view.toggleFiles:kind==='history'?view.toggleHistory:view.toggleComments;
@@ -164,7 +164,8 @@ export function historyPane(view,cx){const type=uiMetrics();
    return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(s.comparison?.scope.kind==='working-tree',e=>e.bg(t.selected))
     .tooltip('Uncommitted changes in working tree · Click to review')
     .child(uncommittedGraphCell(rows))
-    .child(div().flex_1().min_w(0).truncate().text_size(type.body).font_semibold().text_color(t.foreground).child('Uncommitted changes'));
+    .child(div().flex_1().min_w(0).truncate().text_size(type.body).font_semibold().text_color(t.foreground).child('Uncommitted changes'))
+    .when(width>=type.px(720),e=>e.child(div().w(112).flex_none().truncate().text_size(type.caption).text_color(t.muted).child('working tree')));
   }
   const i=s.history.indexOf(c),refs=(c.refs||[]).filter(ref=>ref!=='HEAD').map(ref=>({label:ref.replace(/^HEAD -> /,'').replace(/^tag: /,''),current:ref.startsWith('HEAD -> '),tag:ref.startsWith('tag: '),full:ref}));return h_flex().h(type.px(LIST_ROW_HEIGHT)).px(4).gap(6).items_center().when(selected(c,i),e=>e.bg(t.selected))
   .tooltip(`${c.subject}\n${c.author} · ${new Date(c.timestamp*1000).toLocaleString()}\n${c.oid}\n${(c.refs||[]).join(', ')}`)
@@ -471,7 +472,7 @@ function diffProjection(view,s,drafts,split,hiddenSelected,cx){
  runDiffBatches(cx,steps,()=>!view.closed&&view.pendingDiffProjection===request,(result,cx)=>{
   view.pendingDiffProjection=null;
   view.diffProjection={...request,...result};
-  cx.notify();
+  if(view.diffViewport)cx.notify(view.diffViewport);else cx.notify();
  });
  return null;
 }
@@ -592,7 +593,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
  }
  body=measured?v_flex().relative().size_full().flex_1().min_h(0).min_w(0).child(list(id,measuredRows.length,i=>measuredRows[i].id,i=>{const entry=measuredRows[i];
  if(retainRows&&entry.sourceIndex!=null)view.prepareDiffRows?.(rows,renderRow,cx,split,{start:entry.sourceIndex,end:entry.sourceIndex+1,measured:true});
- return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).when(Boolean(scroller),e=>e.track_scroll(scroller)).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,heights,renderRow,click,scroller,null,range=>{
+ return v_flex().w_full().min_w(0).children([...entry.before,...(entry.row?[entry.row]:[]),...entry.after].map(row=>renderRow(row).flex_none()));}).on_item_click((key,cx)=>click(key,cx)).size_full()).child(Scrollbar.vertical(id).viewport_from_layout().absolute().inset_0()):virtualList(id,rows,heights,renderRow,click,scroller,null,range=>{
   view.prepareDiffRows?.(rows,renderRow,cx,split,range);
   if(view.diffSelection)view.diffSelection.visibleRange=range;
  });}

@@ -547,15 +547,15 @@ test('oversized selectable words wrap between graphemes without losing source hi
  assert.deepEqual(hits.map(glyph=>text.slice(glyph.start,glyph.end)),['/']);
 });
 
-test('wrapped fixed-width words coalesce into run-level hit targets including Geist Mono',()=>{
+test('wrapped fixed-width words coalesce into word-level hit targets including Geist Mono',()=>{
  const hits=[];
  const ui=controls({settings:()=>({font_family:'Geist Mono',ui_font_size:14})});
  const line='export function calculateTotalAmount(items, currencyCode) { return 0; }';
  const root=ui.sourceText({text:line},'a.js',{},true,[],[],'',{selectedOffsets:()=>null,down:glyph=>hits.push(glyph),move(){}});
  const handlers=descendants(root).filter(node=>node.handlers?.on_mouse_down);
- assert.ok(handlers.length<20,`expected run-level hit targets, got ${handlers.length} for ${line.length} chars`);
+ assert.ok(handlers.length<=12,`expected word-level hit targets, got ${handlers.length} for ${line.length} chars`);
  // Clicking the 3rd character ('p' in 'export ') resolves exact source offset [2, 3]
- root.nodes[0].nodes[0].handlers.on_mouse_down({local_position:{x:25},bounds:{width:70}},{});
+ root.nodes[0].handlers.on_mouse_down({local_position:{x:25},bounds:{width:70}},{});
  assert.deepEqual(hits,[{start:2,end:3}]);
 });
 

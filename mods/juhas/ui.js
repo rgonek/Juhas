@@ -307,15 +307,17 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
   const flushWord=()=>{
    if(!wordGlyphs.length)return;
    if(fixedWidth&&wordGlyphs.length<=40){
+    const allFixed=wordGlyphs.every(({glyph})=>glyph.end-glyph.start===1&&fixedText.test(glyph.text));
     const parts=[];let wStart=null,wEnd=0,wStyle=null;
     const flushPart=()=>{
      if(wStart==null)return;
      const text=source.slice(wStart,wEnd);
-     parts.push(hitTarget(renderRun({...wStyle,text},wStart,true),text,wStart));
+     const run=renderRun({...wStyle,text},wStart,true);
+     parts.push(allFixed?run:hitTarget(run,text,wStart));
      wStart=null;
     };
     for(const {glyph,span} of wordGlyphs){
-     if(glyph.end-glyph.start===1&&fixedText.test(glyph.text)){
+     if(allFixed||(glyph.end-glyph.start===1&&fixedText.test(glyph.text))){
       if(wStart!=null&&wStyle!==span)flushPart();
       if(wStart==null){wStart=glyph.start;wStyle=span;}
       wEnd=glyph.end;
@@ -325,7 +327,9 @@ function sourceText(row,path,t,wrap,changed,matches,prefix='',interaction=null,t
      parts.push(emitGlyph(glyph,span));
     }
     flushPart();
-    rendered.push(h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(parts));
+    const box=h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(parts);
+    const first=wordGlyphs[0].glyph.start,last=wordGlyphs.at(-1).glyph.end;
+    rendered.push(allFixed?hitTarget(box,source.slice(first,last),first):box);
    }else{
     rendered.push(h_flex().flex_none().max_w('100%').flex_wrap().items_start().children(wordGlyphs.map(({glyph,span})=>emitGlyph(glyph,span))));
    }

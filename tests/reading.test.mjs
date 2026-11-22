@@ -23,7 +23,25 @@ test('revealing one gap preserves other separators and existing row identities',
  assert.equal(patch.hunks.length,2);
  assert.equal(rows[0].text,'2 omitted lines');
  assert.equal(revealPatchGap(revealed,full,gap,'h1'),null);
+});
 
+test('trailing omitted lines separator expands remaining lines at end of file and clears when exhausted',()=>{
+ const line=(oldLine,newLine)=>({side:'context',oldLine,newLine,text:'line '+newLine});
+ const patch={hunks:[{header:'@@ -1,3 +1,3 @@',lines:[1,2,3].map(n=>line(n,n))}]};
+ const full={hunks:[{lines:[1,2,3,4,5].map(n=>line(n,n))}]};
+ const before=withLineInfo(annotatePatch(patch,[],'cmp','a'),{trailing:true});
+ const trailing=before.at(-1);
+ assert.equal(trailing.id,'trailing-gap');
+ assert.deepEqual(trailing.gap,{oldStart:4,newStart:4,count:null,trailing:true});
+ const revealed=revealPatchGap(patch,full,trailing.gap,trailing.id);
+ assert.equal(revealed.trailingExhausted,true);
+ assert.equal(revealed.hunks.length,2);
+ assert.deepEqual(revealed.hunks[1].lines.map(l=>l.newLine),[4,5]);
+ assert.equal(revealPatchGap(revealed,full,trailing.gap,trailing.id),null);
+ // When last hunk is already at EOF, revealing marks trailingExhausted without adding an empty hunk
+ const eof=revealPatchGap(patch,{hunks:[{lines:[1,2,3].map(n=>line(n,n))}]},trailing.gap,trailing.id);
+ assert.equal(eof.trailingExhausted,true);
+ assert.equal(eof.hunks.length,1);
 });
 
 test('syntax tokens retain exact Unicode and whitespace and reuse theme-independent cache',()=>{

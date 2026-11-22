@@ -80,7 +80,7 @@ test('diff controls separate view options from the selected file and hide search
 });
 function diffView(patch,target){return {id:'fixture',width:360,readingOptions:{showHunks:true},inlineEditor:{retained:true},target,diffMode:'unified',diffChangeKey:()=> 'c',controller:{state:{comparison:{id:'c'},file:{newPath:'a'},patch},session:()=>({drafts:[]})}};}
 test('hunk headers can be hidden while exact source rows remain available for comments',()=>{
- const view=diffView({hunks:[{header:'@@ -1 +1 @@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);view.readingOptions.showHunks=false;const root=controls().diffPane(view);assert.ok(!view.diffRows.some(row=>row.kind==='hunk'));assert.ok(view.patchRows.some(row=>row.kind==='hunk'));assert.ok(!descendants(root).some(node=>node.values?.id==='change-navigation'));assert.ok(!descendants(root).some(node=>node.identity==='change-navigation'));
+ const view=diffView({hunks:[{header:'@@ -1 +1 @@',lines:[{side:'new',newLine:1,text:'code'}]}]},null);view.readingOptions.showHunks=false;const root=controls().diffPane(view);assert.ok(!view.diffRows.some(row=>row.kind==='hunk'&&!row.gap));assert.ok(view.patchRows.some(row=>row.kind==='hunk'));assert.ok(!descendants(root).some(node=>node.values?.id==='change-navigation'));assert.ok(!descendants(root).some(node=>node.identity==='change-navigation'));
 });
 test('Files always offers Hide test files independently of the diff file mode',()=>{
  const view=diffView({hunks:[]},null);view.controller.state.files=[];view.controller.state.repo={key:'r'};const ui=controls();

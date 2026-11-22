@@ -60,8 +60,23 @@ export async function loadPatches(run,c,files,limits={}){
 }
 
 // Only publish the gap if the expanded patch contains every expected context line.
-export function revealPatchGap(patch,full,{oldStart,newStart,count},before,maxRows=20000){
- const hunks=patch.hunks,index=hunks.findIndex((h,i)=>(h.contextId??'h'+i)===before);
+export function revealPatchGap(patch,full,{oldStart,newStart,count,trailing=false},before,maxRows=20000){
+ const hunks=patch.hunks;
+ if(trailing){
+  if(patch.trailingExhausted||hunks.some(h=>h.contextId==='context-trailing'))return null;
+  const existingRows=hunks.reduce((n,h)=>n+h.lines.length,0);
+  const lines=[];
+  for(const hunk of full.hunks)for(const line of hunk.lines){
+   if(line.newLine==null||line.newLine<newStart)continue;
+   if(line.side!=='context'||line.newLine!==newStart+lines.length||line.oldLine!==oldStart+lines.length)return null;
+   if(existingRows+lines.length+1>maxRows)return null;
+   lines.push(line);
+  }
+  const result=hunks.map((h,i)=>h.contextId?h:{...h,contextId:'h'+i});
+  if(lines.length)result.push({contextId:'context-trailing',header:`@@ -${oldStart},${lines.length} +${newStart},${lines.length} @@`,lines});
+  return {...patch,hunks:result,trailingExhausted:true};
+ }
+ const index=hunks.findIndex((h,i)=>(h.contextId??'h'+i)===before);
  if(index<0||hunks[index-1]?.contextId==='context-'+before)return null;
  if(count+hunks.reduce((n,h)=>n+h.lines.length,0)>maxRows)return null;
  const lines=[];

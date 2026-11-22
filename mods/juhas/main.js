@@ -240,6 +240,7 @@ export default class Juhas extends View {
     if(!next)throw new Error('The omitted lines are unavailable within the diff limits');
     this.contextPatches??=new WeakMap();this.contextPatches.set(patch,next);
     this.setFindQuery(this.findQuery||'',cx);
+    this.syncDiffViewport(cx);
    }catch(error){if(current()){this.message=error.message;cx.notify();}}
    finally{this.pendingContextReads.delete(patch);}
   });
@@ -344,6 +345,7 @@ export default class Juhas extends View {
  revealDiffRow(cx,kind,strategy,current,onReveal=null){
   const fileId=this.controller.state.file?.id;
   const ready=()=>!this.closed&&this.reviewIsVisible?.()!==false&&current();
+  if(this.diffViewport)cx.notify(this.diffViewport);
   cx.notify();
   cx.timer?.after(16,()=>{
    if(!ready()||this.diffRowsKey!==this.diffChangeKey())return;
@@ -632,8 +634,9 @@ export default class Juhas extends View {
  viewConfigKey(){return JSON.stringify([shared('git-review.v1.config')||{},this.contextProps?.config||{}]);}
  diffViewportSignature(){
   const s=this.controller?.state||{},t=theme(),look=settings(),drafts=this.controller?.session?.().drafts||[];
-  const sections=this.allFiles?(this.allFileSections||[]).map(sec=>`${sec.file?.id}:${sec.collapsed?1:0}:${sec.loading?1:0}:${sec.limited?1:0}:${sec.patch?1:0}:${sec.patch?.fullContext?1:0}`).join(','):'';
-  return `${s.comparison?.id||''}|${s.file?.id||''}|${s.files?.length||0}|${s.patch?1:0}|${s.patch?.hunks?.length||0}|${s.patch?.fullContext?1:0}|${s.hasWorkingChanges}|${Boolean(this.includeWorking)}|${this.diffMode}|${Boolean(this.allFiles)}|${Boolean(this.hideTests)}|${Boolean(this.readingOptions?.wrap)}|${Boolean(this.searchOpen)}|${this.findQuery||''}|${this.findIndex}|${this.findMatches?.length||0}|${Boolean(this.experimentalDiff)}|${this.target?`${this.target.comparisonId}:${this.target.newPath}:${this.target.side}:${this.target.startLine}:${this.target.endLine}`:''}|${this.editId||''}|${Boolean(this.busy)}|${this.inlineEditorHeight||0}|${this.singleHeaderHovered?1:0}|${drafts.length}:${drafts.map(d=>d.id+':'+d.body?.length).join(',')}|${sections}|${t.background}|${t.foreground}|${look.font_family||''}|${look.font_size||''}|${look.ui_font_size||''}`;
+  const displayedPatch=this.displayContextPatch?.(s.patch)??s.patch;
+  const sections=this.allFiles?(this.allFileSections||[]).map(sec=>{const dp=this.displayContextPatch?.(sec.patch)??sec.patch;return `${sec.file?.id}:${sec.collapsed?1:0}:${sec.loading?1:0}:${sec.limited?1:0}:${dp?dp.hunks?.length||0:0}:${dp?.fullContext?1:0}:${dp?.trailingExhausted?1:0}`;}).join(','):'';
+  return `${s.comparison?.id||''}|${s.file?.id||''}|${s.files?.length||0}|${displayedPatch?1:0}|${displayedPatch?.hunks?.length||0}|${displayedPatch?.fullContext?1:0}|${displayedPatch?.trailingExhausted?1:0}|${s.hasWorkingChanges}|${Boolean(this.includeWorking)}|${this.diffMode}|${Boolean(this.allFiles)}|${Boolean(this.hideTests)}|${Boolean(this.readingOptions?.wrap)}|${this.wrapScrollReset||0}|${Boolean(this.searchOpen)}|${this.findQuery||''}|${this.findIndex}|${this.findMatches?.length||0}|${Boolean(this.experimentalDiff)}|${this.target?`${this.target.comparisonId}:${this.target.newPath}:${this.target.side}:${this.target.startLine}:${this.target.endLine}`:''}|${this.editId||''}|${Boolean(this.busy)}|${this.inlineEditorHeight||0}|${this.singleHeaderHovered?1:0}|${drafts.length}:${drafts.map(d=>d.id+':'+d.body?.length).join(',')}|${sections}|${t.background}|${t.foreground}|${look.font_family||''}|${look.font_size||''}|${look.ui_font_size||''}`;
  }
  syncDiffViewport(cx){
   if(!this.diffViewport)return;
@@ -856,9 +859,9 @@ export default class Juhas extends View {
   try{if(row.kind==='hunk'){const lines=row.hunk.lines.filter(l=>l.newLine!=null);if(!lines.length){this.target=commentTarget(s.comparison,s.file,row.hunk.lines[0],row.hunk.lines.at(-1),row.hunk.lines);}else this.target=commentTarget(s.comparison,s.file,lines[0],lines.at(-1),lines);this.selectedStart=null;}
   else {if(extending){this.target=commentTarget(s.comparison,s.file,this.selectedStart.row,row,this.patchRows.filter(r=>r.kind==='line'));this.selectedStart=null;}else{this.target=commentTarget(s.comparison,s.file,row);this.selectedStart={row,fileId:s.file.id,comparisonId:s.comparison.id};}}
   this.editId=null;this.detachedComposer=false;this.composerComparison=s.comparison;if(!extending)this.inputs.comment.set_value('');this.panel='comment';this.persistComposer();this.inputs.comment.focus();this.notifyEditor(cx,false);}catch(e){this.message=e.message;cx.notify();}}
- fileComment(cx){if(this.hasUnsavedComment()){this.message='Save or cancel the current comment before opening another';cx.notify();return;}const s=this.controller.state;this.target=commentTarget(s.comparison,s.file);this.composerComparison=s.comparison;this.detachedComposer=false;this.editId=null;this.selectedStart=null;this.inputs.comment.set_value('');this.panel='comment';this.persistComposer();this.revealSelectedSection();this.notifyEditor(cx);
+ fileComment(cx){if(this.hasUnsavedComment()){this.message='Save or cancel the current comment before opening another';cx.notify();return;}const s=this.controller.state;this.target=commentTarget(s.comparison,s.file);this.composerComparison=s.comparison;this.detachedComposer=false;this.editId=null;this.selectedStart=null;this.inputs.comment.set_value('');this.panel='comment';this.persistComposer();this.revealSelectedSection();if(!this.allFiles&&this.readingOptions?.wrap)this.wrapScrollReset=(this.wrapScrollReset||0)+1;this.notifyEditor(cx);
   const target=this.target,controller=this.controller,version=this.fileActionVersion;
-  this.revealDiffRow(cx,'editor','center',()=>this.target===target&&this.panel==='comment'&&this.controller===controller&&controller.state.comparison?.id===s.comparison?.id&&controller.state.file?.id===s.file?.id&&this.fileActionVersion===version,()=>this.inputs.comment.focus());
+  this.revealDiffRow(cx,'editor',this.allFiles?'center':'top',()=>this.target===target&&this.panel==='comment'&&this.controller===controller&&controller.state.comparison?.id===s.comparison?.id&&controller.state.file?.id===s.file?.id&&this.fileActionVersion===version,()=>this.inputs.comment.focus());
  }
  editDraft(d,cx){if(this.hasUnsavedComment()){if(this.editId===d.id){this.panel='comment';this.inputs.comment.focus();if(!this.composerIsVisible())this.resumeComment(cx);else this.notifyEditor(cx,true);}else{this.message='Save or cancel the current comment before editing another';cx.notify();}return;}this.editId=d.id;this.target=d;this.detachedComposer=false;this.composerComparison=this.controller.state.comparison?.id===d.comparisonId?this.controller.state.comparison:null;this.selectedStart=null;this.inputs.comment.set_value(d.body);this.inputs.comment.focus();this.panel='comment';this.persistComposer();if(!this.composerIsVisible())this.resumeComment(cx);else this.notifyEditor(cx,true);}
  queueComposerSave(cx){

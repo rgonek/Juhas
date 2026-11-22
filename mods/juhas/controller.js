@@ -108,7 +108,7 @@ export class Controller {
   if(current.id!==comparison.id)throw new Error('Working tree changed; detached patch source is stale');
  }
  async readFileContext(file,comparison,gap){
-  if(!comparison.mutableTarget&&this.run.contextRange&&!this.cache.get(patchKey(comparison,file,true))&&
+  if(!gap?.trailing&&!comparison.mutableTarget&&this.run.contextRange&&!this.cache.get(patchKey(comparison,file,true))&&
    [file.oldMode,file.newMode].every(mode=>mode==='100644'||mode==='100755')&&
    [file.oldOid,file.newOid].every(oid=>/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(oid))){
    const range=await this.run.contextRange(comparison.repo,file,gap);

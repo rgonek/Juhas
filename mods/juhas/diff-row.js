@@ -21,7 +21,15 @@ export default class DiffRow extends View {
  }
  render(){
   const {owner,content}=this.p;
-  if(!owner.experimentalDiff)return content(null);
+  if(!owner.experimentalDiff){
+   const {row,split}=this.p;
+   if(split&&row.kind==='pair'){
+    return div().w_full().min_w(0)
+     .on_mouse_down('left',event=>{if(event.local_position&&event.bounds)owner.commentSide=event.local_position.x<event.bounds.width/2?'old':'new';})
+     .child(content(null));
+   }
+   return content(null);
+  }
   const {row,split,source}=this.p,version=owner.diffSelection?.version,type=uiMetrics(),t=theme();
   const hover=(value,cx)=>{if(this.hovered!==value){this.hovered=value;if(!value)this.side=null;else if(row.kind==='line')this.side=row.side==='old'?'old':'new';cx.notify();}};
   const line=row.kind==='pair'?(this.side==='old'?row.old:this.side==='new'?row.next:null):row;

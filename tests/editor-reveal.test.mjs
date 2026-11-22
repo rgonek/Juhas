@@ -2,7 +2,7 @@ import {withLineInfo} from '../mods/juhas/reading.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {annotatePatch,composerRows} from '../mods/juhas/comments.js';
+import {annotatePatch,composerRows,measuredCommentRows} from '../mods/juhas/comments.js';
 import {splitRows} from '../mods/juhas/review-ui.js';
 
 test('revealing a line composer uses a scroll strategy supported by native Herdr',()=>{
@@ -31,7 +31,7 @@ test('controller changes queue one main-view notification without capturing a ho
 });
 test('file comment reveals the editor in the rendered multi-file diff and focuses it',()=>{
  const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
- const Native=new Function('View','commentTarget','class Juhas extends View'+source+'\nreturn Juhas;')(class{},()=>({scope:'file'}));
+ const Native=new Function('View','commentTarget','measuredCommentRows','class Juhas extends View'+source+'\nreturn Juhas;')(class{},()=>({scope:'file'}),measuredCommentRows);
  const view=Object.create(Native.prototype),events=[],timers=[],cx={notify(){},timer:{after(_ms,fn){timers.push(fn);}}};
  Object.assign(view,{allFiles:true,reviewIsVisible:()=>true,controller:{state:{comparison:{id:'c'},file:{id:'b'}}},inputs:{comment:{set_value(){},focus(){events.push('focus');}}},hasUnsavedComment:()=>false,persistComposer(){},notifyEditor(){},revealSelectedSection(){},diffScroll:{scroll_to_item:(...args)=>events.push(args)}});
  view.fileComment(cx);
@@ -39,6 +39,19 @@ test('file comment reveals the editor in the rendered multi-file diff and focuse
  view.diffRowsKey=view.diffChangeKey();
  while(timers.length)timers.shift()();
  assert.deepEqual(events,[[3,'center'],'focus']);
+});
+
+test('single-file comment scrolls to top, resets wrapped scroll, and focuses the input',()=>{
+ const source=readFileSync(new URL('../mods/juhas/main.js',import.meta.url),'utf8').split('export default class Juhas extends View')[1];
+ const Native=new Function('View','commentTarget','measuredCommentRows','class Juhas extends View'+source+'\nreturn Juhas;')(class{},()=>({scope:'file'}),measuredCommentRows);
+ const view=Object.create(Native.prototype),events=[],timers=[],cx={notify(){},timer:{after(_ms,fn){timers.push(fn);}}};
+ Object.assign(view,{allFiles:false,readingOptions:{wrap:true},reviewIsVisible:()=>true,controller:{state:{comparison:{id:'c'},file:{id:'a'}}},inputs:{comment:{set_value(){},focus(){events.push('focus');}}},hasUnsavedComment:()=>false,persistComposer(){},notifyEditor(){},revealSelectedSection(){},diffScroll:{scroll_to_item:(...args)=>events.push(args)}});
+ view.fileComment(cx);
+ assert.equal(view.wrapScrollReset,1);
+ view.diffRows=[{kind:'editor'},{kind:'line'}];
+ view.diffRowsKey=view.diffChangeKey();
+ while(timers.length)timers.shift()();
+ assert.deepEqual(events,[[0,'top'],'focus']);
 });
 
 test('selecting a file scrolls to its header in the rendered multi-file diff',async()=>{

@@ -64,3 +64,19 @@ test('wrapped measurements coalesce and a replaced source cancels its pending re
  pending.shift()(f.cx);
  assert.equal(notifications.length,1);
 });
+
+test('standard split DiffRow sets owner.commentSide from clicked half without stopping propagation',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const element=()=>{let p;const data={nodes:[],handlers:{}};p=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...a)=>{if(k==='child')t.nodes.push(a[0]);else if(k.startsWith('on_'))t.handlers[k]=a;return p;}});return p;};
+ const source=readFileSync(new URL('../mods/juhas/diff-row.js',import.meta.url),'utf8').split('export default class DiffRow extends View')[1];
+ const DiffRow=new Function('View','div','svg','theme','uiMetrics','button','class DiffRow extends View'+source+'\nreturn DiffRow;')(class{},element,element,()=>({}),()=>({px:n=>n}),element);
+ const owner={experimentalDiff:false,commentSide:null};
+ const row=new DiffRow();
+ row.init({owner,row:{id:'p1',kind:'pair',old:{side:'old',oldLine:1},next:{side:'new',newLine:1}},split:true,content:()=>element()});
+ const el=row.render();
+ assert.equal(el.handlers.on_mouse_down[0],'left');
+ el.handlers.on_mouse_down[1]({local_position:{x:100},bounds:{width:600}});
+ assert.equal(owner.commentSide,'old');
+ el.handlers.on_mouse_down[1]({local_position:{x:450},bounds:{width:600}});
+ assert.equal(owner.commentSide,'new');
+});

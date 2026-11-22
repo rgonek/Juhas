@@ -395,7 +395,7 @@ function* prepareDiffProjection({patch,comparison,file,sectionsInput,drafts,spli
  const annotated=hiddenSelected?[]:yield* annotate(patch,comparison,file);
  const matchesTarget=(comparison,file)=>target&&target.comparisonId===comparison?.id&&target.newPath===file?.newPath;
  function* present(source,patch){
-  const visible=yield* lineInfoBatches(source);
+  const visible=yield* lineInfoBatches(source,{trailing:Boolean(patch&&!patch.fullContext&&!patch.trailingExhausted&&!patch.binary&&!patch.modeOnly&&patch.hunks?.length)});
   const display=split?yield* splitRowBatches(visible):visible;
   if(patch?.binary||patch?.modeOnly)display.unshift({id:'diff-notice',kind:'notice',text:patch.binary?'Binary file changed · file comments are available':'File mode or submodule changed · no text hunks'});
   return display;
@@ -544,7 +544,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   const retained=!plain&&retainRows&&view.diffRowViews?.get(clickSource+':'+row.id);
   if(retained&&retained.p.row===row)return div().w_full().min_w(0).when(!wrap,e=>e.h_full().overflow_hidden()).child(retained.entity);
   if(row.kind==='file-header'&&view.fileHeaderViews?.has(row.fileId))return div().h(type.px(34)).w_full().child(view.fileHeaderViews.get(row.fileId));
-  if(row.kind==='file-header')return h_flex().h(type.px(34)).px(10).items_center().gap(8).bg(t.raised).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text).font_semibold()).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
+  if(row.kind==='file-header')return h_flex().h(type.px(34)).px(10).items_center().gap(8).bg(t.background).when(rows[0]!==row,e=>e.border_t(1).border_color(t.border)).text_color(t.foreground).child(text(row.collapsed?'▸':'▾',true)).child(text(row.text)).child(text(row.loading?'Loading…':row.limited?'Limited':'',true));
   if(row.kind==='notice')return text(row.text,true).h(type.px(46)).p(type.px(12));
   if(row.kind==='comment'||row.kind==='editor'){
    const height=row.kind==='editor'?type.px(INLINE_EDITOR_HEIGHT):(commentHeight(row.text)*type.scale),content=()=>row.kind==='editor'?div().min_h(height).max_h(type.px(INLINE_EDITOR_MAX_HEIGHT)).w_full().max_w(view.width||'100%').child(view.inlineEditor):commentCard(row,view,view.width);
@@ -574,7 +574,7 @@ export function diffPane(view,cx){const look=settings(),type=typography(look.ui_
   if(row.kind==='pair'){const side=view.commentSide||'new',line=side==='old'?(row.old||row.next):(row.next||row.old);if(line){if(row.fileId)view.selectFileLine?.({...line,comparisonId:row.comparisonId},row.fileId,cx,line.side==='context'?side:null);else view.selectLine(line.id,cx,line.side==='context'?side:null,line);}}
   else if(row.fileId)view.selectFileLine?.({...row,id:row.sourceId},row.fileId,cx);else view.selectLine(id,cx,null,row);};
  const uniformLarge=projection.large&&projection.uniform&&!wrap;
- const measured=wrap||projection.large&&!uniformLarge,measuredRows=measured?(projection.measuredRows??=measuredCommentRows(rows)):null,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?(view.experimentalDiff&&!view.allFiles?'-wrap-'+clickSource:'-wrap'):''}${view.experimentalDiff?'-experimental':''}-${type.body}`;
+ const measured=wrap||projection.large&&!uniformLarge,measuredRows=measured?(projection.measuredRows??=measuredCommentRows(rows)):null,id=`${view.scrollIdentity?.()||view.id}-diff-${split?'split':'unified'}${wrap?(view.experimentalDiff&&!view.allFiles?'-wrap-'+clickSource:'-wrap')+(view.wrapScrollReset&&!view.allFiles?'-top-'+view.wrapScrollReset:''):''}${view.experimentalDiff?'-experimental':''}-${type.body}`;
  const scroller=view.reviewIsVisible?.()===false?null:view.diffScroll;
  // Keep the scroll surface when a composer opens. Its retained view reports
  // its intrinsic height; wrapped annotations stay inside stable source items.

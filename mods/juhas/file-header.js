@@ -21,7 +21,7 @@ export default class FileHeader extends View {
    .child(button(`comment-${fileId}`,svg('mods/juhas/icons/comment.svg').size(14),(_e,cx)=>act('comment',cx),{tooltip:'Comment on this file'}).w(28).px(0).disabled(Boolean(owner.busy)))
    .child(button(`context-${fileId}`,svg(`mods/juhas/icons/${section.patch?.fullContext?'fold':'unfold'}-vertical.svg`).size(14),(_e,cx)=>act('context',cx),{tooltip:section.patch?.fullContext?'Fold unchanged context':'Show whole file'}).w(28).px(0).disabled(Boolean(owner.busy||file.binary||section.patch?.modeOnly)));
   return button(`section-${fileId}`,row,(_e,cx)=>act('toggle',cx),{tooltip:`${section.collapsed?'Expand':'Collapse'} ${file.newPath}`})
-   .h(type.px(34)).w(width||'100%').min_w(0).px(8).rounded(0).justify_start().bg(t.background).hover(e=>e.bg(t.hover))
+   .h(type.px(34)).w(width||'100%').min_w(0).px(8).rounded(0).justify_start().bg(t.background).when(owner.allFileSections?.[0]?.file?.id!==fileId,e=>e.border_t(1).border_color(t.border)).hover(e=>e.bg(t.hover))
    .on_hover((hovered,cx)=>{if(this.hovered!==hovered){this.hovered=hovered;cx.notify();}});
  }
 }

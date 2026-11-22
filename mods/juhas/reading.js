@@ -99,15 +99,16 @@ export function decorateLine(text,path,changed=[],matches=[],compact=false){
  }
  return result;
 }
-export function withLineInfo(rows){return finishDiffBatches(lineInfoBatches(rows));}
-export function* lineInfoBatches(rows){
+export function withLineInfo(rows,options){return finishDiffBatches(lineInfoBatches(rows,options));}
+export function* lineInfoBatches(rows,{trailing=false}={}){
  const visible=[];
- let oldEnd=1,newEnd=1,count=0;
+ let oldEnd=1,newEnd=1,count=0,seenHunk=false;
  for(const row of rows){
   if(++count%DIFF_BATCH_SIZE===0)yield;
   if(row.kind!=='hunk'){visible.push(row);continue;}
   const header=/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(row.text);
   if(!header)continue;
+  seenHunk=true;
   const oldCount=Number(header[2]??1),newCount=Number(header[4]??1);
   const oldStart=Number(header[1])+Number(oldCount===0);
   const newStart=Number(header[3])+Number(newCount===0);
@@ -117,6 +118,9 @@ export function* lineInfoBatches(rows){
   }
   oldEnd=oldStart+oldCount;
   newEnd=newStart+newCount;
+ }
+ if(trailing&&seenHunk&&oldEnd>1&&newEnd>1){
+  visible.push({id:'trailing-gap',kind:'hunk',gap:{oldStart:oldEnd,newStart:newEnd,count:null,trailing:true},text:'Show omitted lines below'});
  }
  return visible;
 }

@@ -49,7 +49,7 @@ export default class Juhas extends View {
   this.inputs.review.on('change',(_e,cx)=>this.changeReview(cx));
   this.inputs.comment.on('change',(_e,cx)=>this.queueComposerSave(cx));
   this.inputs.comment.on('blur',()=>{if(this.composerSavePending)this.persistComposer();});
-  this.readingOptions={wrap:false};this.experimentalDiff=shared('git-review.v1.experimentalDiff')===true;if(this.experimentalDiff)this.ensureExperimentalSelectionFocus(cx);this.findQuery='';this.findMatches=[];this.findIndex=-1;this.allFiles=true;this.summaryLines=false;this.showFiles=true;this.showComments=false;this.commentPanelPosition='top';this.showHistory=false;this.filePanelPosition='top';this.historyPanelPosition='top';this.allFileSections=[];
+  this.readingOptions={wrap:false};this.experimentalDiff=shared('git-review.v1.experimentalDiff')!==false;if(this.experimentalDiff)this.ensureExperimentalSelectionFocus(cx);this.findQuery='';this.findMatches=[];this.findIndex=-1;this.allFiles=true;this.summaryLines=false;this.showFiles=true;this.showComments=false;this.commentPanelPosition='top';this.showHistory=false;this.filePanelPosition='top';this.historyPanelPosition='top';this.allFileSections=[];
   for(const key of ['refQuery','fileQuery','recipientQuery'])this.inputs[key].on('change',(_e,cx)=>{if(key==='refQuery'){this.refIndex=0;if(this.panel==='refs'||this.panel==='historyRefs')this.filteredReferences();}cx.notify();});
   this.inputs.find.on('change',(_e,cx)=>this.setFindQuery(this.inputs.find.value(),cx));
   this.inlineEditor=cx.new(InlineEditor,{owner:this,input:this.inputs.comment,save:()=>this.headerAction({kind:'save-comment'}),cancel:()=>this.headerAction({kind:'cancel-comment'})});
@@ -123,18 +123,22 @@ export default class Juhas extends View {
   this.syncDiffViewport(cx);
   cx.notify();
  }
- prepareDiffRows(rows,render,cx,split,range={start:0,end:80}){
+ diffRowsStyleKey(split,metrics=uiMetrics(),t=theme(),font=settings().font_family||''){
+  return `${this.experimentalDiff?1:0}|${this.diffSelection?.version??''}|${t.background}|${t.foreground}|${t.accent}|${t.selection}|${font}|${split}|${Boolean(this.readingOptions?.wrap)}|${this.diffWidth||0}|${metrics.scale}|${metrics.fontSize}|${this.findQuery||''}|${this.findCursor??''}|${this.target?`${this.target.comparisonId}:${this.target.newPath}:${this.target.side}:${this.target.startLine}:${this.target.endLine}`:''}`;
+ }
+ prepareDiffRows(rows,render,cx,split,range={start:0,end:80},styleKey=null){
   if(!cx?.timer)return;
-  const source=this.diffChangeKey();
-  const overscan=range.measured?12:32;
+  const source=this.diffChangeKey(),style=styleKey??this.diffRowsStyleKey(split),matches=this.findMatches;
+  const overscan=range.measured?10:16;
   let start=Math.max(0,range.start-overscan),end=Math.min(rows.length,range.end+overscan);
   const previous=this.pendingDiffRows;
-  if(range.measured&&this.diffRowsQueued&&previous?.rows===rows&&previous.render===render&&previous.source===source){
+  const sameContext=previous?.rows===rows&&previous.source===source&&previous.split===split&&previous.style===style&&previous.matches===matches;
+  if(range.measured&&this.diffRowsQueued&&sameContext){
    start=Math.min(start,previous.start);
    end=Math.max(end,previous.end);
   }
-  if(previous?.rows===rows&&previous.render===render&&previous.source===source&&range.start>=previous.start&&range.end<=previous.end)return;
-  this.pendingDiffRows={rows,render,split,source,start,end};if(this.diffRowsQueued)return;this.diffRowsQueued=true;cx.timer.after(1,cx=>{this.diffRowsQueued=false;const pending=this.pendingDiffRows;if(this.closed||pending?.source!==this.diffChangeKey())return;this.buildDiffRows(pending,cx);});}
+  if(sameContext&&range.start>=previous.start&&range.end<=previous.end)return;
+  this.pendingDiffRows={rows,render,split,source,style,matches,start,end};if(this.diffRowsQueued)return;this.diffRowsQueued=true;cx.timer.after(1,cx=>{this.diffRowsQueued=false;const pending=this.pendingDiffRows;if(this.closed||pending?.source!==this.diffChangeKey())return;this.buildDiffRows(pending,cx);});}
  selectionLayoutKey(metrics=uiMetrics()){return `${Boolean(this.readingOptions?.wrap)}|${this.diffWidth||0}|${metrics.scale}|${metrics.fontSize}`;}
  buildDiffRows({rows,render,split,source,start=0,end=rows.length},cx){
   this.diffRowViews??=new Map();
@@ -168,8 +172,7 @@ export default class Juhas extends View {
    this.selectionScale=metrics.scale;
    selection.update(rows,split,source,this.selectionLayoutKey(metrics));
   }
-  const t=theme();
-  const style=`${selection?.version??''}|${t.background}|${t.foreground}|${t.accent}|${t.selection}|${settings().font_family||''}|${split}|${Boolean(this.readingOptions?.wrap)}|${this.diffWidth||0}|${metrics.scale}|${metrics.fontSize}|${this.findQuery||''}|${this.findCursor??''}|${this.target?`${this.target.comparisonId}:${this.target.newPath}:${this.target.side}:${this.target.startLine}:${this.target.endLine}`:''}`;
+  const style=this.diffRowsStyleKey(split,metrics);
   const keys=new Set(),matches=this.findMatches;
   let mounted=false;
   for(let index=start;index<end;index++){

@@ -3,7 +3,7 @@ import {commentHeight,INLINE_EDITOR_HEIGHT} from './comments.js';
 
 // The parent processes gestures; retained rows only report source coordinates.
 export class DiffSelection {
- constructor(owner){this.owner=owner;this.selection=null;this.drag=null;this.heights=new Map();this.cellHeights=new Map();this.source=null;this.pendingMove=null;this.version=0;this.motionBatch=0;}
+ constructor(owner){this.owner=owner;this.selection=null;this.drag=null;this.heights=new Map();this.cellHeights=new Map();this.source=null;this.pendingMove=null;this.version=0;this.motionBatch=0;this.pendingClickComment=null;this.clickCommentSeq=0;}
  update(rows,split,source,layoutKey,enabled=true,preparedModel=null){
   if(rows===this.rows&&source===this.source&&layoutKey===this.layoutKey&&split===this.split&&enabled===this.enabled)return;
   const state=this.owner.controller?.state||{},next=enabled?(preparedModel||(rows===this.rows&&split===this.split&&source===this.source?this.model:null)||buildSelectionModel(rows,split,{fileId:state.file?.id,comparisonId:state.comparison?.id})):null;
@@ -55,7 +55,7 @@ export class DiffSelection {
  }
  invalidate(before,cx,forceAll=false){const after=this.snapshot();if(forceAll){const prefix=this.source+':';for(const [key,entry] of this.owner.diffRowViews||[])if(key.startsWith(prefix)&&entry.entity)cx.notify(entry.entity);return;}for(const id of new Set([...before.keys(),...after.keys()]))if(before.get(id)!==after.get(id)){const entity=this.owner.diffRowViews?.get(this.source+':'+id)?.entity;if(entity)cx.notify(entity);}}
  isCollapsed(){return !this.selection||(this.selection.anchor.key===this.selection.end.key&&this.selection.anchor.line===this.selection.end.line&&this.selection.anchor.offset===this.selection.end.offset);}
- stop(){this.drag=null;this.timer?.cancel();this.timer=null;this.scrollTop=null;}
+ stop(){this.drag=null;this.pendingClickComment=null;this.timer?.cancel();this.timer=null;this.scrollTop=null;}
  close(){this.stop();this.moves?.clear();}
  measure(id,height,part=null){if(!Number.isFinite(height)||height<=0)return false;if(part){const cells=this.cellHeights.get(id)||{};cells[part]=height;this.cellHeights.set(id,cells);height=Math.max(...Object.values(cells));}else if(this.cellHeights.has(id))return false;if(Math.abs((this.heights.get(id)||0)-height)<0.5)return false;this.heights.set(id,height);return true;}
 
@@ -90,12 +90,14 @@ export class DiffSelection {
    if(this.drag.moved&&!this.timer)this.startTimer(cx);
   }
   else if(event.type==='comment-down'){
+   this.pendingClickComment=null;
    if(this.owner.hasUnsavedComment?.()){this.owner.message='Save or cancel the current comment before opening another';cx.notify();return;}
    const range=commentSelection(this.model,event.rowId,event.side);if(!range)return;
    this.selection=null;this.drag={kind:'comment',start:event.rowId,side:range.side,end:event.rowId,range};this.owner.selectionHandle?.focus();
   }else if(event.type==='down'||event.type==='move'){
    const offset=event.local_position&&event.bounds&&event.local_position.x>=event.bounds.width/2?event.end:event.start,point=this.point(event.rowId,event.side,offset);if(!point)return;
    if(event.type==='down'){
+    this.pendingClickComment=null;
     const hadSelection=!this.isCollapsed();
     const unit=event.click_count>=3?'line':event.click_count===2?'word':'character';
     this.selection=unit==='character'?{anchor:event.modifiers?.shift&&this.selection?.anchor.key===point.key?this.selection.anchor:point,end:point}:unitSelection(this.model,point,unit,event.start);
@@ -106,13 +108,29 @@ export class DiffSelection {
     if(!this.isCollapsed())this.drag.clickComment=null;
    }
   }else if(event.type==='up'){
-   let range=this.drag?.kind==='comment'?this.drag.range:null;
-   if(!range&&this.drag?.kind==='text'&&this.drag.clickComment&&this.isCollapsed()){
-    if(this.owner.hasUnsavedComment?.()){this.owner.message='Save or cancel the current comment before opening another';cx.notify();}
-    else range=commentSelection(this.model,this.drag.clickComment.rowId,this.drag.clickComment.side);
-    this.selection=null;
+   const range=this.drag?.kind==='comment'?this.drag.range:null;
+   const clickComment=!range&&this.drag?.kind==='text'&&this.drag.clickComment&&this.isCollapsed()?this.drag.clickComment:null;
+   if(clickComment)this.selection=null;
+   this.stop();this.invalidate(before,cx,wasDragging);
+   if(range){this.owner.commitCommentRange(range,cx);return;}
+   if(clickComment){
+    const clickRange=commentSelection(this.model,clickComment.rowId,clickComment.side);
+    if(!clickRange)return;
+    const commit=cx=>{
+     if(this.owner.hasUnsavedComment?.()){this.owner.message='Save or cancel the current comment before opening another';cx.notify();return;}
+     this.owner.commitCommentRange(clickRange,cx);
+    };
+    if(cx.timer?.after){
+     const token=++this.clickCommentSeq,version=this.version,source=this.source;
+     this.pendingClickComment=token;
+     cx.timer.after(100,cx=>{
+      if(this.pendingClickComment!==token||this.version!==version||this.source!==source||this.owner.closed||this.drag)return;
+      this.pendingClickComment=null;
+      commit(cx);
+     });
+    }else commit(cx);
    }
-   this.stop();this.invalidate(before,cx,wasDragging);if(range)this.owner.commitCommentRange(range,cx);return;
+   return;
   }
   this.invalidate(before,cx,wasDragging!==Boolean(this.drag));
  }

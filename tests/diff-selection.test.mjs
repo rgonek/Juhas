@@ -69,7 +69,7 @@ test('standard split DiffRow sets owner.commentSide from clicked half without st
  const {readFileSync}=await import('node:fs');
  const element=()=>{let p;const data={nodes:[],handlers:{}};p=new Proxy(data,{get:(t,k)=>k in t?t[k]:(...a)=>{if(k==='child')t.nodes.push(a[0]);else if(k.startsWith('on_'))t.handlers[k]=a;return p;}});return p;};
  const source=readFileSync(new URL('../mods/juhas/diff-row.js',import.meta.url),'utf8').split('export default class DiffRow extends View')[1];
- const DiffRow=new Function('View','div','class DiffRow extends View'+source+'\nreturn DiffRow;')(class{},element);
+ const DiffRow=new Function('View','div','uiMetrics','class DiffRow extends View'+source+'\nreturn DiffRow;')(class{},element,()=>({code:13,lineHeight:20}));
  const owner={experimentalDiff:false,commentSide:null};
  const row=new DiffRow();
  row.init({owner,row:{id:'p1',kind:'pair',old:{side:'old',oldLine:1},next:{side:'new',newLine:1}},split:true,content:()=>element()});
@@ -94,4 +94,63 @@ test('single click without drag opens a comment while clearing an existing selec
  f.send({type:'up'});
  assert.equal(f.state.text(),'');
  assert.equal(f.comments.length,1);
+});
+
+test('experimental DiffRow single handler routes gutter vs text clicks across unified/split and wrap/!wrap with real typography',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {typography}=await import('../mods/juhas/typography.js');
+ const makeEl=()=>{const target={handlers:{}};const proxy=new Proxy(target,{get(t,p){if(p in t)return t[p];if(p.startsWith('on_'))return (...a)=>{t.handlers[p]=a;return proxy;};if(p==='when')return (c,fn)=>c?fn(proxy):proxy;return ()=>proxy;}});return proxy;};
+ const raw=readFileSync(new URL('../mods/juhas/diff-row.js',import.meta.url),'utf8');
+ const body=raw.replace(/^import .*$/gm,'').replace('export default class DiffRow extends View','class DiffRow extends View');
+ const DiffRow=new Function('View','div','uiMetrics',body+'\nreturn DiffRow;')(class{},makeEl,()=>typography(14,16));
+ const sent=[];
+ const runtime={version:1,model:{},drag:null,point:()=>true,selectedOffsets:()=>null,send:ev=>sent.push(ev)};
+ for(const wrap of [false,true]){
+  const owner={experimentalDiff:true,readingOptions:{wrap},diffSelection:runtime};
+  const pairRow=new DiffRow();
+  pairRow.init({owner,row:{id:'p1',kind:'pair',old:{side:'old',oldLine:1,text:'alpha beta gamma delta epsilon'},next:{side:'new',newLine:1,text:'first second third fourth fifth'}},split:true,source:'s',content:()=>makeEl()});
+  const pairEl=pairRow.render();
+  assert.ok(pairEl.handlers.on_mouse_down);
+  assert.equal(pairEl.handlers.on_mouse_move,undefined);
+  // Click old gutter (x=20 < 52)
+  pairEl.handlers.on_mouse_down[1]({local_position:{x:20,y:10},bounds:{width:600,height:wrap?44:22},click_count:1,modifiers:{}},{stop_propagation(){}});
+  assert.equal(sent.at(-1).type,'comment-down');
+  assert.equal(sent.at(-1).side,'old');
+  // Click new text around char 2 (x = 300 + 1 + 52 + 17 = 370)
+  pairEl.handlers.on_mouse_down[1]({local_position:{x:370,y:10},bounds:{width:600,height:wrap?44:22},click_count:1,modifiers:{}},{stop_propagation(){}});
+  assert.equal(sent.at(-1).type,'down');
+  assert.equal(sent.at(-1).side,'new');
+  assert.ok(Number.isInteger(sent.at(-1).start)&&sent.at(-1).start>=1&&sent.at(-1).start<=3,`expected char ~2, got ${sent.at(-1).start}`);
+  // Unified row: click text around char 2 (x = 96 + 16.8 + 17 = 130)
+  const uniRow=new DiffRow();
+  uniRow.init({owner,row:{id:'u1',kind:'line',side:'new',newLine:1,text:'const value = 42;'},split:false,source:'s',content:()=>makeEl()});
+  const uniEl=uniRow.render();
+  uniEl.handlers.on_mouse_down[1]({local_position:{x:130,y:10},bounds:{width:600,height:wrap?44:22},click_count:1,modifiers:{}},{stop_propagation(){}});
+  assert.equal(sent.at(-1).type,'down');
+  assert.ok(Number.isInteger(sent.at(-1).start)&&sent.at(-1).start>=1&&sent.at(-1).start<=3,`expected unified char ~2, got ${sent.at(-1).start}`);
+ }
+});
+
+test('double click cancels the pending single-click comment timer so word selection works cleanly',()=>{
+ const f=fixture(),pending=[];
+ f.cx.timer.after=(_ms,fn)=>pending.push(fn);
+ // First click of a double click queues comment after 220ms
+ f.send(down('r1',1,2,1));
+ f.send({type:'up'});
+ assert.equal(f.comments.length,0);
+ assert.equal(pending.length,1);
+ // Second click arrives before 220ms -> cancels comment and selects word
+ f.send(down('r1',1,2,2));
+ f.send({type:'up'});
+ while(pending.length)pending.shift()(f.cx);
+ assert.equal(f.comments.length,0);
+ assert.equal(f.state.text(),'line');
+ // Clean single click without second click opens comment once timer fires
+ f.send(down('r2',1,2,1));
+ f.send({type:'up'}); // clears previous selection
+ f.send(down('r2',1,2,1));
+ f.send({type:'up'}); // queues comment
+ assert.equal(f.comments.length,0);
+ while(pending.length)pending.shift()(f.cx);
+ assert.deepEqual(f.comments.map(r=>[r.startLine,r.endLine]),[[2,2]]);
 });
